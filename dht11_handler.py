@@ -6,6 +6,9 @@ from rpi_gpio_mock import GPIO  # Using our mock for development
 
 # TODO: Replace this with actual DHT11 reading code on the Raspberry Pi
 class DHT11Sensor:
+    def __init__(self, pin=4):
+        self.pin = pin  # Allow different GPIO pins for different sensors
+        
     def read(self):
         # Simulate sensor readings for development
         # Replace this with actual DHT11 reading code on the Raspberry Pi
@@ -17,8 +20,9 @@ class DHT11Display(tk.Frame):
     def __init__(self, master=None):
         super().__init__(master)
         self.master = master
-        self.sensor = DHT11Sensor()
-        self.pin = 4  # GPIO4 (Pin 7)
+        # Create two sensors with different GPIO pins
+        self.sensor1 = DHT11Sensor(pin=4)  # GPIO4 (Pin 7)
+        self.sensor2 = DHT11Sensor(pin=17)  # GPIO17 (Pin 11)
         self.create_widgets()
         self.update_readings()
 
@@ -41,47 +45,109 @@ class DHT11Display(tk.Frame):
         )
         self.title_label.pack(pady=(0, 2))
 
-        # Temperature frame
-        self.temp_frame = ttk.Frame(self.container)
-        self.temp_frame.pack(fill='x', pady=10)
+        # Sensor 1 Label
+        self.sensor1_label = ttk.Label(
+            self.container,
+            text="Sensor 1",
+            style='Title.TLabel'
+        )
+        self.sensor1_label.pack(pady=(0, 1))
+
+        # Temperature frame for Sensor 1
+        self.temp_frame1 = ttk.Frame(self.container)
+        self.temp_frame1.pack(fill='x', pady=2)
         
-        self.temp_icon = ttk.Label(self.temp_frame, text="🌡️", font=('Helvetica', 24))
-        self.temp_icon.pack(side='left', padx=10)
+        # Sensor 1 Temperature
+        self.temp_icon1 = ttk.Label(self.temp_frame1, text="🌡️", font=('Helvetica', 16))
+        self.temp_icon1.pack(side='left', padx=5)
         
-        self.temp_reading = ttk.Label(
-            self.temp_frame,
+        self.temp_reading1 = ttk.Label(
+            self.temp_frame1,
             text="--",
             style='Reading.TLabel'
         )
-        self.temp_reading.pack(side='left')
+        self.temp_reading1.pack(side='left')
         
-        self.temp_unit = ttk.Label(
-            self.temp_frame,
+        self.temp_unit1 = ttk.Label(
+            self.temp_frame1,
             text="°C",
             style='Unit.TLabel'
         )
-        self.temp_unit.pack(side='left')
+        self.temp_unit1.pack(side='left')
 
-        # Humidity frame
-        self.humid_frame = ttk.Frame(self.container)
-        self.humid_frame.pack(fill='x', pady=10)
+        # Humidity frame for Sensor 1
+        self.humid_frame1 = ttk.Frame(self.container)
+        self.humid_frame1.pack(fill='x', pady=2)
         
-        self.humid_icon = ttk.Label(self.humid_frame, text="💧", font=('Helvetica', 24))
-        self.humid_icon.pack(side='left', padx=10)
+        self.humid_icon1 = ttk.Label(self.humid_frame1, text="💧", font=('Helvetica', 16))
+        self.humid_icon1.pack(side='left', padx=5)
         
-        self.humid_reading = ttk.Label(
-            self.humid_frame,
+        self.humid_reading1 = ttk.Label(
+            self.humid_frame1,
             text="--",
             style='Reading.TLabel'
         )
-        self.humid_reading.pack(side='left')
+        self.humid_reading1.pack(side='left')
         
-        self.humid_unit = ttk.Label(
-            self.humid_frame,
+        self.humid_unit1 = ttk.Label(
+            self.humid_frame1,
             text="%",
             style='Unit.TLabel'
         )
-        self.humid_unit.pack(side='left')
+        self.humid_unit1.pack(side='left')
+
+        # Separator
+        ttk.Separator(self.container, orient='horizontal').pack(fill='x', pady=4)
+
+        # Sensor 2 Label
+        self.sensor2_label = ttk.Label(
+            self.container,
+            text="Sensor 2",
+            style='Title.TLabel'
+        )
+        self.sensor2_label.pack(pady=(2, 1))
+
+        # Temperature frame for Sensor 2
+        self.temp_frame2 = ttk.Frame(self.container)
+        self.temp_frame2.pack(fill='x', pady=2)
+        
+        self.temp_icon2 = ttk.Label(self.temp_frame2, text="🌡️", font=('Helvetica', 16))
+        self.temp_icon2.pack(side='left', padx=5)
+        
+        self.temp_reading2 = ttk.Label(
+            self.temp_frame2,
+            text="--",
+            style='Reading.TLabel'
+        )
+        self.temp_reading2.pack(side='left')
+        
+        self.temp_unit2 = ttk.Label(
+            self.temp_frame2,
+            text="°C",
+            style='Unit.TLabel'
+        )
+        self.temp_unit2.pack(side='left')
+
+        # Humidity frame for Sensor 2
+        self.humid_frame2 = ttk.Frame(self.container)
+        self.humid_frame2.pack(fill='x', pady=2)
+        
+        self.humid_icon2 = ttk.Label(self.humid_frame2, text="💧", font=('Helvetica', 16))
+        self.humid_icon2.pack(side='left', padx=5)
+        
+        self.humid_reading2 = ttk.Label(
+            self.humid_frame2,
+            text="--",
+            style='Reading.TLabel'
+        )
+        self.humid_reading2.pack(side='left')
+        
+        self.humid_unit2 = ttk.Label(
+            self.humid_frame2,
+            text="%",
+            style='Unit.TLabel'
+        )
+        self.humid_unit2.pack(side='left')
 
         # Last updated
         self.last_updated = ttk.Label(
@@ -92,18 +158,29 @@ class DHT11Display(tk.Frame):
         self.last_updated.pack(pady=(20, 0))
 
     def update_readings(self):
-        """Update temperature and humidity readings every 2 seconds"""
+        """Update temperature and humidity readings every 2 seconds for both sensors"""
         try:
-            humidity, temperature = self.sensor.read()
-            
-            if humidity is not None and temperature is not None:
-                self.temp_reading.config(text=f"{temperature:.1f}")
-                self.humid_reading.config(text=f"{humidity:.1f}")
-                current_time = time.strftime("%H:%M:%S")
-                self.last_updated.config(text=f"Last updated: {current_time}")
+            # Read from sensor 1
+            humidity1, temperature1 = self.sensor1.read()
+            if humidity1 is not None and temperature1 is not None:
+                self.temp_reading1.config(text=f"{temperature1:.1f}")
+                self.humid_reading1.config(text=f"{humidity1:.1f}")
             else:
-                self.temp_reading.config(text="Error")
-                self.humid_reading.config(text="Error")
+                self.temp_reading1.config(text="Error")
+                self.humid_reading1.config(text="Error")
+
+            # Read from sensor 2
+            humidity2, temperature2 = self.sensor2.read()
+            if humidity2 is not None and temperature2 is not None:
+                self.temp_reading2.config(text=f"{temperature2:.1f}")
+                self.humid_reading2.config(text=f"{humidity2:.1f}")
+            else:
+                self.temp_reading2.config(text="Error")
+                self.humid_reading2.config(text="Error")
+
+            # Update last updated time
+            current_time = time.strftime("%H:%M:%S")
+            self.last_updated.config(text=f"Last updated: {current_time}")
         except Exception as e:
             print(f"Error reading sensor: {e}")
             self.temp_reading.config(text="Error")

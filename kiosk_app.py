@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import font as tkfont, ttk
 from PIL import Image, ImageTk
 import os
+from dht11_handler import DHT11Display
 
 class KioskFrame(tk.Frame):
     def __init__(self, parent, controller):
@@ -256,6 +257,12 @@ class KioskFrame(tk.Frame):
         self.title_label.pack(side='top', anchor='w', padx=10)  # Reduced padding
         self.subtitle_label = tk.Label(center_frame, text=self.machine_subtitle, font=self.fonts['machine_subtitle'], bg=self.colors['background'], fg=self.colors['gray_fg'])
         self.subtitle_label.pack(side='top', anchor='w', padx=10)  # Reduced padding
+
+        # Right: DHT11 Display
+        right_frame = tk.Frame(self.header, bg=self.colors['background'])
+        right_frame.pack(side='right', padx=8, pady=4)
+        self.dht_display = DHT11Display(right_frame)
+        self.dht_display.pack()
 
         # Cart button on the header's right side
         # Create a frame below header for the cart button

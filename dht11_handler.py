@@ -97,58 +97,7 @@ class DHT11Display(tk.Frame):
         )
         self.humid_unit1.pack(side='left')
 
-        # Separator
-        ttk.Separator(self.container, orient='horizontal').pack(fill='x', pady=4)
 
-        # Sensor 2 Label
-        self.sensor2_label = ttk.Label(
-            self.container,
-            text="Sensor 2",
-            style='Title.TLabel'
-        )
-        self.sensor2_label.pack(pady=(2, 1))
-
-        # Temperature frame for Sensor 2
-        self.temp_frame2 = ttk.Frame(self.container)
-        self.temp_frame2.pack(fill='x', pady=2)
-        
-        self.temp_icon2 = ttk.Label(self.temp_frame2, text="🌡️", font=('Helvetica', 16))
-        self.temp_icon2.pack(side='left', padx=5)
-        
-        self.temp_reading2 = ttk.Label(
-            self.temp_frame2,
-            text="--",
-            style='Reading.TLabel'
-        )
-        self.temp_reading2.pack(side='left')
-        
-        self.temp_unit2 = ttk.Label(
-            self.temp_frame2,
-            text="°C",
-            style='Unit.TLabel'
-        )
-        self.temp_unit2.pack(side='left')
-
-        # Humidity frame for Sensor 2
-        self.humid_frame2 = ttk.Frame(self.container)
-        self.humid_frame2.pack(fill='x', pady=2)
-        
-        self.humid_icon2 = ttk.Label(self.humid_frame2, text="💧", font=('Helvetica', 16))
-        self.humid_icon2.pack(side='left', padx=5)
-        
-        self.humid_reading2 = ttk.Label(
-            self.humid_frame2,
-            text="--",
-            style='Reading.TLabel'
-        )
-        self.humid_reading2.pack(side='left')
-        
-        self.humid_unit2 = ttk.Label(
-            self.humid_frame2,
-            text="%",
-            style='Unit.TLabel'
-        )
-        self.humid_unit2.pack(side='left')
 
         # Last updated
         self.last_updated = ttk.Label(

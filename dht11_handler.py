@@ -4,10 +4,6 @@ import time
 import random  # For simulation
 from rpi_gpio_mock import GPIO  # Using our mock for development
 
-# Constants for pin assignments
-COMPONENTS_PIN = 4  # GPIO4 (Pin 7)
-PAYMENT_PIN = 17    # GPIO17 (Pin 11)
-
 # TODO: Replace this with actual DHT11 reading code on the Raspberry Pi
 class DHT11Sensor:
     def __init__(self, pin=4):
@@ -52,48 +48,47 @@ class DHT11Display(tk.Frame):
         )
         self.title_label.pack(pady=(0, 4))
 
-        # Temperature frame for Sensor 1
-        self.temp_frame1 = ttk.Frame(self.container)
-        self.temp_frame1.pack(fill='x', pady=2)
+        # Temperature frame
+        self.temp_frame = ttk.Frame(self.container)
+        self.temp_frame.pack(fill='x', pady=2)
         
-        # Sensor 1 Temperature
-        self.temp_icon1 = ttk.Label(self.temp_frame1, text="🌡️", font=('Helvetica', 16))
-        self.temp_icon1.pack(side='left', padx=5)
+        self.temp_icon = ttk.Label(self.temp_frame, text="🌡️", font=('Helvetica', 16))
+        self.temp_icon.pack(side='left', padx=5)
         
-        self.temp_reading1 = ttk.Label(
-            self.temp_frame1,
+        self.temp_reading = ttk.Label(
+            self.temp_frame,
             text="--",
             style='Reading.TLabel'
         )
-        self.temp_reading1.pack(side='left')
+        self.temp_reading.pack(side='left')
         
-        self.temp_unit1 = ttk.Label(
-            self.temp_frame1,
+        self.temp_unit = ttk.Label(
+            self.temp_frame,
             text="°C",
             style='Unit.TLabel'
         )
-        self.temp_unit1.pack(side='left')
+        self.temp_unit.pack(side='left')
 
-        # Humidity frame for Sensor 1
-        self.humid_frame1 = ttk.Frame(self.container)
-        self.humid_frame1.pack(fill='x', pady=2)
+        # Humidity frame
+        self.humid_frame = ttk.Frame(self.container)
+        self.humid_frame.pack(fill='x', pady=2)
         
-        self.humid_icon1 = ttk.Label(self.humid_frame1, text="💧", font=('Helvetica', 16))
-        self.humid_icon1.pack(side='left', padx=5)
+        self.humid_icon = ttk.Label(self.humid_frame, text="💧", font=('Helvetica', 16))
+        self.humid_icon.pack(side='left', padx=5)
         
-        self.humid_reading1 = ttk.Label(
-            self.humid_frame1,
+        self.humid_reading = ttk.Label(
+            self.humid_frame,
             text="--",
             style='Reading.TLabel'
         )
-        self.humid_reading1.pack(side='left')
+        self.humid_reading.pack(side='left')
         
-        self.humid_unit1 = ttk.Label(
-            self.humid_frame1,
+        self.humid_unit = ttk.Label(
+            self.humid_frame,
             text="%",
             style='Unit.TLabel'
         )
-        self.humid_unit1.pack(side='left')
+        self.humid_unit.pack(side='left')
 
 
 
@@ -106,25 +101,16 @@ class DHT11Display(tk.Frame):
         self.last_updated.pack(pady=(20, 0))
 
     def update_readings(self):
-        """Update temperature and humidity readings every 2 seconds for both sensors"""
+        """Update temperature and humidity readings every 2 seconds"""
         try:
-            # Read from sensor 1 (Components)
-            humidity1, temperature1 = self.sensor.read()
-            if humidity1 is not None and temperature1 is not None:
-                self.temp_reading1.config(text=f"{temperature1:.1f}")
-                self.humid_reading1.config(text=f"{humidity1:.1f}")
+            # Read from sensor
+            humidity, temperature = self.sensor.read()
+            if humidity is not None and temperature is not None:
+                self.temp_reading.config(text=f"{temperature:.1f}")
+                self.humid_reading.config(text=f"{humidity:.1f}")
             else:
-                self.temp_reading1.config(text="Error")
-                self.humid_reading1.config(text="Error")
-
-            # Read from sensor 2 (Payment)
-            humidity2, temperature2 = DHT11Sensor(pin=17).read()
-            if humidity2 is not None and temperature2 is not None:
-                self.temp_reading2.config(text=f"{temperature2:.1f}")
-                self.humid_reading2.config(text=f"{humidity2:.1f}")
-            else:
-                self.temp_reading2.config(text="Error")
-                self.humid_reading2.config(text="Error")
+                self.temp_reading.config(text="Error")
+                self.humid_reading.config(text="Error")
 
             # Update last updated time
             current_time = time.strftime("%H:%M:%S")
@@ -141,8 +127,23 @@ def main():
     root = tk.Tk()
     root.title("DHT11 Monitor")
     
+    # Create frame to hold both sensors side by side
+    sensors_frame = ttk.Frame(root)
+    sensors_frame.pack(padx=10, pady=10, fill='both', expand=True)
+    
+    # Add both sensors
+    components_sensor = DHT11Display(sensors_frame, sensor_number=1)
+    components_sensor.grid(row=0, column=0, padx=10, pady=5, sticky='nsew')
+    
+    payment_sensor = DHT11Display(sensors_frame, sensor_number=2)
+    payment_sensor.grid(row=0, column=1, padx=10, pady=5, sticky='nsew')
+    
+    # Configure grid weights
+    sensors_frame.columnconfigure(0, weight=1)
+    sensors_frame.columnconfigure(1, weight=1)
+    
     # Set window size and position
-    window_width = 400
+    window_width = 800  # Increased for two sensors
     window_height = 300
     screen_width = root.winfo_screenwidth()
     screen_height = root.winfo_screenheight()
@@ -150,8 +151,6 @@ def main():
     y = (screen_height - window_height) // 2
     root.geometry(f"{window_width}x{window_height}+{x}+{y}")
     
-    app = DHT11Display(root)
-    app.pack(fill='both', expand=True)
     root.mainloop()
 
 if __name__ == "__main__":

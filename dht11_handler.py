@@ -4,6 +4,10 @@ import time
 import random  # For simulation
 from rpi_gpio_mock import GPIO  # Using our mock for development
 
+# Constants for pin assignments
+COMPONENTS_PIN = 4  # GPIO4 (Pin 7)
+PAYMENT_PIN = 17    # GPIO17 (Pin 11)
+
 # TODO: Replace this with actual DHT11 reading code on the Raspberry Pi
 class DHT11Sensor:
     def __init__(self, pin=4):
@@ -22,7 +26,8 @@ class DHT11Display(tk.Frame):
         self.master = master
         self.sensor_number = sensor_number
         # Create sensor with specified GPIO pin
-        self.sensor = DHT11Sensor(pin=4 if sensor_number == 1 else 17)  # GPIO4 or GPIO17
+        pin = 4 if sensor_number == 1 else 17  # GPIO4 for Components, GPIO17 for Payment
+        self.sensor = DHT11Sensor(pin=pin)
         self.create_widgets()
         self.update_readings()
 
@@ -39,20 +44,13 @@ class DHT11Display(tk.Frame):
         style.configure('Location.TLabel', font=('Helvetica', 12))
 
         # Title with location
+        location_text = "Components" if self.sensor_number == 1 else "Payment"
         self.title_label = ttk.Label(
             self.container,
-            text=f"Sensor {self.sensor_number}",
+            text=location_text,
             style='Title.TLabel'
         )
-        self.title_label.pack(pady=(0, 2))
-        
-        location_text = "Components" if self.sensor_number == 1 else "Payment"
-        self.location_label = ttk.Label(
-            self.container,
-            text=location_text,
-            style='Location.TLabel'
-        )
-        self.location_label.pack(pady=(0, 4))
+        self.title_label.pack(pady=(0, 4))
 
         # Temperature frame for Sensor 1
         self.temp_frame1 = ttk.Frame(self.container)
@@ -108,19 +106,29 @@ class DHT11Display(tk.Frame):
         self.last_updated.pack(pady=(20, 0))
 
     def update_readings(self):
-        """Update temperature and humidity readings every 2 seconds"""
+        """Update temperature and humidity readings every 2 seconds for both sensors"""
         try:
-            humidity, temperature = self.sensor.read()
-            if humidity is not None and temperature is not None:
-                self.temp_reading1.config(text=f"{temperature:.1f}")
-                self.humid_reading1.config(text=f"{humidity:.1f}")
-                
-                # Update last updated time
-                current_time = time.strftime("%H:%M:%S")
-                self.last_updated.config(text=f"Last updated: {current_time}")
+            # Read from sensor 1 (Components)
+            humidity1, temperature1 = self.sensor.read()
+            if humidity1 is not None and temperature1 is not None:
+                self.temp_reading1.config(text=f"{temperature1:.1f}")
+                self.humid_reading1.config(text=f"{humidity1:.1f}")
             else:
                 self.temp_reading1.config(text="Error")
                 self.humid_reading1.config(text="Error")
+
+            # Read from sensor 2 (Payment)
+            humidity2, temperature2 = DHT11Sensor(pin=17).read()
+            if humidity2 is not None and temperature2 is not None:
+                self.temp_reading2.config(text=f"{temperature2:.1f}")
+                self.humid_reading2.config(text=f"{humidity2:.1f}")
+            else:
+                self.temp_reading2.config(text="Error")
+                self.humid_reading2.config(text="Error")
+
+            # Update last updated time
+            current_time = time.strftime("%H:%M:%S")
+            self.last_updated.config(text=f"Last updated: {current_time}")
         except Exception as e:
             print(f"Error reading sensor: {e}")
             self.temp_reading.config(text="Error")

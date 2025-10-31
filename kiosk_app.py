@@ -266,9 +266,16 @@ class KioskFrame(tk.Frame):
         sensor_panel = tk.Frame(self, bg=self.colors['card_bg'], relief='ridge', bd=1)
         sensor_panel.pack(fill='x', padx=8, pady=4)
         
-        # Components Temperature/Humidity Sensor
-        sensor_display = DHT11Display(sensor_panel, sensor_number=1)
-        sensor_display.pack(padx=20, pady=4)
+        # Left sensor (Components)
+        left_sensor = DHT11Display(sensor_panel, sensor_number=1)
+        left_sensor.pack(side='left', padx=20, pady=4)
+        
+        # Vertical separator
+        ttk.Separator(sensor_panel, orient='vertical').pack(side='left', fill='y', padx=10, pady=4)
+        
+        # Right sensor (Payment)
+        right_sensor = DHT11Display(sensor_panel, sensor_number=2)
+        right_sensor.pack(side='left', padx=20, pady=4)
         
         # Cart button and category frame
         cart_frame = tk.Frame(self, bg=self.colors['background'])

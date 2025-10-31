@@ -1,0 +1,2 @@
+Pillow
+# Add runtime deps here (e.g., RPi.GPIO) when deploying to Raspberry Pi

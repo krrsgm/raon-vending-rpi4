@@ -17,12 +17,12 @@ class DHT11Sensor:
         return humidity, temperature
 
 class DHT11Display(tk.Frame):
-    def __init__(self, master=None):
+    def __init__(self, master=None, sensor_number=1):
         super().__init__(master)
         self.master = master
-        # Create two sensors with different GPIO pins
-        self.sensor1 = DHT11Sensor(pin=4)  # GPIO4 (Pin 7)
-        self.sensor2 = DHT11Sensor(pin=17)  # GPIO17 (Pin 11)
+        self.sensor_number = sensor_number
+        # Create sensor with specified GPIO pin
+        self.sensor = DHT11Sensor(pin=4 if sensor_number == 1 else 17)  # GPIO4 or GPIO17
         self.create_widgets()
         self.update_readings()
 
@@ -33,25 +33,26 @@ class DHT11Display(tk.Frame):
 
         # Style configuration
         style = ttk.Style()
-        style.configure('Reading.TLabel', font=('Helvetica', 12, 'bold'))
-        style.configure('Unit.TLabel', font=('Helvetica', 10))
-        style.configure('Title.TLabel', font=('Helvetica', 10, 'bold'))
+        style.configure('Reading.TLabel', font=('Helvetica', 16, 'bold'))
+        style.configure('Unit.TLabel', font=('Helvetica', 12))
+        style.configure('Title.TLabel', font=('Helvetica', 14, 'bold'))
+        style.configure('Location.TLabel', font=('Helvetica', 12))
 
-        # Title
+        # Title with location
         self.title_label = ttk.Label(
             self.container,
-            text="Environment Monitor",
+            text=f"Sensor {self.sensor_number}",
             style='Title.TLabel'
         )
         self.title_label.pack(pady=(0, 2))
-
-        # Sensor 1 Label
-        self.sensor1_label = ttk.Label(
+        
+        location_text = "Components" if self.sensor_number == 1 else "Payment"
+        self.location_label = ttk.Label(
             self.container,
-            text="Sensor 1",
-            style='Title.TLabel'
+            text=location_text,
+            style='Location.TLabel'
         )
-        self.sensor1_label.pack(pady=(0, 1))
+        self.location_label.pack(pady=(0, 4))
 
         # Temperature frame for Sensor 1
         self.temp_frame1 = ttk.Frame(self.container)
@@ -158,29 +159,19 @@ class DHT11Display(tk.Frame):
         self.last_updated.pack(pady=(20, 0))
 
     def update_readings(self):
-        """Update temperature and humidity readings every 2 seconds for both sensors"""
+        """Update temperature and humidity readings every 2 seconds"""
         try:
-            # Read from sensor 1
-            humidity1, temperature1 = self.sensor1.read()
-            if humidity1 is not None and temperature1 is not None:
-                self.temp_reading1.config(text=f"{temperature1:.1f}")
-                self.humid_reading1.config(text=f"{humidity1:.1f}")
+            humidity, temperature = self.sensor.read()
+            if humidity is not None and temperature is not None:
+                self.temp_reading1.config(text=f"{temperature:.1f}")
+                self.humid_reading1.config(text=f"{humidity:.1f}")
+                
+                # Update last updated time
+                current_time = time.strftime("%H:%M:%S")
+                self.last_updated.config(text=f"Last updated: {current_time}")
             else:
                 self.temp_reading1.config(text="Error")
                 self.humid_reading1.config(text="Error")
-
-            # Read from sensor 2
-            humidity2, temperature2 = self.sensor2.read()
-            if humidity2 is not None and temperature2 is not None:
-                self.temp_reading2.config(text=f"{temperature2:.1f}")
-                self.humid_reading2.config(text=f"{humidity2:.1f}")
-            else:
-                self.temp_reading2.config(text="Error")
-                self.humid_reading2.config(text="Error")
-
-            # Update last updated time
-            current_time = time.strftime("%H:%M:%S")
-            self.last_updated.config(text=f"Last updated: {current_time}")
         except Exception as e:
             print(f"Error reading sensor: {e}")
             self.temp_reading.config(text="Error")

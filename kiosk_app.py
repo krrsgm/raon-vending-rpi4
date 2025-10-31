@@ -258,14 +258,26 @@ class KioskFrame(tk.Frame):
         self.subtitle_label = tk.Label(center_frame, text=self.machine_subtitle, font=self.fonts['machine_subtitle'], bg=self.colors['background'], fg=self.colors['gray_fg'])
         self.subtitle_label.pack(side='top', anchor='w', padx=10)  # Reduced padding
 
-        # Right: DHT11 Display
-        right_frame = tk.Frame(self.header, bg=self.colors['background'])
+        # Right side of header (kept empty for symmetry)
+        right_frame = tk.Frame(self.header, bg=self.colors['background'], width=200)
         right_frame.pack(side='right', padx=8, pady=4)
-        self.dht_display = DHT11Display(right_frame)
-        self.dht_display.pack()
 
-        # Cart button on the header's right side
-        # Create a frame below header for the cart button
+        # Sensor Display Panel
+        sensor_panel = tk.Frame(self, bg=self.colors['card_bg'], relief='ridge', bd=1)
+        sensor_panel.pack(fill='x', padx=8, pady=4)
+        
+        # Left sensor (Main Storage)
+        left_sensor = DHT11Display(sensor_panel, sensor_number=1)
+        left_sensor.pack(side='left', padx=20, pady=4)
+        
+        # Vertical separator
+        ttk.Separator(sensor_panel, orient='vertical').pack(side='left', fill='y', padx=10, pady=4)
+        
+        # Right sensor (Secondary Storage)
+        right_sensor = DHT11Display(sensor_panel, sensor_number=2)
+        right_sensor.pack(side='left', padx=20, pady=4)
+        
+        # Cart button and category frame
         cart_frame = tk.Frame(self, bg=self.colors['background'])
         cart_frame.pack(fill='x', pady=(0, 4))
         

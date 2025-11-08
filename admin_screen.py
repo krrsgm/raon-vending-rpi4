@@ -408,19 +408,7 @@ class AdminScreen(tk.Frame):
         )
         add_button.pack(side="right")
 
-        # Kiosk configuration button (opens modal to edit header/footer)
-        kiosk_cfg_btn = tk.Button(
-            header,
-            text="Kiosk Config",
-            font=self.fonts["button"],
-            bg="#3498db",
-            fg=self.colors["btn_fg"],
-            relief="flat",
-            padx=12,
-            pady=5,
-            command=self.open_kiosk_config,
-        )
-        kiosk_cfg_btn.pack(side="right", padx=(0, 8))
+        # Note: Kiosk Config button removed per request to simplify Admin UI
 
         # Button to open Assign Items screen (6x10 grid)
         assign_slots_btn = tk.Button(

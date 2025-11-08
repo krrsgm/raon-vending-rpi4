@@ -395,20 +395,21 @@ class AdminScreen(tk.Frame):
             fg=self.colors["header_fg"],
         ).pack(side="left")
 
-        add_button = tk.Button(
+        # "Add New Item" button removed — admin now uses Assign Slots
+
+        # Kiosk configuration button (opens modal to edit header/footer)
+        kiosk_cfg_btn = tk.Button(
             header,
-            text="Add New Item",
+            text="Kiosk Config",
             font=self.fonts["button"],
-            bg="#27ae60",
+            bg="#3498db",
             fg=self.colors["btn_fg"],
             relief="flat",
-            padx=15,
+            padx=12,
             pady=5,
-            command=self.add_new_item,
+            command=self.open_kiosk_config,
         )
-        add_button.pack(side="right")
-
-        # Note: Kiosk Config button removed per request to simplify Admin UI
+        kiosk_cfg_btn.pack(side="right", padx=(0, 8))
 
         # Button to open Assign Items screen (6x10 grid)
         assign_slots_btn = tk.Button(

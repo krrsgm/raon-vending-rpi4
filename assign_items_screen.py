@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import ttk, filedialog
-from PIL import Image, ImageTk
 import json
 import os
 
@@ -121,7 +120,6 @@ class AssignItemsScreen(tk.Frame):
         self.controller = controller
         self.slots = [None] * self.MAX_SLOTS
         self.slot_frames = []
-        self._preview_images = {}
 
         self._data_path = os.path.dirname(getattr(controller, 'config_path', os.path.abspath('.')))
         self._save_path = os.path.join(self._data_path, self.SAVE_FILENAME)
@@ -139,7 +137,6 @@ class AssignItemsScreen(tk.Frame):
         ttk.Button(btn_frame, text="Load", command=self.load_slots).pack(side='left', padx=4)
         ttk.Button(btn_frame, text="Save", command=self.save_slots).pack(side='left', padx=4)
         ttk.Button(btn_frame, text="Clear All", command=self.clear_all).pack(side='left', padx=4)
-        ttk.Button(btn_frame, text="Auto-Fill From Items", command=self.auto_fill_from_items).pack(side='left', padx=8)
 
         # Scrollable area for grid
         canvas_container = ttk.Frame(self)
@@ -170,8 +167,6 @@ class AssignItemsScreen(tk.Frame):
                 details_lbl.pack(anchor='w')
                 btns = ttk.Frame(frm)
                 btns.pack(anchor='e', pady=(6,0))
-                preview_btn = ttk.Button(btns, text="Preview", command=lambda i=idx: self.preview_slot_image(i))
-                preview_btn.pack(side='left', padx=(0,4))
                 edit_btn = ttk.Button(btns, text="Edit", command=lambda i=idx: self.edit_slot(i))
                 edit_btn.pack(side='left')
                 clear_btn = ttk.Button(btns, text="Clear", command=lambda i=idx: self.clear_slot(i))
@@ -216,65 +211,6 @@ class AssignItemsScreen(tk.Frame):
         for idx in range(self.MAX_SLOTS):
             self.refresh_slot(idx)
 
-    def auto_fill_from_items(self):
-        """Auto-fill empty slots with items from controller.items in order."""
-        try:
-            items = list(getattr(self.controller, 'items', []))
-            if not items:
-                tk.messagebox.showinfo('Info', 'No items available to fill from.', parent=self)
-                return
-            slot_idx = 0
-            for item in items:
-                # find next empty slot
-                while slot_idx < self.MAX_SLOTS and self.slots[slot_idx] is not None:
-                    slot_idx += 1
-                if slot_idx >= self.MAX_SLOTS:
-                    break
-                # copy minimal item data into slot
-                self.slots[slot_idx] = {
-                    'name': item.get('name', ''),
-                    'category': item.get('category', ''),
-                    'price': item.get('price', 0.0),
-                    'quantity': item.get('quantity', 0),
-                    'image': item.get('image', ''),
-                    'description': item.get('description', ''),
-                }
-                slot_idx += 1
-
-            self.refresh_all()
-            tk.messagebox.showinfo('Auto-Fill', 'Auto-fill completed.', parent=self)
-        except Exception as e:
-            tk.messagebox.showerror('Error', f'Auto-fill failed: {e}', parent=self)
-
-    def preview_slot_image(self, idx):
-        """Open a small window to preview the slot image (if any)."""
-        data = self.slots[idx]
-        if not data:
-            tk.messagebox.showinfo('Preview', 'Slot is empty.', parent=self)
-            return
-        img_path = data.get('image', '')
-        if not img_path or not os.path.exists(img_path):
-            tk.messagebox.showinfo('Preview', 'No image available for this slot.', parent=self)
-            return
-
-        try:
-            win = tk.Toplevel(self)
-            win.title(data.get('name','Preview'))
-            # Load image with PIL and resize to fit
-            img = Image.open(img_path)
-            max_w, max_h = 400, 400
-            w, h = img.size
-            scale = min(max_w / w, max_h / h, 1.0)
-            new_size = (int(w*scale), int(h*scale))
-            img = img.resize(new_size, Image.Resampling.LANCZOS)
-            photo = ImageTk.PhotoImage(img)
-            lbl = tk.Label(win, image=photo)
-            lbl.image = photo
-            lbl.pack(padx=8, pady=8)
-            btn = ttk.Button(win, text='Close', command=win.destroy)
-            btn.pack(pady=(0,8))
-        except Exception as e:
-            tk.messagebox.showerror('Preview Error', f'Failed to open image: {e}', parent=self)
 
     def clear_all(self):
         if tk.messagebox.askyesno("Confirm", "Clear all assigned slots?"):

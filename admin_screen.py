@@ -422,6 +422,20 @@ class AdminScreen(tk.Frame):
         )
         kiosk_cfg_btn.pack(side="right", padx=(0, 8))
 
+        # Button to open Assign Items screen (6x10 grid)
+        assign_slots_btn = tk.Button(
+            header,
+            text="Assign Slots",
+            font=self.fonts["button"],
+            bg="#8e44ad",
+            fg=self.colors["btn_fg"],
+            relief="flat",
+            padx=12,
+            pady=5,
+            command=lambda: getattr(self.controller, 'show_assign_items', lambda: None)(),
+        )
+        assign_slots_btn.pack(side="right", padx=(0, 8))
+
         # --- Scrollable Item List ---
         canvas_container = tk.Frame(self, bg=self.colors["background"])
         canvas_container.pack(fill="both", expand=True, padx=20, pady=(0, 20))

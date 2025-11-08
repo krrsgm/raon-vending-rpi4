@@ -3,6 +3,7 @@ from kiosk_app import KioskFrame
 from selection_screen import SelectionScreen
 import json
 from admin_screen import AdminScreen
+from assign_items_screen import AssignItemsScreen
 from item_screen import ItemScreen
 from cart_screen import CartScreen
 from fix_paths import get_absolute_path
@@ -99,7 +100,7 @@ class MainApp(tk.Tk):
         container.grid_columnconfigure(0, weight=1)
 
         self.frames = {}
-        for F in (SelectionScreen, KioskFrame, AdminScreen, ItemScreen, CartScreen):
+        for F in (SelectionScreen, KioskFrame, AdminScreen, AssignItemsScreen, ItemScreen, CartScreen):
             page_name = F.__name__
             frame = F(parent=container, controller=self)
             self.frames[page_name] = frame
@@ -423,6 +424,16 @@ class MainApp(tk.Tk):
 
     def show_admin(self):
         self.show_frame("AdminScreen")
+
+    def show_assign_items(self):
+        """Show the AssignItemsScreen and ensure it loads the latest slots."""
+        frame = self.frames.get("AssignItemsScreen")
+        if frame:
+            try:
+                frame.load_slots()
+            except Exception:
+                pass
+        self.show_frame("AssignItemsScreen")
 
     def handle_escape(self, event=None):
         """Handle Escape key press for navigation."""

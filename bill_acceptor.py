@@ -6,7 +6,10 @@ from queue import Queue
 
 class BillAcceptor:
     """
-    Handler for TB74 bill acceptor connected via RS-232 serial converter to Raspberry Pi.
+    Handler for TB74 bill acceptor connected via MAX232 level converter to Raspberry Pi.
+    
+    Hardware Connection:
+    - TB74 TX/RX → MAX232 → Raspberry Pi UART (GPIO 14/15 or /dev/ttyAMA0)
     
     The TB74 communicates using a serial protocol where:
     - Baud rate: 9600
@@ -21,6 +24,14 @@ class BillAcceptor:
     Protocol:
     - Accepted bills send a status byte indicating denomination
     - Device requires polling or continuous monitoring
+    
+    MAX232 Pinout:
+    - Pin 1: GND
+    - Pin 2: TX to RPi (GPIO 15 / RXD)
+    - Pin 3: RX from RPi (GPIO 14 / TXD)
+    - Pin 4: +5V
+    - TB74 TX → MAX232 RX
+    - TB74 RX → MAX232 TX
     """
 
     # TB74 Protocol byte responses for different denominations
@@ -33,12 +44,14 @@ class BillAcceptor:
         0x45: 1000,    # ₱1000 note
     }
 
-    def __init__(self, port='/dev/ttyUSB0', baudrate=9600, timeout=1.0):
+    def __init__(self, port='/dev/ttyAMA0', baudrate=9600, timeout=1.0):
         """
         Initialize the bill acceptor handler.
 
         Args:
-            port (str): Serial port (e.g., '/dev/ttyUSB0' on Raspberry Pi)
+            port (str): Serial port 
+                - '/dev/ttyAMA0' on Raspberry Pi (hardware UART with MAX232)
+                - '/dev/ttyUSB0' if using USB serial adapter
             baudrate (int): Serial communication speed (default 9600 for TB74)
             timeout (float): Serial read timeout in seconds
         """
@@ -55,7 +68,10 @@ class BillAcceptor:
 
     def connect(self):
         """
-        Connect to the bill acceptor via serial port.
+        Connect to the bill acceptor via MAX232 serial adapter.
+
+        Connection Flow:
+        TB74 (RS-232) ↔ MAX232 Level Converter ↔ Raspberry Pi UART (/dev/ttyAMA0)
 
         Returns:
             bool: True if connection successful, False otherwise

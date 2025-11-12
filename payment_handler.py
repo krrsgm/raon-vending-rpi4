@@ -8,14 +8,16 @@ except ImportError:
 
 class PaymentHandler:
     """Payment handler that manages the Allan 123A-Pro coin acceptor and coin hoppers."""
-    def __init__(self, config, coin_pin=17, counter_pin=None, bill_port='/dev/ttyUSB0'):
+    def __init__(self, config, coin_pin=17, counter_pin=None, bill_port='/dev/ttyAMA0'):
         """Initialize the payment handler with coin acceptor, bill acceptor, and hoppers.
         
         Args:
             config (dict): Configuration containing coin hopper pin settings
             coin_pin (int): GPIO pin number (BCM) for the coin signal
             counter_pin (int, optional): GPIO pin for the counter signal if used
-            bill_port (str): Serial port for bill acceptor (e.g., '/dev/ttyUSB0')
+            bill_port (str): Serial port for bill acceptor via MAX232
+                - '/dev/ttyAMA0' for Raspberry Pi hardware UART with MAX232
+                - '/dev/ttyUSB0' if using USB serial adapter
         """
         # Setup coin acceptor
         self.coin_acceptor = CoinAcceptor(coin_pin=coin_pin, counter_pin=counter_pin)

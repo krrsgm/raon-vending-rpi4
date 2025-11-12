@@ -28,7 +28,7 @@ A complete touchscreen kiosk application for managing and operating an automated
 | Device | Interface | Pin/Port | Notes |
 |--------|-----------|----------|-------|
 | Coin Acceptor (Allan 123A-Pro) | GPIO | Pin 17 | Coin pulse detection |
-| Bill Acceptor (TB74) | RS-232 (USB) | `/dev/ttyUSB0` | Via RS-232 converter |
+| Bill Acceptor (TB74) | RS-232 (MAX232) | `/dev/ttyAMA0` | Via MAX232 level converter |
 | DHT11 Sensor #1 (Components) | GPIO | Pin 4 | I2C interface |
 | DHT11 Sensor #2 (Payment Area) | GPIO | Pin 17 | I2C interface |
 | Coin Hopper (1₱) | GPIO | Pin 24 | Motor output |
@@ -119,18 +119,26 @@ Update the following files if your hardware uses different pins:
 
 ### Serial Port Configuration
 
-For the bill acceptor (TB74):
+For the bill acceptor (TB74) with MAX232:
 
 ```python
 # In payment_handler.py initialization:
+# Default: Uses /dev/ttyAMA0 (hardware UART with MAX232)
+PaymentHandler(config, coin_pin=17)
+
+# Or specify custom port if needed:
 PaymentHandler(config, coin_pin=17, bill_port='/dev/ttyUSB0')
 ```
 
 Common serial ports on RPi:
+- `/dev/ttyAMA0` - Built-in UART (Pi 4) ← **Default for MAX232**
 - `/dev/ttyUSB0` - USB serial converter (first)
 - `/dev/ttyUSB1` - USB serial converter (second)
-- `/dev/ttyAMA0` - Built-in UART (Pi 4)
 - `/dev/ttyS0` - Alternative built-in UART
+
+**Hardware Connection**: TB74 (RS-232) ↔ MAX232 (Level Converter) ↔ GPIO 14/15 (RPi UART)
+
+For detailed MAX232 wiring, see **HARDWARE_MAX232_SETUP.md**
 
 ## Running the Application
 
@@ -215,13 +223,20 @@ sudo usermod -a -G gpio $(whoami)
 
 ### Serial Port Not Found
 ```
-SerialException: could not open port /dev/ttyUSB0
+SerialException: could not open port /dev/ttyAMA0
 ```
 
-**Solutions**:
-1. Check connection: `ls /dev/tty*`
-2. Check permissions: `ls -l /dev/ttyUSB0`
+**Solutions for MAX232 (Hardware UART)**:
+1. Verify UART is enabled: `sudo raspi-config nonint get_serial_hw`
+2. Check connection: `ls -l /dev/ttyAMA0`
 3. If needed, add user to dialout group: `sudo usermod -a -G dialout $(whoami)`
+4. Verify MAX232 capacitors are installed (see HARDWARE_MAX232_SETUP.md)
+5. Check ground connections between RPi, MAX232, and TB74
+
+**For USB Serial Adapter**:
+1. Check device: `lsusb`
+2. Check port: `ls /dev/ttyUSB*`
+3. Verify permissions: `ls -l /dev/ttyUSB0`
 
 ### DHT11 Sensor Timeouts
 ```
@@ -325,9 +340,12 @@ print(f"Temp: {temp}°C, Humidity: {humidity}%")
 - Test with `simulate_coin.py`
 
 ### Bill Acceptor (TB74)
-- Verify serial port (/dev/ttyUSB0)
+- Verify serial port: Default `/dev/ttyAMA0` (hardware UART with MAX232)
 - Check baud rate (9600 for TB74)
 - Supported bills: ₱20, ₱50, ₱100, ₱500, ₱1000
+- MAX232 Level Converter required (see HARDWARE_MAX232_SETUP.md)
+- Verify all 4 capacitors installed on MAX232
+- Check ground connections between RPi ↔ MAX232 ↔ TB74
 - Enable in config if not auto-detected
 
 ## Development

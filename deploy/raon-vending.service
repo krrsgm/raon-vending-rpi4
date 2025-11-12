@@ -1,0 +1,15 @@
+[Unit]
+Description=RAON Vending Machine Kiosk
+After=network.target
+
+[Service]
+Type=simple
+# Change this user if you run the kiosk under a different account
+User=pi
+WorkingDirectory=/home/pi/raon-vending
+ExecStart=/usr/bin/python3 main.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

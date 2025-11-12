@@ -9,7 +9,7 @@ except ImportError:
 class PaymentHandler:
     """Payment handler that manages the Allan 123A-Pro coin acceptor and coin hoppers."""
     def __init__(self, config, coin_pin=17, counter_pin=None, bill_port='/dev/ttyAMA0',
-                 bill_esp32_mode=False, bill_esp32_serial_port=None, bill_esp32_host=None, bill_esp32_port=5000):
+                 bill_baud=None, bill_esp32_mode=False, bill_esp32_serial_port=None, bill_esp32_host=None, bill_esp32_port=5000):
         """Initialize the payment handler with coin acceptor, bill acceptor, and hoppers.
 
         Args:
@@ -32,8 +32,15 @@ class PaymentHandler:
         if BillAcceptor:
             try:
                 # Initialize bill acceptor with ESP32 proxy options when requested
+                # Choose sensible default baud: proxy/USB devices typically use 115200
+                if bill_baud is None:
+                    chosen_baud = 115200 if bill_esp32_mode or ('ttyACM' in str(bill_port) or 'ttyUSB' in str(bill_port)) else 9600
+                else:
+                    chosen_baud = int(bill_baud)
+
                 self.bill_acceptor = BillAcceptor(
                     port=bill_port,
+                    baudrate=chosen_baud,
                     esp32_mode=bill_esp32_mode,
                     esp32_serial_port=bill_esp32_serial_port,
                     esp32_host=bill_esp32_host,

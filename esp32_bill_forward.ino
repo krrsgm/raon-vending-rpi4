@@ -1,118 +1,112 @@
-// esp32_bill_forward.ino
-// Simple ESP32 sketch to read TB74 (or MAX232-connected) bytes from a serial
-// interface and forward bill accept events to the Raspberry Pi in the form:
-//   BILL:<amount>\n
-// Depending on your wiring, you may read TB74 on Serial2 (UART2) and forward
-// via Serial (USB) or via TCP on WiFi. This sketch provides both methods.
+// Arduino Uno TB74 pulse-forwarder
+// Reworked to run on an Arduino Uno (ATmega328P). This sketch listens for
+// pulses on a single input (TB74 blue wire via an optocoupler or transistor)
+// and forwards bill events to the host Pi over USB Serial in the format:
+//   BILL:<amount>
+//
+// IMPORTANT: do NOT connect the TB74 blue/12V signals directly to the Uno.
+// Use an optocoupler or transistor level shifter (see wiring notes below).
 
-#include <WiFi.h>
+#include <Arduino.h>
 
-// === CONFIG ===
-const char* ssid = "your-ssid";
-const char* password = "your-password";
+// --- CONFIG ---
+const unsigned long PULSE_GAP_MS = 300; // ms to consider pulse-burst finished
 
-// If forwarding over TCP, connect to the Pi's host and port
-const char* pi_host = "192.168.4.1"; // change to your Pi IP
-const uint16_t pi_port = 5000;
+// TB74 blue-wire (after safe level-shifting/opto) should be connected to this pin.
+// Use an external optocoupler or transistor; DO NOT connect 12V directly.
+const uint8_t TB_SIGNAL_PIN = 2; // INT0 on UNO (digital pin 2)
 
-bool use_tcp_forward = false; // set true to forward to Pi over TCP
-bool use_usb_serial = true;   // set true to forward over USB Serial (Serial)
+volatile unsigned int pulse_count = 0;
+volatile unsigned long last_pulse_time_ms = 0;
 
-// TB74 connected to Serial2 (change pins/uart as needed)
-HardwareSerial tbSerial(2);
-const int TB_RX_PIN = 16; // ESP32 RX2 pin (input from TB74 TX)
-const int TB_TX_PIN = 17; // ESP32 TX2 pin (output to TB74 RX)
-
-WiFiClient piClient;
-
-void setup() {
-  // Serial (USB) to host
-  Serial.begin(115200);
-  delay(1000);
-  Serial.println("ESP32 Bill Forwarder starting...");
-
-  // TB74 serial (match TB74 baud/format)
-  tbSerial.begin(9600, SERIAL_8N2, TB_RX_PIN, TB_TX_PIN);
-
-  // Optional WiFi connect for TCP forwarding
-  if (use_tcp_forward) {
-    WiFi.begin(ssid, password);
-    Serial.print("Connecting to WiFi");
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-      delay(500);
-      Serial.print('.');
-      attempts++;
-    }
-    Serial.println();
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.print("Connected, IP: ");
-      Serial.println(WiFi.localIP());
-    } else {
-      Serial.println("WiFi connect failed");
-    }
-  }
+// Interrupt Service Routine: count rising edges
+void tb_pulse_isr() {
+  pulse_count++;
+  last_pulse_time_ms = millis();
 }
 
-String buffer = "";
+// Map pulse counts to bill amounts — update to match your TB74 behaviour
+struct CountMap { uint8_t pulses; unsigned int amount; };
+CountMap count_map[] = {
+  { 1, 20 },
+  { 2, 50 },
+  { 3, 100 },
+  { 4, 500 },
+  { 5, 1000 },
+};
 
-void forward_line(const String &line) {
-  // Normalize and forward
-  if (use_usb_serial) {
-    Serial.println(line);
+unsigned int map_count_to_amount(unsigned int cnt) {
+  for (unsigned i = 0; i < (sizeof(count_map)/sizeof(count_map[0])); ++i) {
+    if (count_map[i].pulses == cnt) return count_map[i].amount;
   }
-  if (use_tcp_forward) {
-    if (!piClient.connected()) {
-      if (!piClient.connect(pi_host, pi_port)) {
-        Serial.println("Failed to connect to Pi TCP");
-        return;
-      }
-    }
-    piClient.println(line);
-  }
+  return 0;
+}
+
+void setup() {
+  Serial.begin(115200);
+  while (!Serial) { ; } // wait for serial on Leonardo/Micro; harmless on UNO
+  Serial.println(F("Arduino Uno TB74 pulse forwarder starting"));
+
+  // Configure pulse input pin and attach interrupt on RISING edge
+  pinMode(TB_SIGNAL_PIN, INPUT_PULLUP); // use pullup; actual wiring depends on level shifter/opto
+  attachInterrupt(digitalPinToInterrupt(TB_SIGNAL_PIN), tb_pulse_isr, RISING);
+  Serial.print(F("Listening for pulses on pin "));
+  Serial.println(TB_SIGNAL_PIN);
 }
 
 void loop() {
-  // Read from TB74 serial
-  while (tbSerial.available()) {
-    int b = tbSerial.read();
-    if (b < 0) break;
-    // If TB74 sends ASCII or single bytes, parse accordingly
-    // This example assumes TB74 sends status bytes; you may need to adapt
-    // mapping from byte values to amounts here.
-    
-    // Example: TB74 sends 0x41..0x45 mapping to 20..1000
-    if (b == 0x41) {
-      forward_line("BILL:20");
-    } else if (b == 0x42) {
-      forward_line("BILL:50");
-    } else if (b == 0x43) {
-      forward_line("BILL:100");
-    } else if (b == 0x44) {
-      forward_line("BILL:500");
-    } else if (b == 0x45) {
-      forward_line("BILL:1000");
-    } else {
-      // If TB74 sends ASCII text, accumulate and forward lines
-      if (b == '\n' || b == '\r') {
-        if (buffer.length() > 0) {
-          forward_line(buffer);
-          buffer = "";
-        }
-      } else {
-        buffer += (char)b;
-        if (buffer.length() > 256) buffer = buffer.substring(buffer.length()-256);
-      }
-    }
-  }
+  unsigned long now = millis();
 
-  // Also forward any incoming Serial (USB) commands to Serial2 if needed
-  // (optional bridging)
-  while (Serial.available()) {
-    int c = Serial.read();
-    // echo for debug
-    //Serial.write(c);
+  // Read and clear the current counter atomically
+  noInterrupts();
+  unsigned int cnt = pulse_count;
+  unsigned long last_ms = last_pulse_time_ms;
+  interrupts();
+
+  if (cnt > 0 && (now - last_ms) > PULSE_GAP_MS) {
+    unsigned int amount = map_count_to_amount(cnt);
+    if (amount > 0) {
+      Serial.print(F("BILL:"));
+      Serial.println(amount);
+    } else {
+      // Unknown mapping — forward raw count for tuning
+      Serial.print(F("BILL:PULSE_COUNT:"));
+      Serial.println(cnt);
+    }
+
+    // reset counter
+    noInterrupts();
+    pulse_count = 0;
+    interrupts();
   }
 
   delay(10);
 }
+
+/*
+Wiring notes (summary):
+
+Power:
+- TB74 Red: +12V (TB74 power input) — keep separate from Arduino 5V!
+- TB74 Orange & Purple: GND
+- Use a buck converter to step 12V down to 5V if you want the Arduino
+  powered from the same 12V source. Feed the buck output to the UNO VIN or
+  5V pin (if you know what you're doing). When feeding VIN, set buck to 7-9V
+  or feed barrel jack; if feeding 5V to the 5V pin, set buck to 5.0V.
+
+Signal (blue wire):
+- Do NOT connect blue directly to Arduino.
+- Recommended: optocoupler circuit (isolated):
+    TB74 blue -> series resistor (~5.6k for ~2mA) -> opto LED -> TB74 GND
+    opto transistor side: collector -> 5V via 10k pull-up -> collector to Arduino pin
+                       emitter -> Arduino GND
+- Simpler (no isolation): NPN level-shifter
+    TB74 blue -> 10k resistor -> base of NPN (e.g., 2N3904)
+    emitter -> TB74 GND (and tie to Arduino GND)
+    collector -> Arduino input pin with pull-up to 5V (10k)
+
+Testing:
+- Open Serial Monitor at 115200.
+- Insert a bill and observe lines like: BILL:100 or BILL:PULSE_COUNT:3
+
+*/

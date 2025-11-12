@@ -1,4 +1,9 @@
 import serial
+try:
+    # pyserial >=3.0 provides tools.list_ports
+    from serial.tools import list_ports
+except Exception:
+    list_ports = None
 import threading
 import time
 from queue import Queue
@@ -107,6 +112,22 @@ class BillAcceptor:
                     return False
 
             print("ESP32 proxy mode enabled but no serial port or host configured")
+            # Try to auto-detect a USB serial device (Arduino/FTDI/CP210x)
+            autodetected = self._auto_find_usb_serial()
+            if autodetected:
+                try:
+                    self.serial_conn = serial.Serial(
+                        port=autodetected,
+                        baudrate=self.baudrate,
+                        bytesize=serial.EIGHTBITS,
+                        stopbits=serial.STOPBITS_TWO,
+                        parity=serial.PARITY_NONE,
+                        timeout=self.timeout
+                    )
+                    print(f"Bill acceptor (ESP32 proxy) autodetected and connected to {autodetected}")
+                    return True
+                except serial.SerialException as e:
+                    print(f"Failed to connect to autodetected serial port {autodetected}: {e}")
             return False
 
         # Default: connect to local serial port (MAX232 -> TB74)
@@ -123,7 +144,53 @@ class BillAcceptor:
             return True
         except serial.SerialException as e:
             print(f"Failed to connect to bill acceptor: {e}")
+            # Try to auto-detect a USB serial device as a fallback (Arduino Uno, etc.)
+            autodetected = self._auto_find_usb_serial()
+            if autodetected:
+                try:
+                    self.serial_conn = serial.Serial(
+                        port=autodetected,
+                        baudrate=self.baudrate,
+                        bytesize=serial.EIGHTBITS,
+                        stopbits=serial.STOPBITS_TWO,
+                        parity=serial.PARITY_NONE,
+                        timeout=self.timeout
+                    )
+                    print(f"Bill acceptor autodetected and connected to {autodetected}")
+                    return True
+                except serial.SerialException as e2:
+                    print(f"Failed to connect to autodetected serial port {autodetected}: {e2}")
             return False
+
+    def _auto_find_usb_serial(self):
+        """Try to find a likely USB-serial device (Arduino, /dev/ttyUSB*, /dev/ttyACM*).
+
+        Returns the device path string if found, otherwise None.
+        """
+        # If list_ports is available, prefer that to get friendly names
+        ports = []
+        try:
+            if list_ports:
+                for p in list_ports.comports():
+                    ports.append((p.device, p.description))
+            else:
+                # Fallback heuristics: on Unix, look for /dev/ttyUSB* and /dev/ttyACM*
+                import glob
+                for path in glob.glob('/dev/ttyUSB*') + glob.glob('/dev/ttyACM*'):
+                    ports.append((path, 'tty'))
+        except Exception:
+            return None
+
+        # Prefer devices whose description contains 'Arduino' or common chip names
+        for dev, desc in ports:
+            d = (desc or '').lower()
+            if 'arduino' in d or 'cp210' in d or 'ftdi' in d or 'ch340' in d or 'usb serial' in d:
+                return dev
+
+        # Otherwise return the first candidate if any
+        if ports:
+            return ports[0][0]
+        return None
 
     def disconnect(self):
         """Disconnect from the bill acceptor."""

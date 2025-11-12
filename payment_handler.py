@@ -8,9 +8,10 @@ except ImportError:
 
 class PaymentHandler:
     """Payment handler that manages the Allan 123A-Pro coin acceptor and coin hoppers."""
-    def __init__(self, config, coin_pin=17, counter_pin=None, bill_port='/dev/ttyAMA0'):
+    def __init__(self, config, coin_pin=17, counter_pin=None, bill_port='/dev/ttyAMA0',
+                 bill_esp32_mode=False, bill_esp32_serial_port=None, bill_esp32_host=None, bill_esp32_port=5000):
         """Initialize the payment handler with coin acceptor, bill acceptor, and hoppers.
-        
+
         Args:
             config (dict): Configuration containing coin hopper pin settings
             coin_pin (int): GPIO pin number (BCM) for the coin signal
@@ -18,6 +19,10 @@ class PaymentHandler:
             bill_port (str): Serial port for bill acceptor via MAX232
                 - '/dev/ttyAMA0' for Raspberry Pi hardware UART with MAX232
                 - '/dev/ttyUSB0' if using USB serial adapter
+            bill_esp32_mode (bool): If True, expect bill events forwarded by ESP32
+            bill_esp32_serial_port (str): Serial port connected to ESP32 (preferred)
+            bill_esp32_host (str): Host for ESP32 TCP proxy
+            bill_esp32_port (int): Port for ESP32 TCP proxy
         """
         # Setup coin acceptor
         self.coin_acceptor = CoinAcceptor(coin_pin=coin_pin, counter_pin=counter_pin)
@@ -26,8 +31,20 @@ class PaymentHandler:
         self.bill_acceptor = None
         if BillAcceptor:
             try:
-                self.bill_acceptor = BillAcceptor(port=bill_port)
+                # Initialize bill acceptor with ESP32 proxy options when requested
+                self.bill_acceptor = BillAcceptor(
+                    port=bill_port,
+                    esp32_mode=bill_esp32_mode,
+                    esp32_serial_port=bill_esp32_serial_port,
+                    esp32_host=bill_esp32_host,
+                    esp32_port=bill_esp32_port
+                )
                 if self.bill_acceptor.connect():
+                    # Register callback to notify UI of bill updates
+                    try:
+                        self.bill_acceptor.set_callback(lambda amt: self._on_bill_update(amt))
+                    except Exception:
+                        pass
                     self.bill_acceptor.start_reading()
                 else:
                     print("Warning: Bill acceptor connection failed")
@@ -68,6 +85,17 @@ class PaymentHandler:
         self._callback = on_payment_update
         self.coin_acceptor.reset_amount()
         return True
+
+    def _on_bill_update(self, bill_total_amount):
+        """Internal callback invoked when bill acceptor reports an update.
+
+        We forward combined total (coins + bills) to the UI callback if set.
+        """
+        if self._callback:
+            try:
+                self._callback(self.get_current_amount())
+            except Exception:
+                pass
 
     def get_current_amount(self):
         """Get the total amount received in the current session."""

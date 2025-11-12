@@ -9,7 +9,21 @@ class CartScreen(tk.Frame):
         tk.Frame.__init__(self, parent, bg="#f0f4f8")
         self.controller = controller
         # Initialize payment handler with coin hoppers from config
-        self.payment_handler = PaymentHandler(controller.config, coin_pin=17)  # Using GPIO17 for coin signal
+        # If TB74 is connected to the ESP32 and the ESP32 forwards bill events,
+        # enable esp32 proxy mode and supply the serial port or host from config.
+        bill_cfg = controller.config.get('hardware', {}).get('bill_acceptor', {}) if isinstance(controller.config, dict) else {}
+        bill_serial = bill_cfg.get('serial_port', '/dev/ttyUSB0')
+        # By default, assume the TB74 is proxied by the ESP32 if the user has a serial port configured
+        esp32_mode = bool(bill_cfg.get('proxy_via_esp32', True))
+        self.payment_handler = PaymentHandler(
+            controller.config,
+            coin_pin=17,
+            bill_port=bill_serial,
+            bill_esp32_mode=esp32_mode,
+            bill_esp32_serial_port=bill_serial,
+            bill_esp32_host=controller.config.get('esp32_host') if isinstance(controller.config, dict) else None,
+            bill_esp32_port=controller.config.get('esp32_port', 5000) if isinstance(controller.config, dict) else 5000
+        )  # Using GPIO17 for coin signal
         self.payment_in_progress = False
         self.payment_received = 0.0
         self.payment_required = 0.0
@@ -237,7 +251,8 @@ class CartScreen(tk.Frame):
             self.payment_in_progress = True
             self.payment_required = total_amount
             self.payment_received = 0.0
-            self.payment_handler.start_payment_session(total_amount)
+            # Start payment session and register callback for immediate updates
+            self.payment_handler.start_payment_session(total_amount, on_payment_update=self._on_payment_update)
             
             # Create payment status window with fixed size and position
             self.payment_window = tk.Toplevel(self)
@@ -369,6 +384,46 @@ class CartScreen(tk.Frame):
                     
             # Update every 100ms while payment is in progress
             self.after(100, lambda: self.update_payment_status(total_amount))
+
+    def _on_payment_update(self, amount):
+        """Callback invoked by PaymentHandler when coins/bills change (push notification).
+
+        The handler passes the combined received amount. Update UI immediately.
+        """
+        if not self.payment_in_progress:
+            return
+
+        try:
+            coin_amount = self.payment_handler.coin_acceptor.get_received_amount()
+        except Exception:
+            coin_amount = 0.0
+        try:
+            bill_amount = self.payment_handler.bill_acceptor.get_received_amount() if self.payment_handler.bill_acceptor else 0.0
+        except Exception:
+            bill_amount = 0.0
+
+        self.payment_received = amount
+        self.coin_received = coin_amount
+        self.bill_received = bill_amount
+        remaining = self.payment_required - amount
+
+        status_text = (
+            f"Coins: ₱{coin_amount:.2f} | Bills: ₱{bill_amount:.2f}\n"
+            f"Total Received: ₱{amount:.2f}\n"
+            f"Remaining: ₱{remaining:.2f}"
+        )
+
+        try:
+            self.payment_status.config(text=status_text)
+        except Exception:
+            pass
+
+        if amount >= self.payment_required:
+            # Complete payment on the UI thread
+            try:
+                self.complete_payment()
+            except Exception:
+                pass
 
     def update_change_status(self, message):
         """Update the change dispensing status display."""

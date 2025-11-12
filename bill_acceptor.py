@@ -1,9 +1,18 @@
+"""Bill acceptor module - clean implementation
+
+This file provides a simple text-line parser for the Arduino/ESP32 forwarder
+protocol used in this project. It intentionally keeps behavior minimal: parse
+human-friendly lines ("Bill inserted: ₱100"), canonical lines ("BILL:100"),
+and pulses ("PULSES:10" -> amount = 10 * 10). It debounces duplicates and
+invokes a registered callback with the running bill total.
+"""
+
 import serial
 try:
-    # pyserial >=3.0 provides tools.list_ports
     from serial.tools import list_ports
 except Exception:
     list_ports = None
+
 import threading
 import time
 from queue import Queue
@@ -11,17 +20,6 @@ import re
 
 
 class BillAcceptor:
-    """Simple BillAcceptor that reads line-based events from a serial proxy
-
-    It accepts the following text formats from the Arduino/ESP32 forwarder:
-      BILL:<amount>
-      Bill inserted: ₱<amount>
-      PULSES:<n>    (mapped to amount = n * 10 by default)
-
-    This class debounces duplicate reports and calls an optional callback
-    when a bill is registered.
-    """
-
     def __init__(self, port='/dev/ttyAMA0', baudrate=9600, timeout=1.0,
                  esp32_mode=False, esp32_serial_port=None, esp32_host=None, esp32_port=5000):
         self.port = port
@@ -40,7 +38,6 @@ class BillAcceptor:
         self.esp32_host = esp32_host
         self.esp32_port = esp32_port
 
-        # Debounce repeated identical bill reports (milliseconds)
         self._last_bill_time_ms = 0
         self._last_bill_amount = None
         self._bill_debounce_ms = 300
@@ -53,13 +50,7 @@ class BillAcceptor:
         return serial.STOPBITS_TWO
 
     def connect(self):
-        """Open the configured serial port (or autodetect a USB-serial device)."""
-        target = None
-        if self.esp32_mode and self.esp32_serial_port:
-            target = self.esp32_serial_port
-        else:
-            target = self.port
-
+        target = self.esp32_serial_port if (self.esp32_mode and self.esp32_serial_port) else self.port
         try:
             stopbits = self._choose_stopbits_for_port(target)
             self.serial_conn = serial.Serial(
@@ -73,7 +64,6 @@ class BillAcceptor:
             print(f"Bill acceptor connected to {target} at {self.serial_conn.baudrate} baud")
             return True
         except Exception as e:
-            # fallback: try to autodetect a USB serial device
             print(f"Failed to open {target}: {e}. Trying to autodetect USB serial...")
             autodetected = self._auto_find_usb_serial()
             if autodetected:
@@ -151,7 +141,11 @@ class BillAcceptor:
                     try:
                         text = data.decode('utf-8', errors='ignore')
                         for line in text.splitlines():
-                            self._process_esp32_line(line.strip())
+                            line = line.strip()
+                            if not line:
+                                continue
+                            print(f"DEBUG: Received serial line: '{line}'")
+                            self._process_esp32_line(line)
                     except Exception:
                         self._process_raw_bytes(data)
                 else:
@@ -161,8 +155,6 @@ class BillAcceptor:
                 time.sleep(0.1)
 
     def _process_raw_bytes(self, data: bytes):
-        # If a project wants to support raw TB74 bytes, they can extend this.
-        # For now we ignore raw binary for the USB-forwarder workflow.
         return
 
     def _process_esp32_line(self, line: str):
@@ -170,38 +162,42 @@ class BillAcceptor:
             return
         s = line.strip()
         s_upper = s.upper()
+        print(f"DEBUG: Processing line for parsing: '{s}'")
 
-        # 1) human friendly: "Bill inserted: ₱50" or "Bill inserted: 50"
+        # human friendly
         m = re.search(r'BILL\s*INSERTED[:\s]*\u20B1?\s*(\d+)', s_upper)
         if m:
             try:
                 amount = int(m.group(1))
+                print(f"DEBUG: Parsed human-friendly bill amount {amount}")
                 self._debounced_register(amount)
                 return
             except Exception:
                 pass
 
-        # 2) canonical: BILL:<amount>
+        # canonical
         if s_upper.startswith('BILL:'):
             try:
                 amount = int(s.split(':', 1)[1])
+                print(f"DEBUG: Parsed BILL:<amount> = {amount}")
                 self._debounced_register(amount)
                 return
             except Exception:
                 print(f"Unrecognized BILL line: {line}")
                 return
 
-        # 3) pulses: PULSES:<n> -> default mapping each pulse = 10 pesos
+        # pulses
         if s_upper.startswith('PULSES:'):
             try:
                 cnt = int(s.split(':', 1)[1])
                 amount = cnt * 10
+                print(f"DEBUG: Parsed PULSES:{cnt} -> amount {amount}")
                 self._debounced_register(amount)
                 return
             except Exception:
                 pass
 
-        # 4) hex byte like "41" or "0x41" -> optional mapping (not used in USB-forwarder)
+        # hex
         try:
             hexval = s
             if hexval.startswith('0X'):
@@ -216,9 +212,11 @@ class BillAcceptor:
         now_ms = int(time.time() * 1000)
         with self._lock:
             if self._last_bill_amount == amount and (now_ms - self._last_bill_time_ms) < self._bill_debounce_ms:
+                print(f"DEBUG: Debounce ignored duplicate amount {amount}")
                 return
             self._last_bill_amount = amount
             self._last_bill_time_ms = now_ms
+        print(f"DEBUG: Registering bill amount {amount}")
         self._register_bill(amount)
 
     def _register_bill(self, denomination: int):
@@ -273,7 +271,6 @@ class BillAcceptor:
         self.disconnect()
 
 
-# Mock implementation for testing without hardware
 class MockBillAcceptor(BillAcceptor):
     def __init__(self):
         super().__init__()

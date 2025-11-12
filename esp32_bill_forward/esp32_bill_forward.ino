@@ -1,7 +1,7 @@
 volatile int pulseCount = 0;
 unsigned long lastPulseTime = 0;
 const int pulsePin = 2;
-const unsigned long timeout = 1000; // 5 seconds
+const unsigned long timeout = 700; // 700 ms
 
 bool waitingForBill = false;
 bool billProcessed = false;
@@ -15,23 +15,28 @@ void setup() {
 void loop() {
 if (waitingForBill && !billProcessed && millis() - lastPulseTime > timeout) {
   int pesoValue = mapPulsesToPesos(pulseCount);
+  // Always emit a machine-friendly pulses line for diagnostics
+  Serial.print("PULSES:");
+  Serial.println(pulseCount);
+
   if (pesoValue > 0) {
+    // Emit both human-friendly and machine-friendly bill lines
     Serial.print("Bill inserted: ₱");
+    Serial.println(pesoValue);
+    Serial.print("BILL:");
     Serial.println(pesoValue);
     pulseCount = 0;
     waitingForBill = false;
     billProcessed = true;
   } else {
-    // Don't reset yet — wait for more pulses
+    // Unknown pulse pattern — report and reset after extended timeout
     Serial.print("Unknown pulse count: ");
     Serial.println(pulseCount);
-    // Optional: add a longer timeout before resetting unknowns
     if (millis() - lastPulseTime > timeout + 5000) {
       pulseCount = 0;
       waitingForBill = false;
       billProcessed = true;
     }
-  }
 }
 
 

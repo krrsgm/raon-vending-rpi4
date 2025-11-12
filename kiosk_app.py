@@ -120,10 +120,11 @@ class KioskFrame(tk.Frame):
     def create_item_card(self, parent, item_data):
         """Creates a single item card widget."""
         card = tk.Frame(
-            parent, 
-            bg=self.colors['card_bg'], 
-            highlightbackground=self.colors['border'], 
-            highlightthickness=1
+            parent,
+            bg=self.colors['card_bg'],
+            highlightbackground=self.colors['border'],
+            highlightthickness=1,
+            bd=0
         )
 
         # 3. Image Placeholder
@@ -162,216 +163,180 @@ class KioskFrame(tk.Frame):
         text_frame.pack(fill='x', padx=10)
 
         # 1. Name of item
-        tk.Label(
-            text_frame, 
-            text=item_data['name'], 
-            font=self.fonts['name'], 
-            bg=self.colors['card_bg'], 
+        name_label = tk.Label(
+            text_frame,
+            text=item_data.get('name',''),
+            font=self.fonts['name'],
+            bg=self.colors['card_bg'],
             fg=self.colors['text_fg'],
             anchor='w'
-        ).pack(fill='x', pady=(5, 2))
+        )
+        name_label.pack(fill='x', pady=(6, 2))
 
-        # 2. Description
-        tk.Label(
-            text_frame, 
-            text=item_data['description'], 
-            font=self.fonts['description'], 
-            bg=self.colors['card_bg'], 
+        # 2. Short description
+        desc_label = tk.Label(
+            text_frame,
+            text=item_data.get('description',''),
+            font=self.fonts['description'],
+            bg=self.colors['card_bg'],
             fg=self.colors['gray_fg'],
-            wraplength=280,
+            wraplength=260,
             justify='left',
             anchor='nw'
-        ).pack(fill='x', pady=(0, 10))
+        )
+        desc_label.pack(fill='x', pady=(0, 8))
 
-        # Frame for price and quantity
+        # Bottom controls: price (left) and qty + add button (right)
         bottom_frame = tk.Frame(card, bg=self.colors['card_bg'])
         bottom_frame.pack(fill='x', padx=10, pady=(0, 10))
 
-        if item_data['quantity'] > 0:
-            # 4. Price
-            tk.Label(
-                bottom_frame, 
-                text=f"{self.controller.currency_symbol}{item_data['price']:.2f}", 
-                font=self.fonts['price'], 
-                bg=self.colors['card_bg'], 
-                fg=self.colors['price_fg']
-            ).pack(side='left')
+        price_lbl = tk.Label(
+            bottom_frame,
+            text=f"{self.controller.currency_symbol}{item_data.get('price',0):.2f}",
+            font=self.fonts['price'],
+            bg=self.colors['card_bg'],
+            fg=self.colors['price_fg']
+        )
+        price_lbl.pack(side='left')
 
-            # 5. Quantity available
-            tk.Label(
-                bottom_frame, 
-                text=f"Qty: {item_data['quantity']}", 
-                font=self.fonts['quantity'], 
-                bg=self.colors['card_bg'], 
-                fg=self.colors['gray_fg']
-            ).pack(side='right')
+        # Right side: quantity control and add button
+        controls = tk.Frame(bottom_frame, bg=self.colors['card_bg'])
+        controls.pack(side='right')
 
-            # --- Bind click event to all widgets on the card ---
-            # We now need to handle press, drag (motion), and release separately
+        max_q = max(0, int(item_data.get('quantity', 0)))
+        qty_var = tk.IntVar(value=1)
+        spin = tk.Spinbox(controls, from_=1, to=max(1, max_q), width=4, textvariable=qty_var)
+        spin.pack(side='left', padx=(0,6))
+
+        def on_add(qvar=qty_var, data=item_data):
+            q = int(qvar.get()) if qvar.get() else 1
+            # guard: don't add if out of stock
+            if data.get('quantity',0) <= 0:
+                tk.messagebox.showwarning('Out of stock', f"{data.get('name','Item')} is out of stock")
+                return
+            try:
+                self.controller.add_to_cart(data, q)
+            except Exception:
+                pass
+
+        add_btn = tk.Button(controls, text='Add', bg='#2b7be4', fg='white', relief='flat', command=on_add)
+        add_btn.pack(side='left')
+
+        # Bind click/drag behavior for cards that are purchasable
+        if item_data.get('quantity',0) > 0:
             press_action = lambda e, data=item_data: self.on_item_press(e, data)
-            
-            card.bind("<ButtonPress-1>", press_action)
-            card.bind("<B1-Motion>", self.on_item_drag)
-            card.bind("<ButtonRelease-1>", self.on_item_release)
-            for widget in card.winfo_children():
-                widget.bind("<ButtonPress-1>", press_action)
-                widget.bind("<B1-Motion>", self.on_item_drag)
-                widget.bind("<ButtonRelease-1>", self.on_item_release)
-                if isinstance(widget, tk.Frame): # Bind children of inner frames too
-                    for child in widget.winfo_children():
-                        child.bind("<ButtonPress-1>", press_action)
-                        child.bind("<B1-Motion>", self.on_item_drag)
-                        child.bind("<ButtonRelease-1>", self.on_item_release)
-        else: # Item is out of stock
-            # Change background of all frames on the card
+            # Bind only to parts of the card that should navigate on click; skip controls (spinbox/add button)
+            widgets_to_bind = [card, image_frame, image_label, text_frame, name_label, desc_label, price_lbl]
+            for w in widgets_to_bind:
+                try:
+                    w.bind("<ButtonPress-1>", press_action)
+                    w.bind("<B1-Motion>", self.on_item_drag)
+                    w.bind("<ButtonRelease-1>", self.on_item_release)
+                except Exception:
+                    pass
+        else:
             disabled_bg = self.colors['disabled_bg']
             card.config(bg=disabled_bg)
             for widget in card.winfo_children():
                 if isinstance(widget, tk.Frame):
                     widget.config(bg=disabled_bg)
                     for child in widget.winfo_children():
-                        child.config(bg=disabled_bg)
-
-            # Display "Out of Stock" message
+                        try:
+                            child.config(bg=disabled_bg)
+                        except Exception:
+                            pass
             tk.Label(bottom_frame, text="Out of Stock", font=self.fonts['out_of_stock'], bg=disabled_bg, fg=self.colors['out_of_stock_fg']).pack()
 
         return card
 
     def create_widgets(self):
-        # Top fixed header (machine name). Keep a fixed pixel height so it matches physical size.
-        self.header = tk.Frame(self, bg=self.colors['background'], height=self.header_px)
+        # Top blue header bar similar to the screenshot
+        header_bg = '#1e73e8'
+        self.header = tk.Frame(self, bg=header_bg, height=self.header_px)
         self.header.pack(side='top', fill='x')
         self.header.pack_propagate(False)
 
-        # Left: logo (optional)
-        left_frame = tk.Frame(self.header, bg=self.colors['background'])
-        left_frame.pack(side='left', padx=8, pady=4)  # Reduced padding
-        self.logo_label = tk.Label(left_frame, bg=self.colors['background'])
-        self.logo_label.pack()
-        self._load_header_logo()
+        left_frame = tk.Frame(self.header, bg=header_bg)
+        left_frame.pack(side='left', padx=12)
+        self.logo_label = tk.Label(left_frame, text=self.machine_name, bg=header_bg, fg='white', font=self.fonts['machine_title'])
+        self.logo_label.pack(anchor='w')
 
-        # Center: machine title and subtitle
-        center_frame = tk.Frame(self.header, bg=self.colors['background'])
-        center_frame.pack(side='left', fill='both', expand=True)
-        self.title_label = tk.Label(center_frame, text=self.machine_name, font=self.fonts['machine_title'], bg=self.colors['background'], fg=self.colors['text_fg'])
-        self.title_label.pack(side='top', anchor='w', padx=10)  # Reduced padding
-        self.subtitle_label = tk.Label(center_frame, text=self.machine_subtitle, font=self.fonts['machine_subtitle'], bg=self.colors['background'], fg=self.colors['gray_fg'])
-        self.subtitle_label.pack(side='top', anchor='w', padx=10)  # Reduced padding
+        right_frame = tk.Frame(self.header, bg=header_bg)
+        right_frame.pack(side='right', padx=12)
+        cart_btn = tk.Button(right_frame, text='Cart', bg='#ff6b6b', fg='white', relief='flat', command=lambda: self.controller.show_cart())
+        cart_btn.pack()
 
-        # Right side of header (kept empty for symmetry)
-        right_frame = tk.Frame(self.header, bg=self.colors['background'], width=200)
-        right_frame.pack(side='right', padx=8, pady=4)
+        # Main content area: left sidebar + main product area
+        content = tk.Frame(self, bg=self.colors['background'])
+        content.pack(fill='both', expand=True)
 
-        # Sensor Display Panel
-        sensor_panel = tk.Frame(self, bg=self.colors['card_bg'], relief='ridge', bd=1)
-        sensor_panel.pack(fill='x', padx=8, pady=4)
-        
-        # Create a frame to hold both sensors side by side
-        sensors_frame = ttk.Frame(sensor_panel)
-        sensors_frame.pack(fill='x', padx=10, pady=4)
-        
-        # Configure grid weights for equal spacing
-        sensors_frame.columnconfigure(0, weight=1)
-        sensors_frame.columnconfigure(1, weight=1)
-        
-        # Components Temperature/Humidity Sensor (Left)
-        components_sensor = DHT11Display(sensors_frame, sensor_number=1)
-        components_sensor.grid(row=0, column=0, padx=10, pady=4, sticky='nsew')
-        
-        # Payment Temperature/Humidity Sensor (Right)
-        payment_sensor = DHT11Display(sensors_frame, sensor_number=2)
-        payment_sensor.grid(row=0, column=1, padx=10, pady=4, sticky='nsew')
-        
-        # Cart button and category frame
-        cart_frame = tk.Frame(self, bg=self.colors['background'])
-        cart_frame.pack(fill='x', pady=(0, 4))
-        
-        # Category selection frame
-        category_label = tk.Label(
-            cart_frame,
-            text="Category:",
-            font=tkfont.Font(family="Helvetica", size=10, weight="bold"),
-            bg=self.colors['background'],
-            fg=self.colors['text_fg']
-        )
-        category_label.pack(side='left', padx=(8, 4), pady=2)
+        # Left sidebar
+        sidebar = tk.Frame(content, width=260, bg='#f7fafc')
+        sidebar.pack(side='left', fill='y', padx=(12,6), pady=12)
+        sidebar.pack_propagate(False)
 
-        # Get categories from config
-        categories = ["All Categories"] + self.controller.config.get('categories', [])
-        self.category_var = tk.StringVar(value="All Categories")
-        
-        self.category_combo = ttk.Combobox(
-            cart_frame,
-            textvariable=self.category_var,
-            values=categories,
-            state="readonly",
-            font=tkfont.Font(family="Helvetica", size=10),
-            width=20
-        )
-        self.category_combo.pack(side='left', padx=4, pady=2)
-        self.category_combo.bind('<<ComboboxSelected>>', self.filter_by_category)
+        # Search box
+        ttk.Label(sidebar, text='Search components', background='#f7fafc').pack(anchor='w', padx=8, pady=(8,4))
+        self.search_var = tk.StringVar()
+        search_entry = ttk.Entry(sidebar, textvariable=self.search_var, width=28)
+        search_entry.pack(padx=8, pady=(0,8))
+        # live search: update as you type
+        try:
+            self.search_var.trace_add('write', lambda *a: self.populate_items())
+        except Exception:
+            # older tkinter fallback
+            self.search_var.trace('w', lambda *a: self.populate_items())
 
-        # Cart button in its own frame below header
-        cart_button = tk.Button(
-            cart_frame,
-            text="View Cart",
-            font=tkfont.Font(family="Helvetica", size=10),
-            bg=self.colors['price_fg'],
-            fg=self.colors['card_bg'],
-            relief='flat',
-            padx=8,
-            pady=2,
-            command=lambda: self.controller.show_cart()
-        )
-        cart_button.pack(side='right', padx=8, pady=2)
+        # Recent / Popular toggles (visual only)
+        toggles = tk.Frame(sidebar, bg='#f7fafc')
+        toggles.pack(fill='x', padx=8, pady=(0,8))
+        ttk.Button(toggles, text='Recent').pack(side='left', expand=True, fill='x')
+        ttk.Button(toggles, text='Popular').pack(side='left', expand=True, fill='x', padx=(6,0))
 
-        # Container for the scrollable area - sits between header and footer
-        scroll_container = tk.Frame(self, bg=self.colors['background'])
-        scroll_container.pack(fill='both', expand=True)
-        scroll_container.bind('<Configure>', self.on_resize)
+        # Categories list
+        ttk.Label(sidebar, text='Component Categories', background='#f7fafc', font=self.fonts['description']).pack(anchor='w', padx=8, pady=(12,4))
+        self.categories_frame = tk.Frame(sidebar, bg='#f7fafc')
+        self.categories_frame.pack(fill='both', expand=True, padx=8)
+        categories = ["All Components"] + self.controller.config.get('categories', [])
+        # use tk.Button so we can change bg to show active selection
+        self._category_buttons = {}
+        for cat in categories:
+            b = tk.Button(self.categories_frame, text=cat, relief='flat', bg='#f7fafc', anchor='w', command=lambda c=cat: self._on_category_click(c))
+            b.pack(fill='x', pady=2)
+            self._category_buttons[cat] = b
+        # default active category
+        self._active_category = 'All Components'
+        # highlight default
+        if 'All Components' in self._category_buttons:
+            self._set_active_category_button('All Components')
 
-        # Scrollable area for items
-        self.canvas = tk.Canvas(scroll_container, bg=self.colors['background'], highlightthickness=0)
-        # The scrollbar is no longer created or packed.
+        # Main product area
+        main_area = tk.Frame(content, bg=self.colors['background'])
+        main_area.pack(side='left', fill='both', expand=True, padx=(6,12), pady=12)
+        main_area.bind('<Configure>', self.on_resize)
+
+        # Scrollable canvas for items
+        self.canvas = tk.Canvas(main_area, bg=self.colors['background'], highlightthickness=0)
         scrollable_frame = tk.Frame(self.canvas, bg=self.colors['background'])
-
-        # Bind drag-to-scroll to the frame itself (for the space between items)
-        scrollable_frame.bind("<ButtonPress-1>", self.on_canvas_press)
-        scrollable_frame.bind("<B1-Motion>", self.on_canvas_drag)
-
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
-
-        # The canvas window that holds the frame
-        self.canvas_window = self.canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        
-        # The yscrollcommand is no longer configured as there is no scrollbar.
+        scrollable_frame.bind('<ButtonPress-1>', self.on_canvas_press)
+        scrollable_frame.bind('<B1-Motion>', self.on_canvas_drag)
+        scrollable_frame.bind('<Configure>', lambda e: self.canvas.configure(scrollregion=self.canvas.bbox('all')))
+        self.canvas_window = self.canvas.create_window((0,0), window=scrollable_frame, anchor='nw')
+        self.canvas.pack(fill='both', expand=True)
+        self.canvas.bind('<ButtonPress-1>', self.on_canvas_press)
+        self.canvas.bind('<B1-Motion>', self.on_canvas_drag)
 
         # Populate grid with item cards
         self.populate_items()
-        # --- Add Drag-to-Scroll functionality ---
-        # We only need to bind to the canvas itself.
-        self.canvas.bind("<ButtonPress-1>", self.on_canvas_press)
-        self.canvas.bind("<B1-Motion>", self.on_canvas_drag)
 
-        self.canvas.pack(side="left", fill="both", expand=True)
-        # The scrollbar.pack() call is removed.
-
-        # Bottom fixed footer showing group members
+        # Footer
         self.footer = tk.Frame(self, bg=self.colors['background'], height=self.footer_px)
         self.footer.pack(side='bottom', fill='x')
         self.footer.pack_propagate(False)
-
         members = getattr(self.controller, 'config', {}).get('group_members', [])
-        if isinstance(members, list):
-            members_text = '  |  '.join(members) if members else ''
-        else:
-            members_text = str(members)
-
+        members_text = '  |  '.join(members) if isinstance(members, list) and members else ''
         self.footer_label = tk.Label(self.footer, text=members_text, font=self.fonts['footer'], bg=self.colors['background'], fg=self.colors['gray_fg'])
-        self.footer_label.pack(side='top', pady= max(2, self.footer_px//8))
+        self.footer_label.pack(side='top', pady=max(2, self.footer_px//8))
 
     def _load_header_logo(self):
         """Attempt to load the header logo image (if configured) and resize it to fit header height."""
@@ -497,12 +462,21 @@ class KioskFrame(tk.Frame):
 
         self._last_canvas_width = canvas_width # Update last known width
 
-        # Filter items by selected category
-        selected_category = self.category_var.get()
+        # Decide source of items: use assigned slots if present, otherwise master list
+        assigned = getattr(self.controller, 'assigned_slots', None)
+        if isinstance(assigned, list) and any(assigned):
+            source_items = [s for s in assigned if s]
+        else:
+            source_items = list(self.controller.items)
+
+        # Filter items by selected category and search text
+        selected_category = getattr(self, '_active_category', 'All Components')
+        search_text = (getattr(self, 'search_var', tk.StringVar()).get() or '').strip().lower()
         filtered_items = []
-        
-        for item in self.controller.items:
-            if selected_category == "All Categories" or item.get('category', '') == selected_category:
+        for item in source_items:
+            cat_ok = (selected_category in ['All Components', 'All Categories']) or (item.get('category','') == selected_category)
+            text_ok = (not search_text) or (search_text in item.get('name','').lower()) or (search_text in item.get('description','').lower())
+            if cat_ok and text_ok:
                 filtered_items.append(item)
 
         # Repopulate grid with filtered item cards
@@ -551,3 +525,23 @@ class KioskFrame(tk.Frame):
             pass
 
         self.populate_items()
+
+    def _on_category_click(self, cat):
+        """Handle category button clicks: set active category and refresh."""
+        self._active_category = cat
+        self._set_active_category_button(cat)
+        self.populate_items()
+
+    def _set_active_category_button(self, cat):
+        """Visually mark the active category button."""
+        for k, btn in getattr(self, '_category_buttons', {}).items():
+            try:
+                btn.configure(bg='#f7fafc', fg='black')
+            except Exception:
+                pass
+        try:
+            btn = self._category_buttons.get(cat)
+            if btn:
+                btn.configure(bg='#e6f0ff', fg='black')
+        except Exception:
+            pass

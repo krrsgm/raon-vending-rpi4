@@ -1,0 +1,43 @@
+{
+  "_comment": "RAON Vending Machine Configuration - Raspberry Pi 4",
+  "currency_symbol": "₱",
+  "always_fullscreen": true,
+  "allow_decorations_for_admin": false,
+  "rotate_display": "normal",
+  
+  "esp32_host": "192.168.4.1",
+  
+  "coin_hoppers": {
+    "one_peso": {
+      "motor_pin": 24,
+      "sensor_pin": 26
+    },
+    "five_peso": {
+      "motor_pin": 25,
+      "sensor_pin": 27
+    }
+  },
+  
+  "hardware": {
+    "coin_acceptor": {
+      "enabled": true,
+      "gpio_pin": 17,
+      "debounce_ms": 50
+    },
+    "bill_acceptor": {
+      "enabled": true,
+      "serial_port": "/dev/ttyUSB0",
+      "baudrate": 9600
+    },
+    "dht11_sensors": {
+      "components_area": {
+        "enabled": true,
+        "gpio_pin": 4
+      },
+      "payment_area": {
+        "enabled": true,
+        "gpio_pin": 17
+      }
+    }
+  }
+}

@@ -14,6 +14,8 @@ class CartScreen(tk.Frame):
         self.payment_received = 0.0
         self.payment_required = 0.0
         self.change_label = None  # Will be created in the payment window
+        self.coin_received = 0.0  # Track coins separately
+        self.bill_received = 0.0  # Track bills separately
         
         # --- Colors and Fonts ---
         self.colors = {
@@ -244,6 +246,9 @@ class CartScreen(tk.Frame):
             self.payment_window.transient(self)  # Make it float on top
             self.payment_window.grab_set()  # Make it modal
             
+            # Bind ESC key to cancel payment
+            self.payment_window.bind('<Escape>', lambda e: self.cancel_payment())
+            
             # Styling
             self.payment_window.configure(bg=self.colors["payment_bg"])
             
@@ -273,7 +278,7 @@ class CartScreen(tk.Frame):
             
             self.payment_status = tk.Label(
                 status_frame,
-                text="Received: ₱0.00\nRemaining: ₱{:.2f}".format(total_amount),
+                text="Coins: ₱0.00 | Bills: ₱0.00\nTotal Received: ₱0.00\nRemaining: ₱{:.2f}".format(total_amount),
                 font=self.fonts["item_details"],
                 bg=self.colors["payment_bg"],
                 fg=self.colors["payment_fg"]
@@ -293,16 +298,15 @@ class CartScreen(tk.Frame):
             # Accepted coins info
             tk.Label(
                 self.payment_window,
-                text="Accepted Coins:",
+                text="Accepted Payment Methods:",
                 font=self.fonts["item_details"],
                 bg=self.colors["payment_bg"],
                 fg=self.colors["text_fg"]
             ).pack(pady=(20,5))
             
             coins_text = (
-                "• ₱1 (Old and New Coins)\n"
-                "• ₱5 (Old and New Coins)\n"
-                "• ₱10 (Old and New Coins)"
+                "Coins: • ₱1 • ₱5 • ₱10 (Old and New)\n"
+                "Bills: • ₱20 • ₱50 • ₱100 • ₱500 • ₱1000"
             )
             
             tk.Label(
@@ -335,15 +339,25 @@ class CartScreen(tk.Frame):
             self.complete_payment()
     
     def update_payment_status(self, total_amount):
-        """Update the payment status window with current coin total"""
+        """Update the payment status window with current coin and bill totals"""
         if self.payment_in_progress:
             received = self.payment_handler.get_current_amount()
+            
+            # Get individual amounts
+            coin_amount = self.payment_handler.coin_acceptor.get_received_amount()
+            bill_amount = 0.0
+            if self.payment_handler.bill_acceptor:
+                bill_amount = self.payment_handler.bill_acceptor.get_received_amount()
+            
             if received != self.payment_received:  # Only update if amount changed
                 self.payment_received = received
+                self.coin_received = coin_amount
+                self.bill_received = bill_amount
                 remaining = total_amount - received
                 
                 status_text = (
-                    f"Received: ₱{received:.2f}\n"
+                    f"Coins: ₱{coin_amount:.2f} | Bills: ₱{bill_amount:.2f}\n"
+                    f"Total Received: ₱{received:.2f}\n"
                     f"Remaining: ₱{remaining:.2f}"
                 )
                 
@@ -379,10 +393,16 @@ class CartScreen(tk.Frame):
         if change_dispensed > 0:
             self.update_change_status(f"Dispensing change: ₱{change_dispensed:.2f}...")
             
+        # Get individual amounts for final display
+        coin_amount = self.coin_received
+        bill_amount = self.bill_received
+        
         # Show final status
         status_text = (
             f"Thank you!\n\n"
-            f"Amount paid: ₱{received:.2f}\n"
+            f"Coins received: ₱{coin_amount:.2f}\n"
+            f"Bills received: ₱{bill_amount:.2f}\n"
+            f"Total paid: ₱{received:.2f}\n"
         )
         
         if change_dispensed > 0:
@@ -399,20 +419,46 @@ class CartScreen(tk.Frame):
         self.controller.clear_cart()
         self.controller.show_frame("KioskFrame")
         
-    def cancel_payment(self):
-        """Cancel the current payment session"""
+    def cancel_payment(self, event=None):
+        """Cancel the current payment session.
+
+        This correctly handles the tuple returned by
+        PaymentHandler.stop_payment_session() which is
+        (total_received, change_amount, change_status).
+        The method will always close the payment window (if present)
+        and return the UI to the kiosk screen.
+        """
+        # If a payment was in progress, stop it and handle returned tuple
         if self.payment_in_progress:
             self.payment_in_progress = False
-            received = self.payment_handler.stop_payment_session()
-            
-            if received > 0:
+            try:
+                total_received, change_amount, change_status = self.payment_handler.stop_payment_session()
+            except Exception:
+                # Defensive: if the payment handler API changes or errors,
+                # fall back to a safe default
+                total_received = 0
+                change_amount = 0
+                change_status = ""
+
+            if total_received and total_received > 0:
                 messagebox.showwarning(
                     "Payment Cancelled",
                     f"Payment cancelled.\n"
-                    f"Please collect your money: ₱{received:.2f}"
+                    f"Please collect your money: ₱{total_received:.2f}"
                 )
-            
-            self.payment_window.destroy()
+
+        # Ensure the payment window is closed and return to kiosk
+        try:
+            if hasattr(self, 'payment_window') and self.payment_window:
+                self.payment_window.destroy()
+        except Exception:
+            pass
+
+        # Return to kiosk screen regardless of payment state
+        try:
+            self.controller.show_kiosk()
+        except Exception:
+            pass
                 
     def on_closing(self):
         """Handle cleanup when closing"""

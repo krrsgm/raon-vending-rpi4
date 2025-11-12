@@ -1,0 +1,21 @@
+# Raspberry Pi 4 Requirements
+# Install with: pip3 install -r requirements-rpi4.txt
+
+# Core dependencies
+Pillow==9.5.0
+pyserial==3.5
+
+# Raspberry Pi GPIO library
+RPi.GPIO==0.7.0
+
+# DHT11 sensor support
+adafruit-circuitpython-dht==3.7.10
+adafruit-circuitpython-busio==5.4.0
+board==1.0.10
+
+# Optional: GPIO abstraction library (alternative to RPi.GPIO)
+# gpiozero==2.0.1
+
+# Development/Testing
+pytest==7.4.0
+black==23.9.1

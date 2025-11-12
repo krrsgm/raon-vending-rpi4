@@ -1,34 +1,112 @@
 import tkinter as tk
 from tkinter import ttk
 import time
-import random  # For simulation
-from rpi_gpio_mock import GPIO  # Using our mock for development
+import platform
 
-# TODO: Replace this with actual DHT11 reading code on the Raspberry Pi
+# Conditional imports for Raspberry Pi
+try:
+    import board
+    import adafruit_dht
+    DHT_AVAILABLE = True
+except ImportError:
+    DHT_AVAILABLE = False
+    # Use mock for development on non-RPi systems
+    from rpi_gpio_mock import GPIO
+
+
 class DHT11Sensor:
+    """
+    DHT11 sensor handler compatible with Raspberry Pi 4.
+    Uses Adafruit's circuit python library for reliable readings.
+    """
+    
     def __init__(self, pin=4):
-        self.pin = pin  # Allow different GPIO pins for different sensors
+        """
+        Initialize DHT11 sensor.
         
+        Args:
+            pin (int): GPIO pin number (BCM numbering)
+                      Default pin 4 for Components sensor
+                      Pin 17 for Payment sensor
+        """
+        self.pin = pin
+        self.sensor = None
+        self.last_read_time = 0
+        self.min_read_interval = 2.0  # DHT11 minimum 2 second interval
+        
+        if DHT_AVAILABLE and platform.system() == "Linux":
+            try:
+                # Map BCM pin numbers to board pins for RPi4
+                pin_map = {
+                    4: board.D4,    # GPIO4
+                    17: board.D17,  # GPIO17
+                    27: board.D27,  # GPIO27
+                    22: board.D22,  # GPIO22
+                }
+                board_pin = pin_map.get(pin, board.D4)
+                self.sensor = adafruit_dht.DHT11(board_pin, use_pulseio=False)
+                print(f"DHT11 initialized on GPIO{pin}")
+            except Exception as e:
+                print(f"Failed to initialize DHT11: {e}")
+                self.sensor = None
+        else:
+            if not DHT_AVAILABLE:
+                print("DHT11 library not available - using simulated readings")
+            if platform.system() != "Linux":
+                print(f"Running on {platform.system()} - using simulated sensor readings")
+    
     def read(self):
-        # Simulate sensor readings for development
-        # Replace this with actual DHT11 reading code on the Raspberry Pi
-        temperature = random.uniform(20, 30)
-        humidity = random.uniform(40, 60)
-        return humidity, temperature
+        """
+        Read temperature and humidity from sensor.
+        Returns (humidity, temperature) or (None, None) on error.
+        """
+        current_time = time.time()
+        
+        # Enforce minimum read interval
+        if (current_time - self.last_read_time) < self.min_read_interval:
+            return (None, None)
+        
+        try:
+            if self.sensor is not None and DHT_AVAILABLE:
+                # Real hardware reading
+                temperature = self.sensor.temperature
+                humidity = self.sensor.humidity
+                self.last_read_time = current_time
+                return (humidity, temperature)
+            else:
+                # Simulated reading for development
+                import random
+                temperature = round(random.uniform(20, 30), 1)
+                humidity = round(random.uniform(40, 60), 1)
+                self.last_read_time = current_time
+                return (humidity, temperature)
+        except RuntimeError:
+            # Common DHT11 error, return None to retry
+            return (None, None)
+        except Exception as e:
+            print(f"Sensor read error: {e}")
+            return (None, None)
+
 
 class DHT11Display(tk.Frame):
+    """Display widget for DHT11 sensor readings."""
+    
     def __init__(self, master=None, sensor_number=1):
         super().__init__(master)
         self.master = master
         self.sensor_number = sensor_number
+        
         # Create sensor with specified GPIO pin
-        pin = 4 if sensor_number == 1 else 17  # GPIO4 for Components, GPIO17 for Payment
+        pin = 4 if sensor_number == 1 else 17
         self.sensor = DHT11Sensor(pin=pin)
+        self.last_humidity = None
+        self.last_temperature = None
+        
         self.create_widgets()
         self.update_readings()
 
     def create_widgets(self):
-        # Main container with padding
+        """Create UI widgets."""
         self.container = ttk.Frame(self)
         self.container.pack(padx=5, pady=2, fill='both', expand=True)
 
@@ -90,8 +168,6 @@ class DHT11Display(tk.Frame):
         )
         self.humid_unit.pack(side='left')
 
-
-
         # Last updated
         self.last_updated = ttk.Label(
             self.container,
@@ -101,31 +177,38 @@ class DHT11Display(tk.Frame):
         self.last_updated.pack(pady=(20, 0))
 
     def update_readings(self):
-        """Update temperature and humidity readings every 2 seconds"""
+        """Update temperature and humidity readings every 2 seconds."""
         try:
-            # Read from sensor
             humidity, temperature = self.sensor.read()
+            
+            # Only update if we have new valid data
             if humidity is not None and temperature is not None:
-                self.temp_reading.config(text=f"{temperature:.1f}")
-                self.humid_reading.config(text=f"{humidity:.1f}")
+                if (humidity != self.last_humidity or 
+                    temperature != self.last_temperature):
+                    self.temp_reading.config(text=f"{temperature:.1f}")
+                    self.humid_reading.config(text=f"{humidity:.1f}")
+                    self.last_humidity = humidity
+                    self.last_temperature = temperature
             else:
-                self.temp_reading.config(text="Error")
-                self.humid_reading.config(text="Error")
+                # Show last known values or error
+                if self.last_temperature is None:
+                    self.temp_reading.config(text="Waiting...")
+                    self.humid_reading.config(text="Waiting...")
 
             # Update last updated time
             current_time = time.strftime("%H:%M:%S")
             self.last_updated.config(text=f"Last updated: {current_time}")
         except Exception as e:
-            print(f"Error reading sensor: {e}")
-            self.temp_reading.config(text="Error")
-            self.humid_reading.config(text="Error")
+            print(f"Error updating readings: {e}")
         
-        # Schedule next update
+        # Schedule next update (2 second minimum for DHT11)
         self.after(2000, self.update_readings)
 
+
 def main():
+    """Run DHT11 sensor display."""
     root = tk.Tk()
-    root.title("DHT11 Monitor")
+    root.title("DHT11 Monitor - Raspberry Pi 4")
     
     # Create frame to hold both sensors side by side
     sensors_frame = ttk.Frame(root)
@@ -143,7 +226,7 @@ def main():
     sensors_frame.columnconfigure(1, weight=1)
     
     # Set window size and position
-    window_width = 800  # Increased for two sensors
+    window_width = 800
     window_height = 300
     screen_width = root.winfo_screenwidth()
     screen_height = root.winfo_screenheight()
@@ -152,6 +235,7 @@ def main():
     root.geometry(f"{window_width}x{window_height}+{x}+{y}")
     
     root.mainloop()
+
 
 if __name__ == "__main__":
     main()

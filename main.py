@@ -10,6 +10,27 @@ from fix_paths import get_absolute_path
 import subprocess
 import platform
 import os
+import sys
+
+# Raspberry Pi 4 compatibility detection
+IS_RASPBERRY_PI = False
+try:
+    with open('/proc/device-tree/model', 'r') as f:
+        model = f.read()
+        IS_RASPBERRY_PI = 'Raspberry Pi' in model
+        print(f"Platform detected: {model.strip()}")
+except (FileNotFoundError, IOError):
+    IS_RASPBERRY_PI = False
+    print(f"Platform detected: {platform.system()}")
+
+print(f"Running on: {'Raspberry Pi' if IS_RASPBERRY_PI else platform.system()}")
+
+try:
+    from esp32_client import pulse_slot
+except Exception:
+    # If helper missing or import fails, vend functions will be no-op
+    def pulse_slot(host, slot, ms=800):
+        raise
 
 
 class MainApp(tk.Tk):
@@ -371,6 +392,25 @@ class MainApp(tk.Tk):
 
         print("Checkout successful. Items processed:", checked_out_items)
         self.save_items_to_json()  # Persist the new quantities
+        # Attempt to vend physical slots for items that were checked out
+        try:
+            for it in checked_out_items:
+                # support both {'item': {...}, 'quantity': n} and simple dicts
+                if isinstance(it, dict) and 'item' in it and 'quantity' in it:
+                    item_obj = it['item']
+                    qty = int(it['quantity'])
+                else:
+                    item_obj = it
+                    qty = 1
+                name = item_obj.get('name') if isinstance(item_obj, dict) else None
+                if name:
+                    try:
+                        self.vend_slots_for(name, qty)
+                    except Exception as e:
+                        print(f"Vend error for {name}: {e}")
+        except Exception:
+            pass
+
         return True
 
     def reduce_item_quantity(self, item, quantity):
@@ -405,6 +445,43 @@ class MainApp(tk.Tk):
         self.frames["AdminScreen"].populate_items()
         self.frames["KioskFrame"].populate_items()
         return True
+
+    def vend_slots_for(self, item_name, quantity=1):
+        """Find assigned slots for item_name and pulse the ESP32 outputs.
+
+        This function looks at `self.assigned_slots` (populated by AssignItemsScreen)
+        and finds all slot indices mapped to `item_name`. It sends PULSE commands
+        to the ESP32 host configured under `config['esp32_host']` (fallbacks to
+        '192.168.4.1' in AP mode). Pulses are distributed round-robin across
+        matching slots.
+        """
+        assigned = getattr(self, 'assigned_slots', None)
+        if not assigned:
+            print('No assigned_slots available to vend from')
+            return
+        # find matching indices (1-based slot numbers)
+        matches = []
+        for idx, slot in enumerate(assigned):
+            if slot and isinstance(slot, dict) and slot.get('name') == item_name:
+                matches.append(idx+1)
+        if not matches:
+            print(f'No physical slots assigned for item "{item_name}"')
+            return
+        host = self.config.get('esp32_host') if isinstance(self.config, dict) else None
+        if not host:
+            host = '192.168.4.1'  # common AP fallback; set in config for your network
+        pulse_ms = 800
+        # Round-robin distribute pulses
+        for i in range(quantity):
+            slot_number = matches[i % len(matches)]
+            try:
+                print(f'Pulsing slot {slot_number} on {host} for {pulse_ms}ms')
+                try:
+                    pulse_slot(host, slot_number, pulse_ms)
+                except Exception as e:
+                    print(f'Failed to send pulse to ESP32: {e}')
+            except Exception as e:
+                print(f'Error vending slot {slot_number}: {e}')
 
     def update_item(self, original_item_name, updated_item_data):
         """Updates an existing item in the master list and saves to JSON."""

@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox
 from payment_handler import PaymentHandler
+import threading
 
 
 class CartScreen(tk.Frame):
@@ -455,6 +456,38 @@ class CartScreen(tk.Frame):
         coin_amount = self.coin_received
         bill_amount = self.bill_received
         
+        # Start vending physical items in background so UI stays responsive
+        try:
+            vend_list = [ {"item": it["item"], "quantity": it["quantity"]} for it in self.controller.cart ]
+        except Exception:
+            vend_list = []
+
+        def _vend_items():
+            try:
+                for entry in vend_list:
+                    try:
+                        item_obj = entry.get('item') if isinstance(entry, dict) else None
+                        qty = int(entry.get('quantity', 1)) if isinstance(entry, dict) else 1
+                        if item_obj and item_obj.get('name'):
+                            name = item_obj.get('name')
+                            print(f"Vending {qty} x {name}...")
+                            # pulse configured ms (fallback to 800ms)
+                            pulse_ms = self.controller.config.get('esp32_pulse_ms', 800) if isinstance(self.controller.config, dict) else 800
+                            # vend_slots_for will handle round-robin if multiple slots assigned
+                            try:
+                                self.controller.vend_slots_for(name, qty)
+                            except Exception as e:
+                                print(f"Error vending {name}: {e}")
+                    except Exception:
+                        continue
+            except Exception as e:
+                print(f"Error in vending thread: {e}")
+
+        try:
+            threading.Thread(target=_vend_items, daemon=True).start()
+        except Exception:
+            pass
+
         # Show final status
         status_text = (
             f"Thank you!\n\n"

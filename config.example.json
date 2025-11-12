@@ -26,9 +26,10 @@
     },
     "bill_acceptor": {
       "enabled": true,
-      "serial_port": "/dev/ttyUSB0",
-      "baudrate": 9600,
-      "proxy_via_esp32": true
+      "serial_port": "/dev/ttyACM0",
+      "baudrate": 115200,
+      "proxy_via_esp32": true,
+      "notes": "If using Arduino Uno over USB, /dev/ttyACM0 is typical. If using GPIO UART, set serial_port to /dev/serial0 and disable USB serial."
     },
     "dht11_sensors": {
       "components_area": {

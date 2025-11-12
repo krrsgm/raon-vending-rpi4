@@ -39,6 +39,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('port', nargs='?', help='Serial port (e.g. /dev/ttyACM0)')
     ap.add_argument('baud', nargs='?', type=int, default=115200, help='Baud rate (default 115200)')
+    ap.add_argument('--only-bill', action='store_true', help='Only print final bill lines (BILL: or Bill inserted)')
     args = ap.parse_args()
 
     port = args.port
@@ -69,10 +70,24 @@ def main():
             if not line:
                 continue
             ts = time.time()
+            # If requested, filter to only show final bill lines
+            up = line.upper()
+            if args.only_bill:
+                # Accept human-friendly or canonical BILL lines
+                if up.startswith('BILL:') or 'BILL INSERTED' in up:
+                    print(f"{time.strftime('%H:%M:%S', time.localtime(ts))}.{int((ts%1)*1000):03d} <- {line}")
+                    # If it's a BILL: line, parse and print friendly message
+                    if up.startswith('BILL:'):
+                        try:
+                            val = int(line.split(':',1)[1])
+                            print(f"  -> Parsed bill: ₱{val}")
+                        except Exception:
+                            print('  -> Unrecognized BILL line')
+                continue
+
             # Print raw line with timestamp
             print(f"{time.strftime('%H:%M:%S', time.localtime(ts))}.{int((ts%1)*1000):03d} <- {line}")
             # If it's a BILL: line, parse and print friendly message
-            up = line.upper()
             if up.startswith('BILL:'):
                 try:
                     val = int(line.split(':',1)[1])

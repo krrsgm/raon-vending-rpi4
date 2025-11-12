@@ -1,13 +1,13 @@
 volatile int pulseCount = 0;
 unsigned long lastPulseTime = 0;
 const int pulsePin = 2;
-const unsigned long timeout = 5000; // 5 seconds
+const unsigned long timeout = 1000; // 5 seconds
 
 bool waitingForBill = false;
 bool billProcessed = false;
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   pinMode(pulsePin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(pulsePin), countPulse, FALLING);
 }

@@ -228,34 +228,41 @@ class AssignItemsScreen(tk.Frame):
             row_frames = []
             for c in range(self.GRID_COLS):
                 idx = r * self.GRID_COLS + c
-                frm = ttk.Frame(self.grid_frame, relief='ridge', padding=6)
-                frm.grid(row=r, column=c, padx=6, pady=6, sticky='nsew')
+                frm = ttk.Frame(self.grid_frame, relief='ridge', padding=4, width=150, height=140)
+                frm.grid(row=r, column=c, padx=4, pady=4, sticky='nsew')
+                frm.grid_propagate(False)  # Fix size to allow proper layout
+                
                 # Slot header with selection marker
                 slot_hdr = ttk.Frame(frm)
-                slot_hdr.pack(fill='x')
-                slot_lbl = ttk.Label(slot_hdr, text=f"Slot {idx+1}", font=("Helvetica", 10, 'bold'))
-                slot_lbl.pack(side='left')
-                sel_marker = ttk.Label(slot_hdr, text=" ", width=2)
+                slot_hdr.pack(fill='x', pady=(0,2))
+                slot_lbl = ttk.Label(slot_hdr, text=f"Slot {idx+1}", font=("Helvetica", 9, 'bold'))
+                slot_lbl.pack(side='left', fill='x', expand=True)
+                sel_marker = ttk.Label(slot_hdr, text=" ", width=2, anchor='center')
                 sel_marker.pack(side='right')
 
-                body = ttk.Frame(frm)
-                body.pack(fill='x', pady=(4,2))
-                thumb_lbl = ttk.Label(body, text='No Image', width=12, anchor='center')
-                thumb_lbl.pack(side='left', padx=(0,6))
+                # Content area (compact layout)
+                content = ttk.Frame(frm)
+                content.pack(fill='both', expand=True, pady=(2,2))
+                
+                # Thumbnail (small)
+                thumb_lbl = ttk.Label(content, text='', width=10, height=4, anchor='center', background='#e8e8e8', relief='sunken')
+                thumb_lbl.pack(fill='both', expand=False, pady=(0,2))
 
-                info = ttk.Frame(body)
-                info.pack(side='left', fill='both', expand=True)
-                name_lbl = ttk.Label(info, text="Empty", width=20)
-                name_lbl.pack(anchor='w')
-                details_lbl = ttk.Label(info, text="", font=("Helvetica", 9))
-                details_lbl.pack(anchor='w')
+                # Item info (name and details)
+                info = ttk.Frame(content)
+                info.pack(fill='both', expand=True, pady=(0,2))
+                name_lbl = ttk.Label(info, text="Empty", font=("Helvetica", 8, 'bold'), wraplength=120, justify='left')
+                name_lbl.pack(anchor='nw', fill='x')
+                details_lbl = ttk.Label(info, text="", font=("Helvetica", 7), wraplength=120, justify='left')
+                details_lbl.pack(anchor='nw', fill='both', expand=True)
 
+                # Buttons (compact)
                 btns = ttk.Frame(frm)
-                btns.pack(fill='x', pady=(6,0))
-                edit_btn = ttk.Button(btns, text="Edit", command=lambda i=idx: self.edit_slot(i))
-                edit_btn.pack(side='left')
-                clear_btn = ttk.Button(btns, text="Clear", command=lambda i=idx: self.clear_slot(i))
-                clear_btn.pack(side='left', padx=(6,0))
+                btns.pack(fill='x', pady=(2,0))
+                edit_btn = ttk.Button(btns, text="Edit", width=6, command=lambda i=idx: self.edit_slot(i))
+                edit_btn.pack(side='left', padx=(0,2))
+                clear_btn = ttk.Button(btns, text="Clear", width=6, command=lambda i=idx: self.clear_slot(i))
+                clear_btn.pack(side='left')
 
                 # selection toggle binding
                 def make_toggle(i):
@@ -268,7 +275,7 @@ class AssignItemsScreen(tk.Frame):
                     return _toggle
 
                 frm.bind('<Button-1>', make_toggle(idx))
-                for w in (slot_lbl, thumb_lbl, name_lbl, details_lbl, body, slot_hdr, info):
+                for w in (slot_lbl, thumb_lbl, name_lbl, details_lbl, content, slot_hdr, info):
                     w.bind('<Button-1>', make_toggle(idx))
 
                 row_frames.append({'frame':frm, 'name':name_lbl, 'details':details_lbl, 'thumb':thumb_lbl, 'sel_marker':sel_marker})

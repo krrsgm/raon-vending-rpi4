@@ -36,7 +36,7 @@ const unsigned long BAUD_RATE = 115200;
 // Multiplexer 1 pins (Slots 1-15)
 const int MUX1_S0 = 13;
 const int MUX1_S1 = 12;
-const int MUX1_S2 = 14;
+const int MUX1_S2 = 14; 
 const int MUX1_S3 = 27;
 const int MUX1_SIG = 23;
 
@@ -68,22 +68,22 @@ const int MOTORS_PER_MUX = 15;  // We use 15 channels per multiplexer
 // Array to track active until (millis). 0 means off.
 unsigned long active_until[NUM_OUTPUTS];
 bool outputs_state[NUM_OUTPUTS]; // State tracking for each output
-String inputBuffer = "";         // Buffer for incoming serial data
+String inputBuffer = "";         // Buffer for incoming serial data (USB / Serial)
+String inputBuffer2 = "";        // Buffer for incoming Serial2 (RX/TX)
 
 // Create multiplexer objects
-CD74HC4067 mux1(MUX1_SIG, MUX1_S0, MUX1_S1, MUX1_S2, MUX1_S3);
-CD74HC4067 mux2(MUX2_SIG, MUX2_S0, MUX2_S1, MUX2_S2, MUX2_S3);
-CD74HC4067 mux3(MUX3_SIG, MUX3_S0, MUX3_S1, MUX3_S2, MUX3_S3);
-CD74HC4067 mux4(MUX4_SIG, MUX4_S0, MUX4_S1, MUX4_S2, MUX4_S3);
+// The CD74HC4067 library constructor takes the selector pins (s0..s3).
+// The SIG pin (common I/O) is controlled separately (we write it high/low).
+CD74HC4067 mux1(MUX1_S0, MUX1_S1, MUX1_S2, MUX1_S3);
+CD74HC4067 mux2(MUX2_S0, MUX2_S1, MUX2_S2, MUX2_S3);
+CD74HC4067 mux3(MUX3_S0, MUX3_S1, MUX3_S2, MUX3_S3);
+CD74HC4067 mux4(MUX4_S0, MUX4_S1, MUX4_S2, MUX4_S3);
 
 // --- forward declarations ---
 void setOutput(int idx, bool on);
-void processLine(String line);
+void processLine(String line, Stream &out);
 
 void setup(){
-  Serial.begin(BAUD_RATE);
-  delay(500);
-  Serial.println("ESP32 Vending Controller starting...");
 
   // Initialize multiplexer 1 pins
   pinMode(MUX1_S0, OUTPUT);
@@ -120,27 +120,43 @@ void setup(){
     setOutput(i, false);
   }
 
-  // Initialize serial communication with Raspberry Pi over USB (Serial)
-  // Serial is routed over the USB-serial adapter on most dev boards.
+  // Initialize serial communication for both USB (Serial) and hardware UART (Serial2)
+  // This allows using USB CDC (Serial) or RX/TX wiring (Serial2) to connect to the Pi.
   Serial.begin(BAUD_RATE);
+  // Start Serial2 (UART) using default UART2 pins; if you wired RX/TX to other pins
+  // change the pins via Serial2.begin(baud, config, rxPin, txPin).
+  Serial2.begin(BAUD_RATE);
   delay(100);
   Serial.println("ESP32 Vending Controller starting...");
-  Serial.println("Serial communication initialized (USB)");
+  Serial.println("Listening on Serial (USB) and Serial2 (RX/TX)");
 }
 
 void loop(){
-  // Read from Serial (USB/CDC, Raspberry Pi via USB cable)
+  // Read from Serial (USB/CDC)
   while (Serial.available()) {
     char c = Serial.read();
     if (c == '\n') {
-      // Process complete line
       if (inputBuffer.length() > 0) {
-        Serial.print("CMD: "); Serial.println(inputBuffer);
-        processLine(inputBuffer);
+        Serial.print("CMD(Serial): "); Serial.println(inputBuffer);
+        processLine(inputBuffer, Serial);
         inputBuffer = "";
       }
     } else {
       inputBuffer += c;
+    }
+  }
+
+  // Read from Serial2 (hardware RX/TX wiring to Pi)
+  while (Serial2.available()) {
+    char c = Serial2.read();
+    if (c == '\n') {
+      if (inputBuffer2.length() > 0) {
+        Serial.print("CMD(Serial2): "); Serial.println(inputBuffer2); // debug on USB
+        processLine(inputBuffer2, Serial2);
+        inputBuffer2 = "";
+      }
+    } else {
+      inputBuffer2 += c;
     }
   }
 
@@ -192,7 +208,7 @@ void setOutput(int idx, bool on) {
   }
 }
 
-void processLine(String line){
+void processLine(String line, Stream &out){
   // Simple whitespace-separated parsing
   // Commands: PULSE <slot> <ms>, OPEN <slot>, CLOSE <slot>, OPENALL, CLOSEALL, STATUS
   line.trim();
@@ -220,9 +236,9 @@ void processLine(String line){
         active_until[idx] = millis() + ms;
         outputs_state[idx] = true;
         setOutput(idx, true);
-        Serial.println("OK");
+        out.println("OK");
       } else {
-        Serial.println("ERR slot range 1..60");
+        out.println("ERR slot range 1..60");
       }
     }
   } else if (cmd == "OPEN"){
@@ -230,7 +246,7 @@ void processLine(String line){
       int slot = parts[1].toInt();
       if (slot >=1 && slot <= NUM_OUTPUTS){
         setOutput(slot-1, true);
-        Serial.println("OK");
+        out.println("OK");
       }
     }
   } else if (cmd == "CLOSE"){
@@ -238,7 +254,7 @@ void processLine(String line){
       int slot = parts[1].toInt();
       if (slot >=1 && slot <= NUM_OUTPUTS){
         setOutput(slot-1, false);
-        Serial.println("OK");
+        out.println("OK");
       }
     }
   } else if (cmd == "OPENALL"){
@@ -246,13 +262,13 @@ void processLine(String line){
       setOutput(i, true);
       outputs_state[i] = true;
     }
-    Serial.println("OK");
+    out.println("OK");
   } else if (cmd == "CLOSEALL"){
     for(int i=0; i<NUM_OUTPUTS; i++) {
       setOutput(i, false);
       outputs_state[i] = false;
     }
-    Serial.println("OK");
+    out.println("OK");
   } else if (cmd == "STATUS"){
     // return CSV of ON slots (1-based)
     String out = "";
@@ -262,8 +278,8 @@ void processLine(String line){
         out += String(i+1);
       }
     }
-    Serial.println(out);
+    out.println(out);
   } else {
-    Serial.println("ERR unknown command");
+    out.println("ERR unknown command");
   }
 }

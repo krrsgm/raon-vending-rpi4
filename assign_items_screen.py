@@ -243,9 +243,9 @@ class AssignItemsScreen(tk.Frame):
                 # Content area (compact layout)
                 content = ttk.Frame(frm)
                 content.pack(fill='both', expand=True, pady=(2,2))
-                
+
                 # Thumbnail (small)
-                thumb_lbl = ttk.Label(content, text='', width=10, height=4, anchor='center', background='#e8e8e8', relief='sunken')
+                thumb_lbl = tk.Label(content, text='', width=10, height=4, anchor='center', background='#e8e8e8', relief='sunken', font=("Helvetica", 8))
                 thumb_lbl.pack(fill='both', expand=False, pady=(0,2))
 
                 # Item info (name and details)

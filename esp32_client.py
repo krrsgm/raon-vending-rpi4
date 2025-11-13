@@ -19,44 +19,83 @@ except Exception:
 DEFAULT_PORT = 5000
 
 
-def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0):
-    """Send a command string to ESP32 and return response (strip newlines)."""
+def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0, retries=3):
+    """Send a command string to ESP32 and return response (strip newlines).
+
+    Adds simple retry/backoff logic and more robust read handling for both TCP
+    and serial transports to reduce intermittent "timed out" failures.
+    """
     # If host is a serial URI like 'serial:/dev/ttyUSB0' use UART transport
     if isinstance(host, str) and host.startswith('serial:'):
         if serial is None:
             raise RuntimeError('pyserial is required for serial transport but is not installed')
         port_name = host.split(':', 1)[1]
-        # Open/close per command to keep simple and stateless
-        try:
-            with serial.Serial(port_name, baudrate=115200, timeout=timeout) as ser:
-                ser.write((cmd.strip() + '\n').encode('utf-8'))
-                # small pause to let device respond
-                time.sleep(0.01)
-                try:
-                    line = ser.readline()
-                    if not line:
-                        return ''
-                    return line.decode('utf-8', errors='ignore').strip()
-                except Exception:
-                    return ''
-        except Exception:
-            raise
+        # Open/close per command to keep simple and stateless. Try a few times.
+        last_exc = None
+        for attempt in range(1, retries + 1):
+            try:
+                with serial.Serial(port_name, baudrate=115200, timeout=timeout) as ser:
+                    ser.reset_input_buffer()
+                    ser.reset_output_buffer()
+                    ser.write((cmd.strip() + '\n').encode('utf-8'))
+                    ser.flush()
+                    # wait up to `timeout` seconds for a response
+                    start = time.time()
+                    buf = b''
+                    while time.time() - start < timeout:
+                        chunk = ser.readline()
+                        if chunk:
+                            buf = chunk
+                            break
+                    if not buf:
+                        # no response this attempt
+                        last_exc = TimeoutError(f'serial read timeout after {timeout}s')
+                        # small backoff before retrying
+                        time.sleep(0.05)
+                        continue
+                    return buf.decode('utf-8', errors='ignore').strip()
+            except Exception as e:
+                last_exc = e
+                # small backoff before retrying
+                time.sleep(0.05)
+                continue
+        # exhausted retries
+        raise last_exc
 
     # Default: TCP transport
-    try:
-        with socket.create_connection((host, port), timeout=timeout) as s:
-            s.sendall((cmd.strip() + "\n").encode('utf-8'))
-            # Attempt to read a line; the server may or may not respond
-            s.settimeout(timeout)
-            try:
-                resp = s.recv(1024)
-                if not resp:
-                    return ''
-                return resp.decode('utf-8', errors='ignore').strip()
-            except socket.timeout:
-                return ''
-    except Exception as e:
-        raise
+    # Default: TCP transport with retries and robust read-until-newline
+    last_exc = None
+    for attempt in range(1, retries + 1):
+        try:
+            with socket.create_connection((host, port), timeout=timeout) as s:
+                s.sendall((cmd.strip() + "\n").encode('utf-8'))
+                s.settimeout(timeout)
+                # read until newline or timeout
+                resp_buf = b''
+                start = time.time()
+                while time.time() - start < timeout:
+                    try:
+                        chunk = s.recv(512)
+                    except socket.timeout:
+                        break
+                    if not chunk:
+                        break
+                    resp_buf += chunk
+                    if b'\n' in resp_buf:
+                        break
+                if not resp_buf:
+                    last_exc = TimeoutError(f'TCP read timeout after {timeout}s')
+                    time.sleep(0.05)
+                    continue
+                # return first line
+                line = resp_buf.split(b'\n', 1)[0]
+                return line.decode('utf-8', errors='ignore').strip()
+        except Exception as e:
+            last_exc = e
+            time.sleep(0.05)
+            continue
+    # exhausted retries
+    raise last_exc
 
 
 def pulse_slot(host, slot, ms=800, port=DEFAULT_PORT):

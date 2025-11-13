@@ -15,11 +15,39 @@ try:
     import serial
 except Exception:
     serial = None
+import logging
+
+# Enable simple logging for diagnostics. Consumer can configure logging as needed.
+logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
+
+# Persistent TCP connections cache: host -> socket
+_tcp_sockets = {}
+
+def _close_tcp(host):
+    s = _tcp_sockets.pop(host, None)
+    if s:
+        try:
+            s.close()
+        except Exception:
+            pass
+
+def _open_tcp(host, port, timeout):
+    """Open and cache a TCP connection to host:port."""
+    key = f"{host}:{port}"
+    s = _tcp_sockets.get(key)
+    if s:
+        return s
+    logging.info(f"Opening TCP connection to {host}:{port}")
+    s = socket.create_connection((host, port), timeout=timeout)
+    # set a read timeout; callers may change this temporarily
+    s.settimeout(timeout)
+    _tcp_sockets[key] = s
+    return s
 
 DEFAULT_PORT = 5000
 
 
-def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0, retries=3):
+def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0, retries=3, use_persistent_tcp=True):
     """Send a command string to ESP32 and return response (strip newlines).
 
     Adds simple retry/backoff logic and more robust read handling for both TCP
@@ -65,17 +93,62 @@ def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0, retries=3):
     # Default: TCP transport
     # Default: TCP transport with retries and robust read-until-newline
     last_exc = None
+    key = f"{host}:{port}"
     for attempt in range(1, retries + 1):
         try:
-            with socket.create_connection((host, port), timeout=timeout) as s:
-                s.sendall((cmd.strip() + "\n").encode('utf-8'))
-                s.settimeout(timeout)
-                # read until newline or timeout
+            if use_persistent_tcp:
+                # try to reuse an existing socket (open if needed)
+                try:
+                    s = _open_tcp(host, port, timeout)
+                except Exception as e:
+                    logging.warning(f"Persistent TCP open failed: {e}")
+                    # fall back to ephemeral connect below
+                    s = None
+
+                if s:
+                    try:
+                        # ensure socket timeout
+                        s.settimeout(timeout)
+                        s.sendall((cmd.strip() + "\n").encode('utf-8'))
+                        # read until newline or timeout
+                        resp_buf = b''
+                        start = time.time()
+                        while time.time() - start < timeout:
+                            try:
+                                chunk = s.recv(512)
+                            except socket.timeout:
+                                break
+                            if not chunk:
+                                break
+                            resp_buf += chunk
+                            if b'\n' in resp_buf:
+                                break
+                        if not resp_buf:
+                            # treat as timeout for this attempt
+                            last_exc = TimeoutError(f'TCP read timeout after {timeout}s')
+                            # close and retry (reconnect next attempt)
+                            logging.info("No TCP response, closing persistent socket and retrying")
+                            _close_tcp(key)
+                            time.sleep(0.05)
+                            continue
+                        line = resp_buf.split(b'\n', 1)[0]
+                        return line.decode('utf-8', errors='ignore').strip()
+                    except Exception as e:
+                        last_exc = e
+                        logging.warning(f"Persistent TCP operation failed: {e}")
+                        _close_tcp(key)
+                        time.sleep(0.05)
+                        continue
+
+            # fallback ephemeral TCP connect (works even if persistent failed)
+            with socket.create_connection((host, port), timeout=timeout) as s2:
+                s2.sendall((cmd.strip() + "\n").encode('utf-8'))
+                s2.settimeout(timeout)
                 resp_buf = b''
                 start = time.time()
                 while time.time() - start < timeout:
                     try:
-                        chunk = s.recv(512)
+                        chunk = s2.recv(512)
                     except socket.timeout:
                         break
                     if not chunk:
@@ -87,11 +160,11 @@ def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0, retries=3):
                     last_exc = TimeoutError(f'TCP read timeout after {timeout}s')
                     time.sleep(0.05)
                     continue
-                # return first line
                 line = resp_buf.split(b'\n', 1)[0]
                 return line.decode('utf-8', errors='ignore').strip()
         except Exception as e:
             last_exc = e
+            logging.warning(f"TCP attempt {attempt} failed: {e}")
             time.sleep(0.05)
             continue
     # exhausted retries

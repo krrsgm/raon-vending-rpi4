@@ -143,15 +143,6 @@ class AssignItemsScreen(tk.Frame):
         btn_frame.pack(side='right')
         ttk.Button(btn_frame, text="Load", command=self.load_slots).pack(side='left', padx=4)
         ttk.Button(btn_frame, text="Save", command=self.save_slots).pack(side='left', padx=4)
-        ttk.Button(btn_frame, text="Clear All", command=self.clear_all).pack(side='left', padx=4)
-        # Quick assign controls
-        self.item_var = tk.StringVar()
-        items = [it.get('name', '') for it in getattr(self.controller, 'items', [])]
-        self.item_combo = ttk.Combobox(btn_frame, textvariable=self.item_var, values=items, width=30, state='readonly')
-        if items:
-            self.item_combo.set(items[0])
-        self.item_combo.pack(side='left', padx=(8,4))
-        ttk.Button(btn_frame, text="Assign Selected", command=self.assign_selected_from_dropdown).pack(side='left')
 
         # Scrollable area for grid (vertical + horizontal support)
         canvas_container = ttk.Frame(self)

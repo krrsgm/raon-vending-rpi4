@@ -143,6 +143,7 @@ class AssignItemsScreen(tk.Frame):
         btn_frame.pack(side='right')
         ttk.Button(btn_frame, text="Load", command=self.load_slots).pack(side='left', padx=4)
         ttk.Button(btn_frame, text="Save", command=self.save_slots).pack(side='left', padx=4)
+        ttk.Button(btn_frame, text="Clear All", command=self.clear_all).pack(side='left', padx=4)
 
         # Scrollable area for grid (vertical + horizontal support)
         canvas_container = ttk.Frame(self)

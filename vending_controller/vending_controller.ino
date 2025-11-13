@@ -81,7 +81,7 @@ void setOutput(int idx, bool on);
 void processLine(String line);
 
 void setup(){
-  Serial.begin(115200);
+  Serial.begin(BAUD_RATE);
   delay(500);
   Serial.println("ESP32 Vending Controller starting...");
 
@@ -120,19 +120,18 @@ void setup(){
     setOutput(i, false);
   }
 
-  // Initialize serial communication with Raspberry Pi
+  // Initialize serial communication with Raspberry Pi over USB (Serial)
+  // Serial is routed over the USB-serial adapter on most dev boards.
   Serial.begin(BAUD_RATE);
-  Serial2.begin(BAUD_RATE);  // Use Serial2 for communication with Raspberry Pi
   delay(100);
-  
   Serial.println("ESP32 Vending Controller starting...");
-  Serial.println("Serial communication initialized.");
+  Serial.println("Serial communication initialized (USB)");
 }
 
 void loop(){
-  // Read from Serial2 (Raspberry Pi)
-  while (Serial2.available()) {
-    char c = Serial2.read();
+  // Read from Serial (USB/CDC, Raspberry Pi via USB cable)
+  while (Serial.available()) {
+    char c = Serial.read();
     if (c == '\n') {
       // Process complete line
       if (inputBuffer.length() > 0) {
@@ -151,14 +150,15 @@ void loop(){
   for(int i=0;i<NUM_OUTPUTS;i++){
     if (active_until[i] != 0 && now >= active_until[i]){
       active_until[i] = 0;
-      // clear bit
-      outputs_state &= ~( (uint64_t)1 << i );
-      changed = true;
+      // clear state for this index and turn the output off
+      if (outputs_state[i]) {
+        outputs_state[i] = false;
+        setOutput(i, false);
+        changed = true;
+      }
     }
   }
-  if (changed){
-    writeShiftRegister(outputs_state);
-  }
+  (void)changed; // changed is kept for future use / debugging
 }
 
 void setOutput(int idx, bool on) {
@@ -220,9 +220,9 @@ void processLine(String line){
         active_until[idx] = millis() + ms;
         outputs_state[idx] = true;
         setOutput(idx, true);
-        Serial2.println("OK");
+        Serial.println("OK");
       } else {
-        Serial2.println("ERR slot range 1..60");
+        Serial.println("ERR slot range 1..60");
       }
     }
   } else if (cmd == "OPEN"){
@@ -230,7 +230,7 @@ void processLine(String line){
       int slot = parts[1].toInt();
       if (slot >=1 && slot <= NUM_OUTPUTS){
         setOutput(slot-1, true);
-        Serial2.println("OK");
+        Serial.println("OK");
       }
     }
   } else if (cmd == "CLOSE"){
@@ -238,7 +238,7 @@ void processLine(String line){
       int slot = parts[1].toInt();
       if (slot >=1 && slot <= NUM_OUTPUTS){
         setOutput(slot-1, false);
-        Serial2.println("OK");
+        Serial.println("OK");
       }
     }
   } else if (cmd == "OPENALL"){
@@ -246,13 +246,13 @@ void processLine(String line){
       setOutput(i, true);
       outputs_state[i] = true;
     }
-    Serial2.println("OK");
+    Serial.println("OK");
   } else if (cmd == "CLOSEALL"){
     for(int i=0; i<NUM_OUTPUTS; i++) {
       setOutput(i, false);
       outputs_state[i] = false;
     }
-    Serial2.println("OK");
+    Serial.println("OK");
   } else if (cmd == "STATUS"){
     // return CSV of ON slots (1-based)
     String out = "";
@@ -262,8 +262,8 @@ void processLine(String line){
         out += String(i+1);
       }
     }
-    Serial2.println(out);
+    Serial.println(out);
   } else {
-    Serial2.println("ERR unknown command");
+    Serial.println("ERR unknown command");
   }
 }

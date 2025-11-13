@@ -1,0 +1,4 @@
+{
+    "currency_symbol": "₱",
+    "esp32_host": "serial:/dev/ttyUSB0"
+}

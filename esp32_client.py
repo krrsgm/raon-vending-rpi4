@@ -10,12 +10,39 @@ The module sends a single-line command and reads a single-line response.
 """
 import socket
 import sys
+import time
+try:
+    import serial
+except Exception:
+    serial = None
 
 DEFAULT_PORT = 5000
 
 
 def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0):
     """Send a command string to ESP32 and return response (strip newlines)."""
+    # If host is a serial URI like 'serial:/dev/ttyUSB0' use UART transport
+    if isinstance(host, str) and host.startswith('serial:'):
+        if serial is None:
+            raise RuntimeError('pyserial is required for serial transport but is not installed')
+        port_name = host.split(':', 1)[1]
+        # Open/close per command to keep simple and stateless
+        try:
+            with serial.Serial(port_name, baudrate=115200, timeout=timeout) as ser:
+                ser.write((cmd.strip() + '\n').encode('utf-8'))
+                # small pause to let device respond
+                time.sleep(0.01)
+                try:
+                    line = ser.readline()
+                    if not line:
+                        return ''
+                    return line.decode('utf-8', errors='ignore').strip()
+                except Exception:
+                    return ''
+        except Exception:
+            raise
+
+    # Default: TCP transport
     try:
         with socket.create_connection((host, port), timeout=timeout) as s:
             s.sendall((cmd.strip() + "\n").encode('utf-8'))

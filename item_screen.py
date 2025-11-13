@@ -170,28 +170,28 @@ class ItemScreen(tk.Frame):
             # Navigate to the cart screen after adding an item
             self.controller.show_kiosk()
 
-        def test_dispense(self):
-            """Trigger a test vend for the currently displayed item.
+    def test_dispense(self):
+        """Trigger a test vend for the currently displayed item.
 
-            This calls `self.controller.vend_slots_for(name, qty)` in a background
-            thread so the UI remains responsive while pulse commands are sent.
-            """
-            if not self.current_item:
-                return
-            name = self.current_item.get('name')
-            qty = int(self.selected_quantity)
-            # Run vending in background to avoid blocking the UI
-            thr = threading.Thread(target=self._do_test_dispense, args=(name, qty), daemon=True)
-            thr.start()
+        This calls `self.controller.vend_slots_for(name, qty)` in a background
+        thread so the UI remains responsive while pulse commands are sent.
+        """
+        if not self.current_item:
+            return
+        name = self.current_item.get('name')
+        qty = int(self.selected_quantity)
+        # Run vending in background to avoid blocking the UI
+        thr = threading.Thread(target=self._do_test_dispense, args=(name, qty), daemon=True)
+        thr.start()
 
-        def _do_test_dispense(self, name, qty):
-            try:
-                # Use controller's vend method (will send pulses to ESP32)
-                self.controller.vend_slots_for(name, qty)
-                # Notify user on main thread
-                self.after(0, lambda: tk.messagebox.showinfo('Test Dispense', f'Test dispense commands sent for {name} x{qty}'))
-            except Exception as e:
-                self.after(0, lambda: tk.messagebox.showerror('Test Dispense Error', str(e)))
+    def _do_test_dispense(self, name, qty):
+        try:
+            # Use controller's vend method (will send pulses to ESP32)
+            self.controller.vend_slots_for(name, qty)
+            # Notify user on main thread
+            self.after(0, lambda: tk.messagebox.showinfo('Test Dispense', f'Test dispense commands sent for {name} x{qty}'))
+        except Exception as e:
+            self.after(0, lambda: tk.messagebox.showerror('Test Dispense Error', str(e)))
 
     def decrease_quantity(self):
         """Decreases the selected quantity by 1, with a minimum of 1."""

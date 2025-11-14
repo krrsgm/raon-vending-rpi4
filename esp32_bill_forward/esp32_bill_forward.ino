@@ -47,7 +47,8 @@ void countPulse() {
 
 int mapPulsesToPesos(int pulses) {
   switch (pulses) {
-    case 5: return 20;
+    case 2: return 20;
+    case 5: return 50;
     case 10: return 100;
     case 20: return 200;
     case 50: return 500;

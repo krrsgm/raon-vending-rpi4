@@ -49,8 +49,10 @@ String inputBuffer = "";
 String inputBuffer2 = ""; // for Serial2 (RX/TX) data
 
 // Optional: configure Serial2 RX/TX pins; set to -1 to use defaults
-const int SERIAL2_RX_PIN = -1;
-const int SERIAL2_TX_PIN = -1;
+// Default to the same pins as in `vending_controller.ino` so wiring is consistent
+// (vending_controller uses RX=3, TX=1)
+const int SERIAL2_RX_PIN = 3;
+const int SERIAL2_TX_PIN = 1;
 
 void IRAM_ATTR one_sensor_isr() { one_count++; }
 void IRAM_ATTR five_sensor_isr() { five_count++; }

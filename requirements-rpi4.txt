@@ -1,0 +1,19 @@
+# Raspberry Pi 4 Requirements
+# Install with: pip3 install -r requirements-rpi4.txt
+# Setup: python3 -m venv venv && source venv/bin/activate && pip install -r requirements-rpi4.txt
+
+# Core dependencies
+Pillow>=10.0.0
+pyserial>=3.5
+
+# Raspberry Pi GPIO library
+RPi.GPIO>=0.7.0
+
+# DHT sensor support
+adafruit-circuitpython-dht>=3.7.10
+
+# MQTT for communication
+paho-mqtt>=1.6.1
+
+# Development/Testing
+pytest>=7.4.0

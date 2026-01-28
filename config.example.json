@@ -76,6 +76,7 @@
       }
     },
     "ir_sensors": {
+      "enabled": true,
       "sensor_1": {
         "enabled": true,
         "gpio_pin": 23
@@ -86,7 +87,8 @@
       },
       "dispense_timeout": 10.0,
       "detection_mode": "any",
-      "notes": "IR sensors positioned in bin catch area to detect items falling. detection_mode: 'any' (either sensor detects), 'all' (both must detect), 'first' (fastest detection)"
+      "simulate_detection": false,
+      "notes": "IR sensors positioned in bin catch area to detect items falling. Set simulate_detection to true for testing without physical items. detection_mode: 'any' (either sensor detects), 'all' (both must detect), 'first' (fastest detection)"
     },
     "tec_relay": {
       "enabled": true,

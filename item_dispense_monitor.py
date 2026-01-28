@@ -92,7 +92,7 @@ class ItemDispenseMonitor:
     Success is marked when ANY sensor detects beam obstruction (item falling through).
     """
     
-    def __init__(self, ir_sensor_pins=[23, 24], default_timeout=15.0, detection_mode='any'):
+    def __init__(self, ir_sensor_pins=[23, 24], default_timeout=15.0, detection_mode='any', simulate_detection=False):
         """
         Initialize item dispense monitor.
         
@@ -103,10 +103,12 @@ class ItemDispenseMonitor:
                 - 'any': Item is dispensed if ANY sensor detects obstruction (recommended for bin area)
                 - 'all': Item is dispensed only if ALL sensors detect obstruction (redundant check)
                 - 'first': Item is dispensed when FIRST sensor detects obstruction (fastest detection)
+            simulate_detection (bool): If True, simulate successful item detection for testing (no real sensors)
         """
         self.ir_sensor_pins = ir_sensor_pins
         self.default_timeout = default_timeout
         self.detection_mode = detection_mode  # 'any', 'all', or 'first'
+        self.simulate_detection = simulate_detection  # For testing without real sensors
         
         # Initialize IR sensors
         self.sensors = {}
@@ -132,6 +134,10 @@ class ItemDispenseMonitor:
         print(f"[ItemDispenseMonitor] Initialized with {len(ir_sensor_pins)} IR sensors in bin area")
         print(f"[ItemDispenseMonitor] Detection mode: {detection_mode.upper()}")
         print(f"[ItemDispenseMonitor] Default timeout: {default_timeout}s")
+        if simulate_detection:
+            print(f"[ItemDispenseMonitor] ⚠️  SIMULATION MODE ENABLED - Items will be marked as dispensed after 1s")
+        else:
+            print(f"[ItemDispenseMonitor] Using real IR sensor detection")
     
     def start_monitoring(self):
         """Start the item dispense monitoring loop."""
@@ -191,6 +197,19 @@ class ItemDispenseMonitor:
                         elapsed_time = current_time - dispense_info['start_time']
                         item_name = dispense_info['item_name']
                         timeout = dispense_info['timeout']
+                    
+                    # In simulate mode, mark as dispensed after 1 second
+                    if self.simulate_detection:
+                        if elapsed_time >= 1.0:
+                            with self._lock:
+                                if slot_id in self.active_dispenses:
+                                    del self.active_dispenses[slot_id]
+                            
+                            self._trigger_callback(self._on_item_dispensed, slot_id, True)
+                            self._trigger_callback(self._on_dispense_status,
+                                                  slot_id, f"✓ {item_name} simulated as dispensed (after {elapsed_time:.1f}s)")
+                            print(f"[ItemDispenseMonitor] ✓ Slot {slot_id}: {item_name} simulated as dispensed after {elapsed_time:.1f}s")
+                            continue
                     
                     # Read all IR sensors to detect if item has fallen into bin
                     sensor_readings = []

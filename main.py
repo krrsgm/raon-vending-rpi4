@@ -232,11 +232,13 @@ class MainApp(tk.Tk):
             
             timeout = ir_config.get('dispense_timeout', 10.0)
             detection_mode = ir_config.get('detection_mode', 'any')  # 'any', 'all', or 'first'
+            simulate_detection = ir_config.get('simulate_detection', False)  # For testing
             
             self.dispense_monitor = ItemDispenseMonitor(
                 ir_sensor_pins=ir_pins,
                 default_timeout=timeout,
-                detection_mode=detection_mode
+                detection_mode=detection_mode,
+                simulate_detection=simulate_detection
             )
             
             # Register callbacks for UI alerts
@@ -679,7 +681,7 @@ class MainApp(tk.Tk):
         dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 15.0) if isinstance(self.config, dict) else 15.0
         
         print(f'[VEND] Found {len(matches)} slots for "{item_name}": {matches}')
-        print(f'[VEND] Using ESP32 host: {host}, pulse_ms: {pulse_ms}')
+        print(f'[VEND] Using ESP32 host: {host}, pulse_ms: {pulse_ms}, timeout: {dispense_timeout}s')
         
         # Round-robin distribute pulses
         for i in range(quantity):
@@ -694,13 +696,18 @@ class MainApp(tk.Tk):
                         timeout=dispense_timeout,
                         item_name=item_name
                     )
-                    print(f'[VEND] IR sensor monitoring started for slot {slot_number}')
+                    print(f'[VEND] IR sensor monitoring started for slot {slot_number}, timeout={dispense_timeout}s')
+                else:
+                    print(f'[VEND] WARNING: Dispense monitor not available - no IR sensor verification')
                 
                 try:
                     result = pulse_slot(host, slot_number, pulse_ms)
                     print(f'[VEND] SUCCESS: Pulse sent to slot {slot_number}, response: {result}')
                 except Exception as e:
                     print(f'[VEND] CRITICAL ERROR: Failed to send pulse to ESP32 for slot {slot_number}: {e}')
+                    print(f'[VEND]   Host: {host}')
+                    print(f'[VEND]   Slot: {slot_number}')
+                    print(f'[VEND]   Pulse duration: {pulse_ms}ms')
             except Exception as e:
                 print(f'[VEND] CRITICAL ERROR: Exception vending slot {slot_number}: {e}')
 

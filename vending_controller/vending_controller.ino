@@ -1,9 +1,9 @@
 /*
   vending_controller.ino
-  ESP32 Arduino sketch to control 60 outputs using 4 x CD74HC4067 16-channel multiplexers.
+  ESP32 Arduino sketch to control 64 outputs using 4 x CD74HC4067 16-channel multiplexers.
 
   Protocol (Serial communication with Raspberry Pi):
-    - PULSE <slot> <ms>   : pulse output for <ms> milliseconds (slot numbers 1..60)
+    - PULSE <slot> <ms>   : pulse output for <ms> milliseconds (slot numbers 1..64)
     - OPEN <slot>         : set output on (continuous)
     - CLOSE <slot>        : set output off
     - OPENALL             : set all outputs on
@@ -41,28 +41,28 @@ const unsigned long BAUD_RATE = 115200;
 const int SERIAL2_RX_PIN = 3; // change to your wiring RX pin (ESP32 GPIO)
 const int SERIAL2_TX_PIN = 1; // change to your wiring TX pin (ESP32 GPIO)
 
-// Multiplexer 1 pins (Slots 1-15)
+// Multiplexer 1 pins (Slots 1-16)
 const int MUX1_S0 = 13;
 const int MUX1_S1 = 12;
 const int MUX1_S2 = 14; 
 const int MUX1_S3 = 27;
 const int MUX1_SIG = 23;
 
-// Multiplexer 2 pins (Slots 16-30)
+// Multiplexer 2 pins (Slots 17-32)
 const int MUX2_S0 = 26;
 const int MUX2_S1 = 25;
 const int MUX2_S2 = 33;
 const int MUX2_S3 = 32;
 const int MUX2_SIG = 22;
 
-// Multiplexer 3 pins (Slots 31-45)
+// Multiplexer 3 pins (Slots 33-48)
 const int MUX3_S0 = 15;
 const int MUX3_S1 = 2;
 const int MUX3_S2 = 4;
 const int MUX3_S3 = 16;
 const int MUX3_SIG = 21;
 
-// Multiplexer 4 pins (Slots 46-60)
+// Multiplexer 4 pins (Slots 49-64)
 const int MUX4_S0 = 17;
 const int MUX4_S1 = 5;
 const int MUX4_S2 = 18;
@@ -70,8 +70,8 @@ const int MUX4_S3 = 19;
 const int MUX4_SIG = 35;
 
 // Constants
-const int NUM_OUTPUTS = 60;  // Total number of motors
-const int MOTORS_PER_MUX = 15;  // We use 15 channels per multiplexer
+const int NUM_OUTPUTS = 64;  // Total number of motors (4 mux × 16 channels)
+const int MOTORS_PER_MUX = 16;  // We use all 16 channels per multiplexer
 
 // Array to track active until (millis). 0 means off.
 unsigned long active_until[NUM_OUTPUTS];
@@ -254,7 +254,7 @@ void processLine(String line, Stream &out){
     if (partCount >= 3){
       int slot = parts[1].toInt();
       unsigned long ms = (unsigned long) parts[2].toInt();
-      if (slot >=1 && slot <= 60){
+      if (slot >=1 && slot <= 64){
         int idx = slot - 1; // mapping
         // set active until and set bit
         active_until[idx] = millis() + ms;
@@ -262,7 +262,7 @@ void processLine(String line, Stream &out){
         setOutput(idx, true);
         out.println("OK");
       } else {
-        out.println("ERR slot range 1..60");
+        out.println("ERR slot range 1..64");
       }
     }
   } else if (cmd == "OPEN"){

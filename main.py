@@ -1,0 +1,756 @@
+import tkinter as tk
+from kiosk_app import KioskFrame
+from selection_screen import SelectionScreen
+import json
+from admin_screen import AdminScreen
+from assign_items_screen import AssignItemsScreen
+from item_screen import ItemScreen
+from cart_screen import CartScreen
+from fix_paths import get_absolute_path
+import subprocess
+import platform
+import os
+import sys
+
+# TEC Controller for Peltier module
+try:
+    from tec_controller import TECController
+    TEC_AVAILABLE = True
+except Exception as e:
+    TEC_AVAILABLE = False
+    print(f"TEC Controller not available: {e}")
+
+# Item Dispense Monitor with IR sensors
+try:
+    from item_dispense_monitor import ItemDispenseMonitor
+    DISPENSE_MONITOR_AVAILABLE = True
+except Exception as e:
+    DISPENSE_MONITOR_AVAILABLE = False
+    print(f"Item Dispense Monitor not available: {e}")
+
+# Raspberry Pi 4 compatibility detection
+IS_RASPBERRY_PI = False
+try:
+    with open('/proc/device-tree/model', 'r') as f:
+        model = f.read()
+        IS_RASPBERRY_PI = 'Raspberry Pi' in model
+        print(f"Platform detected: {model.strip()}")
+except (FileNotFoundError, IOError):
+    IS_RASPBERRY_PI = False
+    print(f"Platform detected: {platform.system()}")
+
+print(f"Running on: {'Raspberry Pi' if IS_RASPBERRY_PI else platform.system()}")
+
+try:
+    from esp32_client import pulse_slot
+except Exception as e:
+    # If helper missing or import fails, provide informative error
+    print(f"WARNING: Failed to import pulse_slot from esp32_client: {e}")
+    def pulse_slot(host, slot, ms=800):
+        raise RuntimeError(f"ESP32 client not available. Cannot pulse slot {slot}. Import error: {e}")
+
+
+class MainApp(tk.Tk):
+    def __init__(self, *args, **kwargs):
+        tk.Tk.__init__(self, *args, **kwargs)
+        self.cart = []
+        self.tec_controller = None  # TEC Peltier module controller
+        self.dispense_monitor = None  # Item dispense IR sensor monitor
+
+        # Start in fullscreen mode for kiosk display
+        self.is_fullscreen = True
+        # Set window title
+        self.title("RAON Vending Machine")
+        
+        # Bind Escape globally so it works in all frames
+        self.bind_all("<Escape>", self.handle_escape)
+        
+        # Special handling for Raspberry Pi
+        if platform.system() == "Linux":
+            # Remove window decorations and go fullscreen on Pi
+            self.attributes('-type', 'splash')  # Splash window = no decorations
+            self.attributes('-zoomed', '1')      # Fullscreen on Pi
+        else:
+            # On Windows: use override redirect for fullscreen effect (no decorations)
+            self.overrideredirect(True)  # Remove window decorations and title bar
+        self.items_file_path = get_absolute_path("item_list.json")
+        self.config_path = get_absolute_path("config.json")
+        self.items = self.load_items_from_json(self.items_file_path)
+        self.config = self.load_config_from_json(self.config_path)
+        self.currency_symbol = self.config.get("currency_symbol", "$")
+        self.title("Vending Machine UI")
+        # Initialize TEC Controller if enabled in config
+        self._init_tec_controller()
+        
+        # Initialize Item Dispense Monitor if enabled in config
+        self._init_dispense_monitor()
+        
+        # Apply fullscreen and rotation according to config
+        # Apply fullscreen and rotation according to config
+        always_fs = bool(self.config.get('always_fullscreen', True))
+        allow_admin_deco = bool(self.config.get('allow_decorations_for_admin', False))
+        rotate_disp = str(self.config.get('rotate_display', 'right'))
+
+        self._kiosk_config = {
+            'always_fullscreen': always_fs,
+            'allow_admin_decorations': allow_admin_deco,
+            'rotate_display': rotate_disp
+        }
+
+        # Do not force fullscreen here; per-page logic in show_frame will
+        # apply fullscreen/decoration behavior so the SelectionScreen can
+        # show window controls (minimize/maximize) on startup.
+
+        # Attempt display rotation if configured
+        def apply_rotation(direction):
+            valid = {'normal': 'normal', 'right': 'right', 'left': 'left', 'inverted': 'inverted'}
+            d = valid.get(direction, None)
+            if not d:
+                return
+            try:
+                if platform.system() == "Linux" and os.getenv("DISPLAY"):
+                    # Use xrandr to rotate screen (non-persistent)
+                    subprocess.run(["xrandr", "-o", d], check=False)
+            except Exception as e:
+                print(f"Rotation failed: {e}")
+
+        if rotate_disp:
+            # schedule shortly after startup so X is ready
+            self.after(300, lambda: apply_rotation(rotate_disp))
+
+        # Bind keys on the root window so they work regardless of focus.
+        # F11 is kept as a no-op toggle that re-applies fullscreen state.
+        try:
+            self.bind("<F11>", self.toggle_fullscreen)
+        except Exception:
+            pass
+
+        # Bind Escape globally so it works even when the window is undecorated
+        # or when focus shifts to child widgets or modal dialogs.
+        try:
+            self.bind_all("<Escape>", self.handle_escape)
+        except Exception:
+            pass
+        # Attempt to rotate the display 90 degrees to the right (if running under X on Linux).
+        # This uses `xrandr -o right` and will only run when a DISPLAY is available.
+        try:
+            if platform.system() == "Linux" and os.getenv("DISPLAY"):
+                # Run after a short delay so X is ready
+                self.after(200, lambda: subprocess.run(["xrandr", "-o", "right"]))
+        except Exception as e:
+            print(f"Display rotation request failed: {e}")
+
+        # The container is where we'll stack a bunch of frames
+        # on top of each other, then the one we want visible
+        # will be raised above the others
+        container = tk.Frame(self)
+        container.pack(side="top", fill="both", expand=True)
+        container.grid_rowconfigure(0, weight=1)
+        container.grid_columnconfigure(0, weight=1)
+
+        self.frames = {}
+        for F in (SelectionScreen, KioskFrame, AdminScreen, AssignItemsScreen, ItemScreen, CartScreen):
+            page_name = F.__name__
+            frame = F(parent=container, controller=self)
+            self.frames[page_name] = frame
+            # put all of the pages in the same location;
+            # the one on the top of the stacking order
+            # will be the one that is visible.
+            frame.grid(row=0, column=0, sticky="nsew")
+
+        self.active_frame_name = None
+        self.show_frame("SelectionScreen")
+
+    def _init_tec_controller(self):
+        """Initialize TEC Peltier module controller if enabled."""
+        if not TEC_AVAILABLE:
+            return
+        
+        try:
+            hardware_config = self.config.get('hardware', {})
+            tec_config = hardware_config.get('tec_relay', {})
+            
+            if not tec_config.get('enabled', False):
+                print("[MainApp] TEC controller disabled in config")
+                return
+            
+            # Get both DHT22 sensor pins
+            dht22_config = hardware_config.get('dht22_sensors', {})
+            sensor_pins = [
+                dht22_config.get('sensor_1', {}).get('gpio_pin', 27),
+                dht22_config.get('sensor_2', {}).get('gpio_pin', 22)
+            ]
+            
+            relay_pin = tec_config.get('gpio_pin', 26)
+            target_temp = tec_config.get('target_temp', 10.0)
+            hysteresis = tec_config.get('hysteresis', 1.0)
+            average_sensors = tec_config.get('average_sensors', True)
+            
+            self.tec_controller = TECController(
+                sensor_pins=sensor_pins,
+                relay_pin=relay_pin,
+                target_temp=target_temp,
+                temp_hysteresis=hysteresis,
+                average_sensors=average_sensors
+            )
+            
+            # Register status callback for UI panel
+            self.tec_controller.set_on_status_update(self._on_tec_status_update)
+            
+            self.tec_controller.start()
+            print("[MainApp] TEC controller initialized and started")
+            
+            # Register cleanup on window close
+            self.protocol("WM_DELETE_WINDOW", self._on_closing)
+        
+        except Exception as e:
+            print(f"[MainApp] Failed to initialize TEC controller: {e}")
+            self.tec_controller = None
+
+    def _on_closing(self):
+        """Handle window closing event - cleanup TEC controller and dispense monitor."""
+        if self.tec_controller:
+            self.tec_controller.cleanup()
+        if self.dispense_monitor:
+            self.dispense_monitor.cleanup()
+        self.destroy()
+
+    def _init_dispense_monitor(self):
+        """Initialize Item Dispense Monitor with IR sensors if enabled."""
+        if not DISPENSE_MONITOR_AVAILABLE:
+            return
+        
+        try:
+            hardware_config = self.config.get('hardware', {})
+            ir_config = hardware_config.get('ir_sensors', {})
+            
+            # Get IR sensor pins
+            ir_pins = [
+                ir_config.get('sensor_1', {}).get('gpio_pin', 23),
+                ir_config.get('sensor_2', {}).get('gpio_pin', 24)
+            ]
+            
+            timeout = ir_config.get('dispense_timeout', 10.0)
+            detection_mode = ir_config.get('detection_mode', 'any')  # 'any', 'all', or 'first'
+            
+            self.dispense_monitor = ItemDispenseMonitor(
+                ir_sensor_pins=ir_pins,
+                default_timeout=timeout,
+                detection_mode=detection_mode
+            )
+            
+            # Register callbacks for UI alerts
+            self.dispense_monitor.set_on_dispense_timeout(self._on_dispense_timeout)
+            self.dispense_monitor.set_on_item_dispensed(self._on_item_dispensed)
+            self.dispense_monitor.set_on_dispense_status(self._on_dispense_status)
+            self.dispense_monitor.set_on_ir_status_update(self._on_ir_status_update)
+            
+            self.dispense_monitor.start_monitoring()
+            print("[MainApp] Item Dispense Monitor initialized and started")
+        
+        except Exception as e:
+            print(f"[MainApp] Failed to initialize Dispense Monitor: {e}")
+            self.dispense_monitor = None
+    
+    def _on_tec_status_update(self, enabled, active, target_temp, current_temp):
+        """Handle TEC controller status updates - update status panel."""
+        try:
+            # Update status panel if it's available in the current frame
+            current_frame = self.frames.get(self.active_frame_name)
+            if hasattr(current_frame, 'status_panel'):
+                current_frame.status_panel.update_tec_status(
+                    enabled=enabled,
+                    active=active,
+                    target_temp=target_temp,
+                    current_temp=current_temp
+                )
+        except Exception as e:
+            print(f"[MainApp] Error updating TEC status panel: {e}")
+    
+    def _on_dht22_update(self, sensor_number, temp, humidity):
+        """Handle DHT22 sensor updates - update status panel."""
+        try:
+            # Update status panel if it's available in the current frame
+            current_frame = self.frames.get(self.active_frame_name)
+            if hasattr(current_frame, 'status_panel'):
+                current_frame.status_panel.update_dht22_reading(
+                    sensor_number=sensor_number,
+                    temp=temp,
+                    humidity=humidity
+                )
+        except Exception as e:
+            print(f"[MainApp] Error updating DHT22 status panel: {e}")
+    
+    def _on_ir_status_update(self, sensor_1, sensor_2, detection_mode, last_detection):
+        """Handle IR sensor status updates - update status panel."""
+        try:
+            # Update status panel if it's available in the current frame
+            current_frame = self.frames.get(self.active_frame_name)
+            if hasattr(current_frame, 'status_panel'):
+                current_frame.status_panel.update_ir_status(
+                    sensor_1=sensor_1,
+                    sensor_2=sensor_2,
+                    detection_mode=detection_mode,
+                    last_detection=last_detection
+                )
+        except Exception as e:
+            print(f"[MainApp] Error updating IR status panel: {e}")
+    
+    def _on_dispense_timeout(self, slot_id, elapsed_time):
+        """Handle dispense timeout - show alert dialog."""
+        self.show_dispense_alert(
+            title="⚠️ DISPENSE ERROR",
+            message=f"Item from Slot {slot_id}\nfailed to dispense!\n\nTimeout after {elapsed_time:.1f}s",
+            severity="error"
+        )
+    
+    def _on_item_dispensed(self, slot_id, success):
+        """Handle successful or failed item dispensing."""
+        if success:
+            print(f"[MainApp] ✓ Slot {slot_id} dispensed successfully")
+        else:
+            print(f"[MainApp] ✗ Slot {slot_id} dispense FAILED")
+    
+    def _on_dispense_status(self, slot_id, status_msg):
+        """Handle status messages from dispense monitor."""
+        print(f"[MainApp] Slot {slot_id}: {status_msg}")
+    
+    def show_dispense_alert(self, title, message, severity="warning"):
+        """
+        Show a dispense alert dialog on the screen.
+        
+        Args:
+            title (str): Alert title
+            message (str): Alert message
+            severity (str): 'error', 'warning', or 'info'
+        """
+        from tkinter import messagebox
+        
+        if severity == "error":
+            messagebox.showerror(title, message)
+        elif severity == "warning":
+            messagebox.showwarning(title, message)
+        else:
+            messagebox.showinfo(title, message)
+
+    def load_items_from_json(self, file_path):
+        """Loads item data from a JSON file."""
+        try:
+            with open(file_path, "r") as file:
+                return json.load(file)
+        except FileNotFoundError:
+            print(
+                f"Warning: {file_path} not found. Generating a new one with default items."
+            )
+            default_items = []
+            with open(file_path, "w") as file:
+                json.dump(default_items, file, indent=4)
+            return default_items
+        except json.JSONDecodeError:
+            print(f"Error: Could not decode JSON from {file_path}.")
+            return []
+
+    def load_config_from_json(self, file_path):
+        """Loads item data from a JSON file."""
+        try:
+            with open(file_path, "r") as file:
+                return json.load(file)
+        except FileNotFoundError:
+            print(
+                f"Warning: {file_path} not found. Generating a new one with default items."
+            )
+            default_config = {"currency_symbol": "$"}
+            with open(file_path, "w") as file:
+                json.dump(default_config, file, indent=4)
+            return default_config
+        except json.JSONDecodeError:
+            print(f"Error: Could not decode JSON from {file_path}.")
+            return []
+
+    def save_items_to_json(self):
+        """Saves the current item list to the JSON file."""
+        with open(self.items_file_path, "w") as file:
+            json.dump(self.items, file, indent=4)
+
+    def toggle_fullscreen(self, event=None):
+        """Toggles fullscreen mode for the SelectionScreen."""
+        if self.active_frame_name == "SelectionScreen":
+            self.is_fullscreen = not self.is_fullscreen
+            if self.is_fullscreen:
+                self.attributes("-fullscreen", True)
+                self.overrideredirect(True)
+            else:
+                self.attributes("-fullscreen", False)
+                self.overrideredirect(False)
+                self.state('normal')
+                # Set a reasonable default size
+                width = min(1024, self.winfo_screenwidth() - 100)
+                height = min(768, self.winfo_screenheight() - 100)
+                x = (self.winfo_screenwidth() - width) // 2
+                y = (self.winfo_screenheight() - height) // 2
+                self.geometry(f"{width}x{height}+{x}+{y}")
+
+    def show_frame(self, page_name):
+        """Show a frame for the given page name"""
+        frame = self.frames[page_name]
+        self.active_frame_name = page_name
+
+        # Handle window state differently for Linux/Raspberry Pi
+        is_linux = platform.system() == "Linux"
+
+        if page_name == "SelectionScreen":
+            try:
+                if is_linux:
+                    # On Pi: use normal window with decorations
+                    self.attributes('-type', 'normal')
+                    self.attributes('-zoomed', '0')
+                    self.state('normal')
+                else:
+                    # On Windows: standard window control
+                    self.overrideredirect(False)
+                    self.attributes("-fullscreen", False)
+                
+                # Set a reasonable default size
+                width = min(1024, self.winfo_screenwidth() - 100)
+                height = min(768, self.winfo_screenheight() - 100)
+                x = (self.winfo_screenwidth() - width) // 2
+                y = (self.winfo_screenheight() - height) // 2
+                self.geometry(f"{width}x{height}+{x}+{y}")
+            except Exception as e:
+                print(f"Error setting window state: {e}")
+        else:
+            try:
+                if is_linux:
+                    # On Pi: use splash window type and zoomed state
+                    self.attributes('-type', 'splash')
+                    self.attributes('-zoomed', '1')
+                    # Force fullscreen size
+                    self.geometry(f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}+0+0")
+                else:
+                    # On Windows: use standard fullscreen
+                    self.attributes("-fullscreen", True)
+                    self.overrideredirect(True)
+                    self.geometry(f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}+0+0")
+            except Exception as e:
+                print(f"Error setting fullscreen: {e}")
+
+        # Raise the frame and ensure it has focus
+        frame.tkraise()
+        self.update_idletasks()  # Process any pending window manager tasks
+        
+        # Multiple focus attempts for reliable key handling
+        for focus_method in [self.focus_force, self.focus_set, frame.focus_set]:
+            try:
+                focus_method()
+                break
+            except Exception:
+                continue
+
+        frame.event_generate("<<ShowFrame>>")
+        frame.tkraise()
+        # Force focus back to the main window so global bindings (Escape) are received
+        try:
+            self.focus_force()
+        except Exception:
+            try:
+                self.focus_set()
+            except Exception:
+                pass
+
+    def set_kiosk_mode(self, enable: bool):
+        """Enable or disable kiosk mode: fullscreen and no window decorations.
+
+        When enabled the window becomes fullscreen and window manager
+        decorations (title bar) are removed. When disabled, decorations
+        are restored and fullscreen is disabled.
+        """
+        if enable:
+            self.is_fullscreen = True
+            # Try to remove window decorations first, then set fullscreen
+            try:
+                self.overrideredirect(True)
+            except Exception:
+                pass
+            try:
+                self.attributes("-fullscreen", True)
+            except Exception:
+                pass
+            # Ensure geometry covers the entire screen
+            try:
+                self.geometry(f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}+0+0")
+            except Exception:
+                pass
+        else:
+            # Restore decorations and exit fullscreen
+            try:
+                self.attributes("-fullscreen", False)
+            except Exception:
+                pass
+            try:
+                self.overrideredirect(False)
+            except Exception:
+                pass
+            # Optionally set a sensible windowed geometry
+            try:
+                screen_width = self.winfo_screenwidth()
+                screen_height = self.winfo_screenheight()
+                width = screen_width // 2
+                height = screen_height
+                x = screen_width // 2
+                self.geometry(f"{width}x{height}+{x}+0")
+            except Exception:
+                pass
+
+    def show_kiosk(self):
+        """Show the kiosk interface and reset its state."""
+        self.frames["KioskFrame"].reset_state()
+        # First update the frame name
+        self.active_frame_name = "KioskFrame"
+        # Then show the frame (which will make it fullscreen)
+        self.show_frame("KioskFrame")
+        # Force focus back to main window for key bindings
+        self.focus_force()
+
+    def show_item(self, item_data):
+        """Passes item data to the ItemScreen and displays it."""
+        self.frames["ItemScreen"].set_item(item_data)
+        self.show_frame("ItemScreen")
+
+    def show_cart(self):
+        """Passes cart data to the CartScreen and displays it."""
+        self.frames["CartScreen"].update_cart(self.cart)
+        self.show_frame("CartScreen")
+
+    def add_to_cart(self, added_item, quantity):
+        """Adds an item and its quantity to the cart."""
+        # Check if item is already in cart
+        for item_info in self.cart:
+            if item_info["item"]["name"] == added_item["name"]:
+                item_info["quantity"] += quantity
+                return  # Exit after updating
+
+        # If not in cart, add as a new entry
+        self.cart.append({"item": added_item, "quantity": quantity})
+
+    def remove_from_cart(self, item_to_remove):
+        """Removes an item entirely from the cart and restores its quantity."""
+        item_found = None
+        for item_info in self.cart:
+            if item_info["item"]["name"] == item_to_remove["name"]:
+                item_found = item_info
+                break
+
+        if item_found:
+            self.increase_item_quantity(item_found["item"], item_found["quantity"])
+            self.cart.remove(item_found)
+            self.show_cart()  # Refresh cart screen
+
+    def increase_cart_item_quantity(self, item_to_increase):
+        """Increases an item's quantity in the cart by 1."""
+        # First, check if there is available stock
+        for master_item in self.items:
+            if master_item["name"] == item_to_increase["name"]:
+                if master_item["quantity"] > 0:
+                    master_item["quantity"] -= 1  # Reduce from master list
+                    # Now, increase in cart
+                    for cart_item_info in self.cart:
+                        if cart_item_info["item"]["name"] == item_to_increase["name"]:
+                            cart_item_info["quantity"] += 1
+                            self.show_cart()  # Refresh cart screen
+                            return
+
+    def decrease_cart_item_quantity(self, item_to_decrease):
+        """Decreases an item's quantity in the cart by 1."""
+        for item_info in self.cart:
+            if item_info["item"]["name"] == item_to_decrease["name"]:
+                if item_info["quantity"] > 1:
+                    item_info["quantity"] -= 1
+                    self.increase_item_quantity(item_to_decrease, 1)
+                    self.show_cart()  # Refresh cart screen
+                else:  # If quantity is 1, remove it completely
+                    self.remove_from_cart(item_to_decrease)
+                return
+
+    def clear_cart(self):
+        """Empties the cart."""
+        self.cart.clear()
+
+    def handle_checkout(self, checked_out_items):
+        """
+        Processes items at checkout. In a real app, this would handle payment.
+        Here, we simulate a potential failure.
+        Returns True on success, False on failure.
+        """
+
+        # TODO: Replace this simulation with real payment processing logic.
+        import random
+
+        # Simulate a 50% chance of checkout failure
+        if random.random() < 0.5:
+            print("Checkout failed. (Simulated)")
+            return False
+
+        print("Checkout successful. Items processed:", checked_out_items)
+        self.save_items_to_json()  # Persist the new quantities
+        # Attempt to vend physical slots for items that were checked out
+        try:
+            for it in checked_out_items:
+                # support both {'item': {...}, 'quantity': n} and simple dicts
+                if isinstance(it, dict) and 'item' in it and 'quantity' in it:
+                    item_obj = it['item']
+                    qty = int(it['quantity'])
+                else:
+                    item_obj = it
+                    qty = 1
+                name = item_obj.get('name') if isinstance(item_obj, dict) else None
+                if name:
+                    try:
+                        self.vend_slots_for(name, qty)
+                    except Exception as e:
+                        print(f"Vend error for {name}: {e}")
+        except Exception:
+            pass
+
+        return True
+
+    def reduce_item_quantity(self, item, quantity):
+        """Reduces the quantity of the item in the KioskFrame."""
+        kiosk_frame = self.frames["KioskFrame"]
+        for index in range(len(kiosk_frame.items)):
+            kiosk_item = kiosk_frame.items[index]
+            if kiosk_item["name"] == item["name"]:
+                print(f"Reducing {item['name']} quantity by {quantity}")
+                self.items[index]["quantity"] -= quantity
+
+    def increase_item_quantity(self, item, quantity):
+        """Increases the quantity of an item in the master item list."""
+        for master_item in self.items:
+            if master_item["name"] == item["name"]:
+                master_item["quantity"] += quantity
+                return
+
+    def add_item(self, new_item_data):
+        """
+        Adds a new item to the master list if the name doesn't already exist.
+        Saves to JSON on success. Returns True on success, False on failure.
+        """
+        new_item_name = new_item_data.get("name", "").strip()
+        # Check for existing item with the same name (case-insensitive)
+        if any(item.get("name", "").strip().lower() == new_item_name.lower() for item in self.items):
+            return False  # Item with this name already exists
+
+        self.items.append(new_item_data)
+        self.save_items_to_json()
+        # Refresh screens that show items
+        self.frames["AdminScreen"].populate_items()
+        self.frames["KioskFrame"].populate_items()
+        return True
+
+    def vend_slots_for(self, item_name, quantity=1):
+        """Find assigned slots for item_name and pulse the ESP32 outputs.
+
+        This function looks at `self.assigned_slots` (populated by AssignItemsScreen)
+        and finds all slot indices mapped to `item_name`. It sends PULSE commands
+        to the ESP32 host configured under `config['esp32_host']` (fallbacks to
+        '192.168.4.1' in AP mode). Pulses are distributed round-robin across
+        matching slots.
+        
+        Also monitors dispensing using IR sensors if dispense monitor is available.
+        """
+        assigned = getattr(self, 'assigned_slots', None)
+        if not assigned:
+            print('[VEND] ERROR: No assigned_slots available to vend from')
+            return
+        # find matching indices (1-based slot numbers)
+        matches = []
+        for idx, slot in enumerate(assigned):
+            if slot and isinstance(slot, dict) and slot.get('name') == item_name:
+                matches.append(idx+1)
+        if not matches:
+            print(f'[VEND] ERROR: No physical slots assigned for item "{item_name}"')
+            print(f'[VEND] Available slots: {[s.get("name") if isinstance(s, dict) else None for s in assigned]}')
+            return
+        host = self.config.get('esp32_host') if isinstance(self.config, dict) else None
+        if not host:
+            host = '192.168.4.1'  # common AP fallback; set in config for your network
+        pulse_ms = self.config.get('esp32_pulse_ms', 800) if isinstance(self.config, dict) else 800
+        
+        # Get dispense timeout from config
+        dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 10.0) if isinstance(self.config, dict) else 10.0
+        
+        print(f'[VEND] Found {len(matches)} slots for "{item_name}": {matches}')
+        print(f'[VEND] Using ESP32 host: {host}, pulse_ms: {pulse_ms}')
+        
+        # Round-robin distribute pulses
+        for i in range(quantity):
+            slot_number = matches[i % len(matches)]
+            try:
+                print(f'[VEND] Pulsing slot {slot_number} for {pulse_ms}ms (item: {item_name}, quantity item {i+1}/{quantity})')
+                
+                # Start monitoring dispense for this slot if dispense monitor is available
+                if self.dispense_monitor:
+                    self.dispense_monitor.start_dispense(
+                        slot_id=slot_number,
+                        timeout=dispense_timeout,
+                        item_name=item_name
+                    )
+                    print(f'[VEND] IR sensor monitoring started for slot {slot_number}')
+                
+                try:
+                    result = pulse_slot(host, slot_number, pulse_ms)
+                    print(f'[VEND] SUCCESS: Pulse sent to slot {slot_number}, response: {result}')
+                except Exception as e:
+                    print(f'[VEND] CRITICAL ERROR: Failed to send pulse to ESP32 for slot {slot_number}: {e}')
+            except Exception as e:
+                print(f'[VEND] CRITICAL ERROR: Exception vending slot {slot_number}: {e}')
+
+    def update_item(self, original_item_name, updated_item_data):
+        """Updates an existing item in the master list and saves to JSON."""
+        for i, item in enumerate(self.items):
+            if item["name"] == original_item_name:
+                self.items[i] = updated_item_data
+                break
+        self.save_items_to_json()
+        self.frames["AdminScreen"].populate_items()
+        self.frames["KioskFrame"].populate_items()
+
+    def remove_item(self, item_to_remove):
+        """Removes an item from the master list and saves to JSON."""
+        self.items.remove(item_to_remove)
+        self.save_items_to_json()
+        self.frames["AdminScreen"].populate_items()
+
+    def show_admin(self):
+        self.show_frame("AdminScreen")
+
+    def show_assign_items(self):
+        """Show the AssignItemsScreen and ensure it loads the latest slots."""
+        frame = self.frames.get("AssignItemsScreen")
+        if frame:
+            try:
+                frame.load_slots()
+            except Exception:
+                pass
+        self.show_frame("AssignItemsScreen")
+
+    def handle_escape(self, event=None):
+        """Handle Escape key press for navigation."""
+        print(f"Escape pressed in frame: {self.active_frame_name}")  # Debug print
+        
+        if self.grab_current():
+            return
+
+        # From Item/Cart screens, go back to Kiosk
+        if self.active_frame_name in ["ItemScreen", "CartScreen"]:
+            self.show_kiosk()  # Use show_kiosk instead of show_frame
+        # From Kiosk/Admin go back to Selection
+        elif self.active_frame_name in ["KioskFrame", "AdminScreen"]:
+            # Handle window state in show_frame
+            self.show_frame("SelectionScreen")
+        else:
+            self.destroy()
+
+
+if __name__ == "__main__":
+    app = MainApp()
+    app.mainloop()

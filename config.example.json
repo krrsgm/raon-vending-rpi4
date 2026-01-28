@@ -1,0 +1,100 @@
+{
+  "_comment": "RAON Vending Machine Configuration - Raspberry Pi 4",
+  "currency_symbol": "₱",
+  "machine_name": "RAON",
+  "machine_subtitle": "Rapid Access Outlet for Electronic Necessities",
+  "header_logo_path": "./logo.png",
+  "always_fullscreen": true,
+  "allow_decorations_for_admin": false,
+  "rotate_display": "normal",
+  
+  "esp32_host": "192.168.4.1",
+  
+  "items": {
+    "image_directory": "./images",
+    "default_image": null,
+    "image_format": "png",
+    "notes": "Item images are configured in item_list.json. Use relative paths like './images/item_name.png'"
+  },
+
+  "logging": {
+    "enabled": true,
+    "log_directory": "./logs",
+    "log_level": "INFO",
+    "max_log_size_mb": 10,
+    "backup_count": 5,
+    "transaction_log": {
+      "enabled": true,
+      "log_filename": "transactions.log"
+    },
+    "error_log": {
+      "enabled": true,
+      "log_filename": "errors.log"
+    },
+    "dispense_log": {
+      "enabled": true,
+      "log_filename": "dispense.log"
+    },
+    "sensor_log": {
+      "enabled": true,
+      "log_filename": "sensors.log"
+    }
+  },
+  
+  "coin_hoppers": {
+    "one_peso": {
+      "motor_pin": 5,
+      "sensor_pin": 6
+    },
+    "five_peso": {
+      "motor_pin": 6,
+      "sensor_pin": 5
+    }
+  },
+  
+  "hardware": {
+    "coin_acceptor": {
+      "enabled": true,
+      "gpio_pin": 17,
+      "debounce_ms": 50
+    },
+    "bill_acceptor": {
+      "enabled": true,
+      "serial_port": "/dev/ttyACM0",
+      "baudrate": 115200,
+      "proxy_via_esp32": true,
+      "notes": "If using Arduino Uno over USB, /dev/ttyACM0 is typical. If using GPIO UART, set serial_port to /dev/serial0 and disable USB serial."
+    },
+    "dht22_sensors": {
+      "sensor_1": {
+        "enabled": true,
+        "gpio_pin": 27
+      },
+      "sensor_2": {
+        "enabled": true,
+        "gpio_pin": 22
+      }
+    },
+    "ir_sensors": {
+      "sensor_1": {
+        "enabled": true,
+        "gpio_pin": 23
+      },
+      "sensor_2": {
+        "enabled": true,
+        "gpio_pin": 24
+      },
+      "dispense_timeout": 10.0,
+      "detection_mode": "any",
+      "notes": "IR sensors positioned in bin catch area to detect items falling. detection_mode: 'any' (either sensor detects), 'all' (both must detect), 'first' (fastest detection)"
+    },
+    "tec_relay": {
+      "enabled": true,
+      "gpio_pin": 26,
+      "target_temp": 10.0,
+      "hysteresis": 1.0,
+      "average_sensors": true,
+      "notes": "TEC Peltier module controller. Monitors both DHT22 sensors. Target: 10°C with ±1°C hysteresis. Set average_sensors to false to use maximum temperature instead of average."
+    }
+  }
+}

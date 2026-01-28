@@ -1,0 +1,267 @@
+import serial
+import threading
+import time
+from queue import Queue
+import re
+
+class CoinHopper:
+    """Controls coin hoppers for dispensing change via Arduino serial interface.
+    
+    Communicates with arduino_bill_forward.ino to control:
+    - 1 peso coin hopper
+    - 5 peso coin hopper
+    
+    Commands sent to Arduino:
+    - DISPENSE_AMOUNT <amount> [timeout_ms] : Auto-calculate and dispense coins
+    - DISPENSE_DENOM <denom> <count> [timeout_ms] : Dispense exact coin count
+    - COIN_OPEN <denom> : Open hopper manually
+    - COIN_CLOSE <denom> : Close hopper manually
+    - COIN_STATUS : Check hopper status
+    """
+    
+    def __init__(self, serial_port='/dev/ttyUSB0', baudrate=115200, timeout=2.0):
+        """Initialize coin hopper controller via serial.
+        
+        Args:
+            serial_port: Serial port connected to arduino_bill_forward
+            baudrate: Serial communication speed (default 115200)
+            timeout: Serial read timeout in seconds
+        """
+        self.serial_port = serial_port
+        self.baudrate = baudrate
+        self.timeout = timeout
+        self.serial_conn = None
+        self.is_running = False
+        self.read_thread = None
+        self.response_queue = Queue()
+        self._lock = threading.Lock()
+        
+    def connect(self):
+        """Connect to Arduino via serial port.
+        
+        Returns:
+            True if connection successful, False otherwise
+        """
+        try:
+            self.serial_conn = serial.Serial(
+                port=self.serial_port,
+                baudrate=self.baudrate,
+                bytesize=serial.EIGHTBITS,
+                stopbits=serial.STOPBITS_ONE,
+                parity=serial.PARITY_NONE,
+                timeout=self.timeout
+            )
+            self.is_running = True
+            print(f"[CoinHopper] Connected to {self.serial_port} @ {self.baudrate} baud")
+            return True
+        except Exception as e:
+            print(f"[CoinHopper] Failed to connect: {e}")
+            return False
+
+    def send_command(self, cmd):
+        """Send command to Arduino and wait for response.
+        
+        Args:
+            cmd: Command string (without newline)
+            
+        Returns:
+            Response from Arduino or None on timeout
+        """
+        if not self.serial_conn or not self.serial_conn.is_open:
+            print("[CoinHopper] Serial connection not open")
+            return None
+            
+        try:
+            with self._lock:
+                # Clear any stale data
+                self.serial_conn.reset_input_buffer()
+                self.serial_conn.reset_output_buffer()
+                
+                # Send command
+                self.serial_conn.write((cmd.strip() + '\n').encode('utf-8'))
+                self.serial_conn.flush()
+                
+                # Read response with timeout
+                start = time.time()
+                response = b''
+                while time.time() - start < self.timeout:
+                    if self.serial_conn.in_waiting:
+                        chunk = self.serial_conn.read(1)
+                        response += chunk
+                        if chunk == b'\n':
+                            break
+                
+                if response:
+                    return response.decode('utf-8', errors='ignore').strip()
+                else:
+                    print(f"[CoinHopper] No response to command: {cmd}")
+                    return None
+        except Exception as e:
+            print(f"[CoinHopper] Error sending command: {e}")
+            return None
+
+    def calculate_change(self, amount):
+        """Calculate optimal coin combination for change.
+        
+        Args:
+            amount: Amount of change needed in pesos
+            
+        Returns:
+            Tuple of (num_five_peso, num_one_peso) coins needed
+        """
+        # Use as many 5 peso coins as possible, then ones for remainder
+        num_five = amount // 5
+        remainder = amount % 5
+        num_one = remainder
+        
+        return (num_five, num_one)
+
+    def dispense_change(self, amount, timeout_ms=30000, callback=None):
+        """Dispense specified amount of change using minimum coins.
+        
+        Args:
+            amount: Amount to dispense in pesos
+            timeout_ms: Timeout for dispensing in milliseconds
+            callback: Optional function to call with status updates
+            
+        Returns:
+            Tuple of (success, dispensed_amount, error_message)
+        """
+        if amount <= 0:
+            return (True, 0, "No change needed")
+        
+        if not self.serial_conn or not self.serial_conn.is_open:
+            return (False, 0, "Serial connection not open")
+        
+        try:
+            # Send command to Arduino
+            cmd = f"DISPENSE_AMOUNT {amount} {timeout_ms}"
+            if callback:
+                callback(f"Sending: {cmd}")
+            
+            response = self.send_command(cmd)
+            
+            if not response:
+                return (False, 0, "No response from Arduino")
+            
+            # Parse responses
+            if "OK" in response or "DONE" in response:
+                # Extract dispensed amount from response if available
+                # Expected format: "DONE FIVE 4" or "DONE ONE 3"
+                if "DONE" in response:
+                    if callback:
+                        callback(f"Dispensing complete: {response}")
+                    return (True, amount, "Change dispensed successfully")
+                else:
+                    return (True, amount, response)
+            elif "ERR" in response or "TIMEOUT" in response:
+                # Try to extract how many coins were dispensed
+                match = re.search(r'dispensed:(\d+)', response)
+                dispensed = int(match.group(1)) if match else 0
+                return (False, dispensed, f"Dispensing failed: {response}")
+            else:
+                return (True, amount, f"Arduino response: {response}")
+                
+        except Exception as e:
+            return (False, 0, f"Error dispensing change: {str(e)}")
+
+    def dispense_coins(self, denomination, count, timeout_ms=30000, callback=None):
+        """Dispense specific denomination and count.
+        
+        Args:
+            denomination: 1 or 5 (peso coins)
+            count: Number of coins to dispense
+            timeout_ms: Timeout for dispensing in milliseconds
+            callback: Optional function to call with status updates
+            
+        Returns:
+            Tuple of (success, dispensed_count, error_message)
+        """
+        if denomination not in (1, 5):
+            return (False, 0, f"Invalid denomination: {denomination}")
+        
+        if count <= 0:
+            return (False, 0, "Count must be greater than 0")
+        
+        if not self.serial_conn or not self.serial_conn.is_open:
+            return (False, 0, "Serial connection not open")
+        
+        try:
+            cmd = f"DISPENSE_DENOM {denomination} {count} {timeout_ms}"
+            if callback:
+                callback(f"Sending: {cmd}")
+            
+            response = self.send_command(cmd)
+            
+            if not response:
+                return (False, 0, "No response from Arduino")
+            
+            if "OK" in response or "DONE" in response:
+                if callback:
+                    callback(f"Dispensing complete: {response}")
+                return (True, count, f"Dispensed {count} {denomination}-peso coins")
+            elif "ERR" in response or "TIMEOUT" in response:
+                match = re.search(r'dispensed:(\d+)', response)
+                dispensed = int(match.group(1)) if match else 0
+                return (False, dispensed, f"Dispensing failed: {response}")
+            else:
+                return (True, count, f"Arduino response: {response}")
+                
+        except Exception as e:
+            return (False, 0, f"Error dispensing coins: {str(e)}")
+
+    def get_status(self):
+        """Get current hopper status.
+        
+        Returns:
+            Status string from Arduino or None on error
+        """
+        if not self.serial_conn or not self.serial_conn.is_open:
+            return None
+        
+        response = self.send_command("COIN_STATUS")
+        return response
+
+    def open_hopper(self, denomination):
+        """Manually open a hopper.
+        
+        Args:
+            denomination: 1 or 5
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if denomination not in (1, 5):
+            return False
+        
+        response = self.send_command(f"COIN_OPEN {denomination}")
+        return response and "OK" in response
+
+    def close_hopper(self, denomination):
+        """Manually close a hopper.
+        
+        Args:
+            denomination: 1 or 5
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if denomination not in (1, 5):
+            return False
+        
+        response = self.send_command(f"COIN_CLOSE {denomination}")
+        return response and "OK" in response
+
+    def disconnect(self):
+        """Close serial connection."""
+        try:
+            self.is_running = False
+            if self.serial_conn and self.serial_conn.is_open:
+                self.serial_conn.close()
+                print("[CoinHopper] Serial connection closed")
+        except Exception as e:
+            print(f"[CoinHopper] Error during disconnect: {e}")
+    
+    def cleanup(self):
+        """Alias for disconnect for compatibility."""
+        self.disconnect()

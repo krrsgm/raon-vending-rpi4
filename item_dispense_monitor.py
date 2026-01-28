@@ -49,16 +49,24 @@ class IRSensor:
     
     def read(self):
         """
-        Read current item presence state.
+        Read current item presence state with debouncing.
         
         Returns:
             bool: True if item detected, False otherwise
         """
         try:
-            # Read GPIO pin (typically HIGH = item present, LOW = empty)
-            state = GPIO.input(self.pin)
+            # Take multiple readings for stability
+            readings = []
+            for _ in range(3):
+                state = GPIO.input(self.pin)
+                readings.append(state == GPIO.HIGH)
+                time.sleep(0.05)  # Small delay between reads
+            
+            # Use majority vote for debouncing
+            item_present = sum(readings) >= 2
+            
             with self._lock:
-                self.item_present = (state == GPIO.HIGH)
+                self.item_present = item_present
             return self.item_present
         except Exception as e:
             print(f"[IRSensor] Error reading {self.sensor_name}: {e}")
@@ -81,7 +89,7 @@ class ItemDispenseMonitor:
     Success is marked when EITHER sensor detects item absence (item has reached bin).
     """
     
-    def __init__(self, ir_sensor_pins=[23, 24], default_timeout=10.0, detection_mode='any'):
+    def __init__(self, ir_sensor_pins=[23, 24], default_timeout=15.0, detection_mode='any'):
         """
         Initialize item dispense monitor.
         

@@ -676,7 +676,7 @@ class MainApp(tk.Tk):
         pulse_ms = self.config.get('esp32_pulse_ms', 800) if isinstance(self.config, dict) else 800
         
         # Get dispense timeout from config
-        dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 10.0) if isinstance(self.config, dict) else 10.0
+        dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 15.0) if isinstance(self.config, dict) else 15.0
         
         print(f'[VEND] Found {len(matches)} slots for "{item_name}": {matches}')
         print(f'[VEND] Using ESP32 host: {host}, pulse_ms: {pulse_ms}')

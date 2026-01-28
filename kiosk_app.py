@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import font as tkfont, ttk
-from PIL import Image, ImageTk
+from PIL import Image, Image
 import os
 from dht11_handler import DHT22Display
 from system_status_panel import SystemStatusPanel

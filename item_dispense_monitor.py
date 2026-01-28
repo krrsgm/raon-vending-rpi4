@@ -81,13 +81,15 @@ class ItemDispenseMonitor:
     """
     Monitors item dispensing using IR sensors positioned at bin catch area.
     
-    Detects when items fall into the catch area by monitoring for IR sensor obstruction.
+    Detects when items fall into the catch area by monitoring for IR beam obstruction.
     Provides timeout alerts if items are not dispensed within expected time.
     
-    IR Sensors are positioned in the bin catch area to detect items falling down.
-    IR sensors are normally CLEAR (unblocked) when no item is present.
-    When an item falls through and blocks the sensor, it reads as BLOCKED.
-    Success is marked when ANY sensor detects item presence (item has reached catch area).
+    IR Sensors with pull-up resistors (typical configuration):
+    - HIGH (True) = clear/unobstructed beam (no item present)
+    - LOW (False) = blocked/obstructed beam (item blocking sensor)
+    
+    When an item falls through the catch area, it blocks the IR beam momentarily.
+    Success is marked when ANY sensor detects beam obstruction (item falling through).
     """
     
     def __init__(self, ir_sensor_pins=[23, 24], default_timeout=15.0, detection_mode='any'):
@@ -98,9 +100,9 @@ class ItemDispenseMonitor:
             ir_sensor_pins (list): GPIO pins for IR sensors (default [GPIO23, GPIO24])
             default_timeout (float): Default timeout in seconds for item dispensing
             detection_mode (str): 'any' (either sensor), 'all' (both sensors), or 'first' (first to detect)
-                - 'any': Item is dispensed if ANY sensor detects presence/blocking (recommended for bin area)
-                - 'all': Item is dispensed only if ALL sensors detect presence/blocking (redundant check)
-                - 'first': Item is dispensed when FIRST sensor detects presence/blocking (fastest detection)
+                - 'any': Item is dispensed if ANY sensor detects obstruction (recommended for bin area)
+                - 'all': Item is dispensed only if ALL sensors detect obstruction (redundant check)
+                - 'first': Item is dispensed when FIRST sensor detects obstruction (fastest detection)
         """
         self.ir_sensor_pins = ir_sensor_pins
         self.default_timeout = default_timeout
@@ -227,8 +229,8 @@ class ItemDispenseMonitor:
                         print(f"[ItemDispenseMonitor] ✓ Slot {slot_id}: {item_name} detected in bin after {elapsed_time:.1f}s")
                         continue
                     
-                    # Log sensor status for debugging
-                    sensor_status = ", ".join([f"GPIO{pin}={'BLOCKED' if present is True else 'CLEAR' if present is False else 'ERROR'}" 
+                    # Log sensor status for debugging (True=clear, False=blocked)
+                    sensor_status = ", ".join([f"GPIO{pin}={'CLEAR' if present is True else 'BLOCKED' if present is False else 'ERROR'}" 
                                               for pin, present in sensor_readings])
                     
                     # Check for timeout
@@ -253,14 +255,19 @@ class ItemDispenseMonitor:
         """
         Check if item has been detected based on detection mode.
         
-        IR sensors positioned in bin catch area will be BLOCKED (HIGH) when item passes through.
-        Detection succeeds when item is detected in the catch area.
+        IR sensors with pull-up resistors:
+        - HIGH (True) when no obstruction (beam clear)
+        - LOW (False) when item blocks beam
+        
+        An item falling into the catch area will BLOCK the beam (LOW/False).
+        Success is marked when ANY sensor detects item presence (beam blocked).
         
         Args:
             sensor_readings: List of (gpio_pin, item_present) tuples
+                where item_present=True means clear, item_present=False means blocked
             
         Returns:
-            bool: True if item detected (item is present in catch area), False otherwise
+            bool: True if item detected (blocking any sensor), False otherwise
         """
         if not sensor_readings:
             return False
@@ -272,20 +279,21 @@ class ItemDispenseMonitor:
             return False  # All readings are errors
         
         if self.detection_mode == 'any':
-            # Item detected if ANY sensor shows item present (blocked) (recommended for bin area)
-            return any(present is True for pin, present in valid_readings)
+            # Item detected if ANY sensor shows obstruction (blocked beam / False)
+            # In a bin catch area, item passes through and blocks at least one sensor
+            return any(present is False for pin, present in valid_readings)
         
         elif self.detection_mode == 'all':
-            # Item detected only if ALL sensors show item present (blocked) (redundant verification)
-            return all(present is True for pin, present in valid_readings) and len(valid_readings) > 0
+            # Item detected only if ALL sensors show obstruction (blocked beams)
+            return all(present is False for pin, present in valid_readings) and len(valid_readings) > 0
         
         elif self.detection_mode == 'first':
-            # Item detected as soon as FIRST sensor shows item present (blocked) (fastest)
-            return any(present is True for pin, present in valid_readings)
+            # Item detected as soon as FIRST sensor shows obstruction (blocked beam)
+            return any(present is False for pin, present in valid_readings)
         
         else:
             # Default to 'any' mode
-            return any(present is True for pin, present in valid_readings)
+            return any(present is False for pin, present in valid_readings)
     
     def _trigger_callback(self, callback, *args):
         """Safely trigger a callback if registered."""

@@ -65,6 +65,7 @@ def _open_serial_with_sudo(port_name, baudrate, timeout, cmd, retries=1):
     python_code = f"""
 import serial
 import time
+import sys
 port_name = {repr(port_name)}
 baudrate = {baudrate}
 timeout = {timeout}
@@ -74,21 +75,27 @@ try:
     with serial.Serial(port_name, baudrate=baudrate, timeout=timeout) as ser:
         ser.reset_input_buffer()
         ser.reset_output_buffer()
+        time.sleep(0.05)
         cmd_bytes = (cmd.strip() + '\\n').encode('utf-8')
         ser.write(cmd_bytes)
         ser.flush()
+        time.sleep(0.05)
         start = time.time()
         buf = b''
         while time.time() - start < timeout:
-            chunk = ser.readline()
-            if chunk:
-                buf = chunk
-                break
+            if ser.in_waiting > 0:
+                chunk = ser.read(ser.in_waiting)
+                if chunk:
+                    buf += chunk
+                    if b'\\n' in buf:
+                        break
+            else:
+                time.sleep(0.01)
         if buf:
             print(buf.decode('utf-8', errors='ignore').strip())
         sys.exit(0)
 except Exception as e:
-    print(f"ERROR: {{e}}", file=__import__('sys').stderr)
+    print(f"ERROR: {{e}}", file=sys.stderr)
     sys.exit(1)
 """
     

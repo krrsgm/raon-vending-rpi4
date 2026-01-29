@@ -8,7 +8,7 @@ except Exception:
 import json
 import os
 import io
-from esp32_client import pulse_slot
+from esp32_client import pulse_slot, send_command
 
 def pil_to_photoimage(pil_image):
     """Convert PIL Image to Tkinter PhotoImage using PPM format (no ImageTk needed)"""
@@ -302,6 +302,14 @@ class AssignItemsScreen(tk.Frame):
             self.refresh_slot(idx)
             self._publish_assignments()
 
+    def _check_esp32_connection(self, esp32_host):
+        """Check if ESP32 is reachable by sending a STATUS command."""
+        try:
+            result = send_command(esp32_host, "STATUS", timeout=1.0)
+            return True, result
+        except Exception as e:
+            return False, str(e)
+
     def test_motor(self, idx):
         """Test the motor for the given slot by pulsing it."""
         slot_num = idx + 1  # Slots are 1-indexed
@@ -310,11 +318,72 @@ class AssignItemsScreen(tk.Frame):
             config = getattr(self.controller, 'config', {})
             esp32_host = config.get('esp32_host', '192.168.4.1')
             
+            if not esp32_host:
+                messagebox.showerror(
+                    "Motor Test Error", 
+                    "ESP32 host not configured.\nSet 'esp32_host' in config.json (e.g., 'serial:/dev/ttyUSB0' or '192.168.4.1')",
+                    parent=self
+                )
+                return
+            
+            print(f"[TEST MOTOR] Testing slot {slot_num} using ESP32 host: {esp32_host}")
+            
+            # First check if ESP32 is reachable
+            print(f"[TEST MOTOR] Checking ESP32 connection...")
+            is_connected, status_msg = self._check_esp32_connection(esp32_host)
+            
+            if not is_connected:
+                messagebox.showerror(
+                    "Motor Test - Connection Failed", 
+                    f"Cannot reach ESP32 at {esp32_host}\n\nConnection Error: {status_msg}\n\nPlease check:\n- ESP32 is powered on and connected\n- Serial port is correct (if using serial)\n- Network is connected (if using TCP)\n- USB cable is properly connected",
+                    parent=self
+                )
+                print(f"[TEST MOTOR] FAILED: Cannot connect to ESP32: {status_msg}")
+                return
+            
+            print(f"[TEST MOTOR] ESP32 connection OK. Status: {status_msg}")
+            
             # Pulse the motor for 800ms
-            pulse_slot(esp32_host, slot_num, 800)
-            messagebox.showinfo("Motor Test", f"Slot {slot_num} motor pulsed for 800ms", parent=self)
+            print(f"[TEST MOTOR] Pulsing slot {slot_num}...")
+            result = pulse_slot(esp32_host, slot_num, 800)
+            
+            if result:
+                messagebox.showinfo(
+                    "✓ Motor Test Success", 
+                    f"Slot {slot_num} motor pulsed for 800ms\n\nESP32 Response: {result}",
+                    parent=self
+                )
+                print(f"[TEST MOTOR] SUCCESS: Slot {slot_num} pulsed, response: {result}")
+            else:
+                messagebox.showinfo(
+                    "✓ Motor Test Success", 
+                    f"Slot {slot_num} motor pulsed for 800ms",
+                    parent=self
+                )
+                print(f"[TEST MOTOR] SUCCESS: Slot {slot_num} pulsed (no response)")
+                
+        except TimeoutError as e:
+            messagebox.showerror(
+                "Motor Test - Connection Timeout", 
+                f"ESP32 did not respond in time for slot {slot_num}\n\nHost: {esp32_host}\nError: {str(e)}\n\nPlease check connection and try again.",
+                parent=self
+            )
+            print(f"[TEST MOTOR] TIMEOUT on slot {slot_num}: {str(e)}")
+        except ConnectionRefusedError as e:
+            messagebox.showerror(
+                "Motor Test - Connection Refused", 
+                f"ESP32 refused connection for slot {slot_num}\n\nHost: {esp32_host}\n\nThe ESP32 may not be running or listening on this port.",
+                parent=self
+            )
+            print(f"[TEST MOTOR] CONNECTION REFUSED on slot {slot_num}: {str(e)}")
         except Exception as e:
-            messagebox.showerror("Motor Test Error", f"Failed to test motor {slot_num}: {str(e)}", parent=self)
+            error_msg = str(e)
+            messagebox.showerror(
+                "Motor Test Error", 
+                f"Failed to test motor for slot {slot_num}:\n\n{error_msg}\n\nHost: {esp32_host}",
+                parent=self
+            )
+            print(f"[TEST MOTOR] ERROR on slot {slot_num}: {error_msg}")
 
     def clear_slot(self, idx):
         self.slots[idx] = None

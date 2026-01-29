@@ -99,6 +99,11 @@ def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0, retries=3, use_persi
                     response = buf.decode('utf-8', errors='ignore').strip()
                     logging.info(f"Serial response: {response}")
                     return response
+            except serial.SerialException as e:
+                # Serial port error (port not found, permission denied, etc.)
+                last_exc = e
+                logging.error(f"Serial port error on {port_name}: {e}")
+                raise  # Don't retry serial port errors, they're usually permanent
             except Exception as e:
                 last_exc = e
                 logging.warning(f"Serial attempt {attempt} failed: {e}")

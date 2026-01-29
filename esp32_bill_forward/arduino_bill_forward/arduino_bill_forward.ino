@@ -27,7 +27,7 @@
 // --- Bill Acceptor Pin Configuration ---
 volatile int pulseCount = 0;
 unsigned long lastPulseTime = 0;
-const int pulsePin = 8;
+const int pulsePin = 7;
 const unsigned long timeout = 1000; // 1 second
 
 bool waitingForBill = false;
@@ -191,9 +191,11 @@ void countPulse() {
 
 int mapPulsesToPesos(int pulses) {
   switch (pulses) {
-    case 10: return 100;
-    case 20: return 200;
-    default: return 0;  // Only accept 100 and 200 peso bills
+    case 2: return 20;    // 20 peso bill
+    case 5: return 50;    // 50 peso bill
+    case 10: return 100;  // 100 peso bill
+    case 50: return 500;  // 500 peso bill
+    default: return 0;    // Only accept 20, 50, 100, and 500 peso bills
   }
 }
 

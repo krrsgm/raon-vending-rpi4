@@ -130,25 +130,38 @@ def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0, retries=3, use_persi
                 with serial.Serial(port_name, baudrate=115200, timeout=timeout) as ser:
                     ser.reset_input_buffer()
                     ser.reset_output_buffer()
+                    
+                    # Add small delay to ensure serial port is ready
+                    time.sleep(0.05)
+                    
                     cmd_bytes = (cmd.strip() + '\n').encode('utf-8')
                     logging.debug(f"Sending to serial: {cmd_bytes}")
                     ser.write(cmd_bytes)
                     ser.flush()
+                    
                     # wait up to `timeout` seconds for a response
                     start = time.time()
                     buf = b''
                     while time.time() - start < timeout:
-                        chunk = ser.readline()
-                        if chunk:
-                            buf = chunk
-                            break
+                        # Use in_waiting to check if data is available
+                        if ser.in_waiting > 0:
+                            chunk = ser.readline()
+                            if chunk:
+                                buf += chunk
+                                # Stop if we got a newline (complete line)
+                                if b'\n' in buf:
+                                    break
+                        else:
+                            time.sleep(0.01)  # Small sleep to avoid busy-wait
+                    
                     if not buf:
                         # no response this attempt
                         last_exc = TimeoutError(f'serial read timeout after {timeout}s on attempt {attempt}/{retries}')
                         logging.warning(f"Serial timeout on {port_name}, attempt {attempt}/{retries}")
                         # small backoff before retrying
-                        time.sleep(0.05)
+                        time.sleep(0.1)
                         continue
+                    
                     response = buf.decode('utf-8', errors='ignore').strip()
                     logging.info(f"Serial response: {response}")
                     return response

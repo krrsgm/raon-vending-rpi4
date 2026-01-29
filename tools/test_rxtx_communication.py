@@ -85,10 +85,13 @@ def test_serial_connection(port_name, baudrate=115200, timeout=2.0):
         
         while time.time() - start_time < timeout:
             if ser.in_waiting > 0:
-                chunk = ser.read(1)
+                chunk = ser.read(ser.in_waiting)
                 response += chunk
-                if response.endswith(b'\n'):
+                print(f"      Received {len(chunk)} bytes: {repr(chunk)}")
+                if b'\n' in response:
                     break
+            else:
+                time.sleep(0.01)
         
         elapsed = time.time() - start_time
         
@@ -108,10 +111,13 @@ def test_serial_connection(port_name, baudrate=115200, timeout=2.0):
             start_time = time.time()
             while time.time() - start_time < timeout:
                 if ser.in_waiting > 0:
-                    chunk = ser.read(1)
+                    chunk = ser.read(ser.in_waiting)
                     response += chunk
-                    if response.endswith(b'\n'):
+                    print(f"      Received {len(chunk)} bytes: {repr(chunk)}")
+                    if b'\n' in response:
                         break
+                else:
+                    time.sleep(0.01)
             
             if response:
                 response_str = response.decode('utf-8', errors='ignore').strip()

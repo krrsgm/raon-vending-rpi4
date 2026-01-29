@@ -226,7 +226,7 @@ class KioskFrame(tk.Frame):
 
         max_q = max(0, int(item_data.get('quantity', 0)))
         qty_var = tk.IntVar(value=1)
-        spin = tk.Spinbox(controls, from_=1, to=max(1, max_q), width=4, textvariable=qty_var)
+        spin = tk.Spinbox(controls, from_=1, to=max(1, max_q), width=4, textvariable=qty_var, bg='white', fg='#2222a8', activebackground='#2222a8', activeforeground='white', buttonbackground='#2222a8')
         spin.pack(side='left', padx=(0,6))
 
         def on_add(qvar=qty_var, data=item_data):
@@ -240,7 +240,7 @@ class KioskFrame(tk.Frame):
             except Exception:
                 pass
 
-        add_btn = tk.Button(controls, text='Add', bg='#2b7be4', fg='white', relief='flat', command=on_add)
+        add_btn = tk.Button(controls, text='Add', bg='white', fg='#2222a8', relief='flat', command=on_add)
         add_btn.pack(side='left')
 
         # Bind click/drag behavior for cards that are purchasable
@@ -303,7 +303,7 @@ class KioskFrame(tk.Frame):
 
         right_frame = tk.Frame(self.header, bg=header_bg)
         right_frame.pack(side='right', padx=12)
-        cart_btn = tk.Button(right_frame, text='Cart', bg=header_bg, fg='white', relief='flat', font=('Helvetica', 14, 'bold'), padx=20, pady=10, command=lambda: self.controller.show_cart())
+        cart_btn = tk.Button(right_frame, text='Cart', bg='white', fg='#2222a8', relief='flat', font=('Helvetica', 14, 'bold'), padx=20, pady=10, command=lambda: self.controller.show_cart())
         cart_btn.pack()
 
         # Main content area: left sidebar + main product area

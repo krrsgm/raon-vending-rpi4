@@ -5,6 +5,9 @@ protocol used in this project. It intentionally keeps behavior minimal: parse
 human-friendly lines ("Bill inserted: ₱100"), canonical lines ("BILL:100"),
 and pulses ("PULSES:10" -> amount = 10 * 10). It debounces duplicates and
 invokes a registered callback with the running bill total.
+
+ACCEPTED DENOMINATIONS: ₱20, ₱50, ₱100, ₱500 only
+All other bills are automatically rejected.
 """
 
 import serial
@@ -20,6 +23,9 @@ import re
 
 
 class BillAcceptor:
+    # Accepted bill denominations in Philippine pesos
+    ACCEPTED_DENOMINATIONS = [20, 50, 100, 500]
+    
     def __init__(self, port='/dev/ttyUSB1', baudrate=9600, timeout=1.0,
                  esp32_mode=False, esp32_serial_port=None, esp32_host=None, esp32_port=5000):
         self.port = port
@@ -219,11 +225,27 @@ class BillAcceptor:
             print(f"DEBUG: Registering bill amount {amount}")
             self._register_bill(amount)
 
+    def _is_valid_denomination(self, denomination: int) -> bool:
+        """Check if the bill is one of the accepted denominations: 20, 50, 100, 500 pesos."""
+        return denomination in self.ACCEPTED_DENOMINATIONS
+
     def _register_bill(self, denomination: int):
+        # Validate denomination - only accept 20, 50, 100, 500 peso bills
+        if not self._is_valid_denomination(denomination):
+            print(f"⚠ Bill REJECTED: ₱{denomination} (only ₱20, ₱50, ₱100, ₱500 are accepted)")
+            # Send rejection signal to bill acceptor hardware if possible
+            try:
+                if self.serial_conn and getattr(self.serial_conn, 'is_open', False):
+                    self.serial_conn.write(b'REJECT\n')
+                    self.serial_conn.flush()
+            except Exception:
+                pass
+            return
+        
         with self._lock:
             self.received_amount += denomination
             self.bill_queue.put(denomination)
-        print(f"Bill accepted: ₱{denomination} (Total: ₱{self.received_amount:.2f})")
+        print(f"✓ Bill accepted: ₱{denomination} (Total: ₱{self.received_amount:.2f})")
         if self._callback:
             try:
                 self._callback(self.received_amount)

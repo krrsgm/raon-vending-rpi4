@@ -361,7 +361,10 @@ class MainApp(tk.Tk):
             print(
                 f"Warning: {file_path} not found. Generating a new one with default items."
             )
-            default_config = {"currency_symbol": "$"}
+            default_config = {
+                "currency_symbol": "$",
+                "esp32_host": "serial:/dev/ttyS0"
+            }
             with open(file_path, "w") as file:
                 json.dump(default_config, file, indent=4)
             return default_config

@@ -69,11 +69,18 @@ class PaymentHandler:
                 )
                 if self.bill_acceptor.connect():
                     # Register callback to notify UI of bill updates
+                    def on_bill_received(amt):
+                        logger.info(f"Bill acceptor callback: received {amt}")
+                        self._on_bill_update(amt)
+                    
                     try:
-                        self.bill_acceptor.set_callback(lambda amt: self._on_bill_update(amt))
-                    except Exception:
-                        pass
+                        self.bill_acceptor.set_callback(on_bill_received)
+                        logger.info("Bill acceptor callback registered")
+                    except Exception as e:
+                        logger.warning(f"Could not register bill acceptor callback: {e}")
+                    
                     self.bill_acceptor.start_reading()
+                    logger.info("Bill acceptor reading started")
                 else:
                     logger.warning("Bill acceptor connection failed")
                     self.bill_acceptor = None

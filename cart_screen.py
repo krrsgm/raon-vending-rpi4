@@ -404,11 +404,13 @@ class CartScreen(tk.Frame):
 
         try:
             coin_amount = self.payment_handler.coin_acceptor.get_received_amount()
-        except Exception:
+        except Exception as e:
+            print(f"[PAYMENT] Error getting coin amount: {e}")
             coin_amount = 0.0
         try:
             bill_amount = self.payment_handler.bill_acceptor.get_received_amount() if self.payment_handler.bill_acceptor else 0.0
-        except Exception:
+        except Exception as e:
+            print(f"[PAYMENT] Error getting bill amount: {e}")
             bill_amount = 0.0
 
         self.payment_received = amount
@@ -421,18 +423,21 @@ class CartScreen(tk.Frame):
             f"Total Received: ₱{amount:.2f}\n"
             f"Remaining: ₱{remaining:.2f}"
         )
+        
+        print(f"[PAYMENT UPDATE] Coins: {coin_amount}, Bills: {bill_amount}, Total: {amount}, Required: {self.payment_required}")
 
         try:
             self.payment_status.config(text=status_text)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[PAYMENT] Error updating UI: {e}")
 
         if amount >= self.payment_required:
+            print(f"[PAYMENT] Payment complete: {amount} >= {self.payment_required}")
             # Complete payment on the UI thread
             try:
                 self.complete_payment()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[PAYMENT] Error completing payment: {e}")
 
     def update_change_status(self, message):
         """Update the change dispensing status display."""

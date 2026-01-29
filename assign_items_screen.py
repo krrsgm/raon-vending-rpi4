@@ -347,7 +347,8 @@ class AssignItemsScreen(tk.Frame):
             print(f"[TEST MOTOR] Pulsing slot {slot_num}...")
             result = pulse_slot(esp32_host, slot_num, 800)
             
-            if result:
+            # Validate response - should contain "OK"
+            if result and "OK" in result.upper():
                 messagebox.showinfo(
                     "✓ Motor Test Success", 
                     f"Slot {slot_num} motor pulsed for 800ms\n\nESP32 Response: {result}",
@@ -355,12 +356,19 @@ class AssignItemsScreen(tk.Frame):
                 )
                 print(f"[TEST MOTOR] SUCCESS: Slot {slot_num} pulsed, response: {result}")
             else:
-                messagebox.showinfo(
-                    "✓ Motor Test Success", 
-                    f"Slot {slot_num} motor pulsed for 800ms",
+                messagebox.showerror(
+                    "✗ Motor Test Failed", 
+                    f"Slot {slot_num} did not receive proper confirmation from ESP32\n\nResponse: {result if result else 'No response'}\n\nMake sure:\n- RXTX cable is connected between ESP32 and Raspberry Pi\n- ESP32 firmware is loaded and running\n- Slot number is valid (1-64)",
                     parent=self
                 )
-                print(f"[TEST MOTOR] SUCCESS: Slot {slot_num} pulsed (no response)")
+                print(f"[TEST MOTOR] FAILED: No valid response from ESP32 for slot {slot_num}. Got: {result}")
+                
+        except TimeoutError as e:
+            messagebox.showerror(
+                "Motor Test - Connection Timeout", 
+                f"ESP32 did not respond in time for slot {slot_num}\n\nHost: {esp32_host}\nError: {str(e)}\n\nPlease check connection and try again.",
+                parent=self
+            )
                 
         except TimeoutError as e:
             messagebox.showerror(

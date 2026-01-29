@@ -226,7 +226,7 @@ class KioskFrame(tk.Frame):
 
         max_q = max(0, int(item_data.get('quantity', 0)))
         qty_var = tk.IntVar(value=1)
-        spin = tk.Spinbox(controls, from_=1, to=max(1, max_q), width=6, textvariable=qty_var, bg='white', fg='#2222a8', buttonbackground='#2222a8', font=('Helvetica', 11, 'bold'))
+        spin = tk.Spinbox(controls, from_=1, to=max(1, max_q), width=8, textvariable=qty_var, bg='white', fg='#2222a8', buttonbackground='#2222a8', font=('Helvetica', 13, 'bold'), highlightthickness=1, highlightbackground='#2222a8', highlightcolor='#2222a8')
         spin.pack(side='left', padx=(0,6))
 
         def on_add(qvar=qty_var, data=item_data):
@@ -240,7 +240,7 @@ class KioskFrame(tk.Frame):
             except Exception:
                 pass
 
-        add_btn = tk.Button(controls, text='Add', bg='white', fg='#2222a8', relief='flat', font=('Helvetica', 11, 'bold'), padx=12, pady=4, command=on_add)
+        add_btn = tk.Button(controls, text='Add', bg='white', fg='#2222a8', relief='flat', font=('Helvetica', 11, 'bold'), padx=14, pady=6, command=on_add)
         add_btn.pack(side='left')
 
         # Bind click/drag behavior for cards that are purchasable

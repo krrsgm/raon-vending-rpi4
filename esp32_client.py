@@ -254,7 +254,36 @@ def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0, retries=3, use_persi
             logging.warning(f"TCP attempt {attempt} failed: {e}")
             time.sleep(0.05)
             continue
-    # exhausted retries
+    # If TCP failed, try USB/serial ports automatically (useful when ESP32 is
+    # connected over USB CDC instead of network). This will scan common serial
+    # devices and try the "serial:/..." transport.
+    if serial is not None:
+        logging.info("TCP failed, attempting serial port scan as fallback")
+        # Try to discover candidate ports using pyserial's tools if available
+        ports = []
+        try:
+            import serial.tools.list_ports as list_ports
+            for p in list_ports.comports():
+                ports.append(p.device)
+        except Exception:
+            # Fallback heuristics
+            if os.name == 'nt':
+                ports = [f'COM{i}' for i in range(1, 21)]
+            else:
+                # common device names on Linux
+                ports = ['/dev/ttyACM0', '/dev/ttyACM1', '/dev/ttyUSB0', '/dev/ttyUSB1', '/dev/ttyS0']
+
+        for p in ports:
+            try:
+                logging.info(f"Trying serial port fallback: {p}")
+                resp = send_command(f'serial:{p}', cmd, timeout=timeout, retries=1)
+                logging.info(f"Serial fallback succeeded on {p}")
+                return resp
+            except Exception as e:
+                logging.debug(f"Serial port {p} failed: {e}")
+                continue
+
+    # exhausted all transports
     raise last_exc
 
 

@@ -15,12 +15,15 @@ Or for USB serial adapter:
 
 Or on Windows:
   python tools/test_rxtx_communication.py --port COM3
+
+Note: If you get permission denied errors, the tool will automatically retry with sudo.
 """
 import argparse
 import serial
 import time
 import sys
 import platform
+import subprocess
 
 def find_serial_ports():
     """Try to find available serial ports."""
@@ -51,7 +54,10 @@ def test_serial_connection(port_name, baudrate=115200, timeout=2.0):
         print(f"      - Baud rate: {ser.baudrate}")
         print(f"      - Timeout: {ser.timeout}s")
         
-    except serial.SerialException as e:
+    except (serial.SerialException, PermissionError) as e:
+        if isinstance(e, PermissionError) or 'Permission denied' in str(e):
+            print(f"      ⚠ Permission denied, attempting with sudo...")
+            return test_serial_connection_with_sudo(port_name, baudrate, timeout)
         print(f"      ✗ Failed to open port: {e}")
         print(f"\nTroubleshooting:")
         print(f"  - Verify ESP32 is connected to the serial port")
@@ -139,6 +145,80 @@ def test_serial_connection(port_name, baudrate=115200, timeout=2.0):
             print(f"\nSerial port closed.")
         except:
             pass
+
+def test_serial_connection_with_sudo(port_name, baudrate=115200, timeout=2.0):
+    """Test serial connection using sudo."""
+    print(f"      Running test with sudo...\n")
+    
+    python_code = f"""
+import serial
+import time
+port_name = {repr(port_name)}
+baudrate = {baudrate}
+timeout = {timeout}
+
+try:
+    ser = serial.Serial(port_name, baudrate=baudrate, timeout=timeout)
+    print(f"✓ Port opened: {{ser.name}} at {{ser.baudrate}} baud")
+    
+    # Test STATUS command
+    ser.reset_input_buffer()
+    ser.reset_output_buffer()
+    ser.write(b'STATUS\\n')
+    ser.flush()
+    
+    start = time.time()
+    buf = b''
+    while time.time() - start < timeout:
+        if ser.in_waiting > 0:
+            chunk = ser.read(1)
+            buf += chunk
+            if buf.endswith(b'\\n'):
+                break
+    
+    response = buf.decode('utf-8', errors='ignore').strip()
+    print(f"✓ STATUS response: {{response}}")
+    
+    # Test PULSE command
+    ser.write(b'PULSE 1 200\\n')
+    ser.flush()
+    
+    print(f"✓ PULSE command sent")
+    ser.close()
+    print(f"✓ Test completed successfully")
+    
+except Exception as e:
+    print(f"✗ Error: {{e}}")
+    import sys
+    sys.exit(1)
+"""
+    
+    try:
+        result = subprocess.run(
+            ['sudo', 'python3', '-c', python_code],
+            capture_output=True,
+            text=True,
+            timeout=timeout + 5
+        )
+        
+        print(result.stdout)
+        if result.returncode == 0:
+            print(f"{'='*60}")
+            print(f"✓ RXTX Communication Test PASSED (via sudo)")
+            print(f"{'='*60}")
+            print(f"\nNote: You need to fix serial port permissions to avoid using sudo.")
+            print(f"Run: sudo usermod -a -G dialout $USER && sudo reboot")
+            return True
+        else:
+            print(result.stderr)
+            return False
+    except subprocess.TimeoutExpired:
+        print(f"✗ Test timed out")
+        return False
+    except Exception as e:
+        print(f"✗ Error running test with sudo: {e}")
+        return False
+
 
 def main():
     parser = argparse.ArgumentParser(

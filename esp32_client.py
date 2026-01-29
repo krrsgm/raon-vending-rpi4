@@ -11,6 +11,8 @@ The module sends a single-line command and reads a single-line response.
 import socket
 import sys
 import time
+import subprocess
+import os
 try:
     import serial
 except Exception:
@@ -57,6 +59,57 @@ def _open_tcp(host, port, timeout):
 
 DEFAULT_PORT = 5000
 
+def _open_serial_with_sudo(port_name, baudrate, timeout, cmd, retries=1):
+    """Attempt to open serial port with sudo if permission is denied."""
+    # Build a Python command to run with sudo
+    python_code = f"""
+import serial
+import time
+port_name = {repr(port_name)}
+baudrate = {baudrate}
+timeout = {timeout}
+cmd = {repr(cmd)}
+
+try:
+    with serial.Serial(port_name, baudrate=baudrate, timeout=timeout) as ser:
+        ser.reset_input_buffer()
+        ser.reset_output_buffer()
+        cmd_bytes = (cmd.strip() + '\\n').encode('utf-8')
+        ser.write(cmd_bytes)
+        ser.flush()
+        start = time.time()
+        buf = b''
+        while time.time() - start < timeout:
+            chunk = ser.readline()
+            if chunk:
+                buf = chunk
+                break
+        if buf:
+            print(buf.decode('utf-8', errors='ignore').strip())
+        sys.exit(0)
+except Exception as e:
+    print(f"ERROR: {{e}}", file=__import__('sys').stderr)
+    sys.exit(1)
+"""
+    
+    try:
+        # Try to run with sudo
+        result = subprocess.run(
+            ['sudo', 'python3', '-c', python_code],
+            capture_output=True,
+            text=True,
+            timeout=timeout + 2
+        )
+        
+        if result.returncode == 0 and result.stdout:
+            return result.stdout.strip()
+        else:
+            raise Exception(f"sudo command failed: {result.stderr}")
+    except subprocess.TimeoutExpired:
+        raise TimeoutError(f"sudo serial command timed out after {timeout}s")
+    except Exception as e:
+        raise Exception(f"Failed to execute with sudo: {e}")
+
 
 def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0, retries=3, use_persistent_tcp=True):
     """Send a command string to ESP32 and return response (strip newlines).
@@ -99,11 +152,21 @@ def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0, retries=3, use_persi
                     response = buf.decode('utf-8', errors='ignore').strip()
                     logging.info(f"Serial response: {response}")
                     return response
-            except serial.SerialException as e:
+            except (serial.SerialException, PermissionError) as e:
                 # Serial port error (port not found, permission denied, etc.)
-                last_exc = e
-                logging.error(f"Serial port error on {port_name}: {e}")
-                raise  # Don't retry serial port errors, they're usually permanent
+                if isinstance(e, PermissionError) or 'Permission denied' in str(e):
+                    logging.warning(f"Permission denied on {port_name}, attempting with sudo...")
+                    try:
+                        response = _open_serial_with_sudo(port_name, 115200, timeout, cmd, retries=1)
+                        logging.info(f"Serial response (via sudo): {response}")
+                        return response
+                    except Exception as sudo_err:
+                        logging.error(f"Sudo attempt also failed: {sudo_err}")
+                        last_exc = sudo_err
+                else:
+                    last_exc = e
+                    logging.error(f"Serial port error on {port_name}: {e}")
+                    raise  # Don't retry serial port errors, they're usually permanent
             except Exception as e:
                 last_exc = e
                 logging.warning(f"Serial attempt {attempt} failed: {e}")

@@ -3,9 +3,10 @@
 test_rxtx_communication.py
 Test serial (RXTX) communication between Raspberry Pi and ESP32.
 
-This tool tests the serial/UART connection between RPi and ESP32 over:
-- RX (GPIO 3 on ESP32)  <- TX (GPIO 14 on RPi by default or specified pin)
-- TX (GPIO 1 on ESP32)  -> RX (GPIO 15 on RPi by default or specified pin)
+Pin Configuration:
+    - ESP32 TX (GPIO 1)  -> Raspberry Pi RX (GPIO 15)
+    - ESP32 RX (GPIO 3)  <- Raspberry Pi TX (GPIO 14)
+    - Connect GND between ESP32 and Raspberry Pi
 
 Usage (on Raspberry Pi):
   python3 tools/test_rxtx_communication.py --port /dev/ttyS0

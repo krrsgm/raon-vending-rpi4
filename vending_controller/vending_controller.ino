@@ -12,9 +12,9 @@
 
   Wiring:
     - 4 x CD74HC4067 multiplexers with individual control pins
-    - Serial Communication with Raspberry Pi:
-      - ESP32 TX (GPIO 1) -> Raspberry Pi RX
-      - ESP32 RX (GPIO 3) -> Raspberry Pi TX
+    - Serial Communication with Raspberry Pi (RXTX):
+      - ESP32 TX (GPIO 1)  -> Raspberry Pi RX (GPIO 15)
+      - ESP32 RX (GPIO 3)  <- Raspberry Pi TX (GPIO 14)
       - Connect GND between ESP32 and Raspberry Pi
 
   Usage:
@@ -35,11 +35,10 @@
 const unsigned long BAUD_RATE = 115200;
 
 // Optional: explicitly bind Serial2 (UART2) to specific RX/TX pins.
-// Set to -1 to use the ESP32 default Serial2 pins for your board.
-// If you wired the Pi's TX/RX to specific ESP32 GPIOs, change these
-// to match your wiring (example: 16, 17).
-const int SERIAL2_RX_PIN = 3; // change to your wiring RX pin (ESP32 GPIO)
-const int SERIAL2_TX_PIN = 1; // change to your wiring TX pin (ESP32 GPIO)
+// ESP32 RX (GPIO 3) and TX (GPIO 1) for communication with Raspberry Pi
+// Raspberry Pi pins: TX on GPIO 14, RX on GPIO 15
+const int SERIAL2_RX_PIN = 3;  // ESP32 RX pin (receives from RPi TX GPIO 14)
+const int SERIAL2_TX_PIN = 1;  // ESP32 TX pin (sends to RPi RX GPIO 15)
 
 // Multiplexer 1 pins (Slots 1-16)
 const int MUX1_S0 = 13;

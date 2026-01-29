@@ -343,9 +343,9 @@ class AssignItemsScreen(tk.Frame):
             
             print(f"[TEST MOTOR] ESP32 connection OK. Status: {status_msg}")
             
-            # Pulse the motor for 800ms
+            # Pulse the motor for 800ms with longer timeout for serial
             print(f"[TEST MOTOR] Pulsing slot {slot_num}...")
-            result = pulse_slot(esp32_host, slot_num, 800)
+            result = pulse_slot(esp32_host, slot_num, 800, timeout=3.0)
             
             # Validate response - should contain "OK"
             if result and "OK" in result.upper():

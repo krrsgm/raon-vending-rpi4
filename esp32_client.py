@@ -139,15 +139,20 @@ def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0, retries=3, use_persi
                     ser.write(cmd_bytes)
                     ser.flush()
                     
+                    # Add a small delay to let ESP32 process and send response
+                    time.sleep(0.05)
+                    
                     # wait up to `timeout` seconds for a response
                     start = time.time()
                     buf = b''
                     while time.time() - start < timeout:
                         # Use in_waiting to check if data is available
                         if ser.in_waiting > 0:
-                            chunk = ser.readline()
+                            # Read all available bytes at once (like test_rxtx_communication.py does)
+                            chunk = ser.read(ser.in_waiting)
                             if chunk:
                                 buf += chunk
+                                logging.debug(f"Received {len(chunk)} bytes: {repr(chunk)}")
                                 # Stop if we got a newline (complete line)
                                 if b'\n' in buf:
                                     break
@@ -300,10 +305,10 @@ def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0, retries=3, use_persi
     raise last_exc
 
 
-def pulse_slot(host, slot, ms=800, port=DEFAULT_PORT):
+def pulse_slot(host, slot, ms=800, port=DEFAULT_PORT, timeout=2.0):
     """Pulse a slot number (1-based) for ms milliseconds."""
     cmd = f"PULSE {int(slot)} {int(ms)}"
-    return send_command(host, cmd, port=port)
+    return send_command(host, cmd, port=port, timeout=timeout)
 
 
 def open_slot(host, slot, port=DEFAULT_PORT):

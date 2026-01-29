@@ -226,8 +226,8 @@ class MainApp(tk.Tk):
             
             # Get IR sensor pins
             ir_pins = [
-                ir_config.get('sensor_1', {}).get('gpio_pin', 23),
-                ir_config.get('sensor_2', {}).get('gpio_pin', 24)
+                ir_config.get('sensor_1', {}).get('gpio_pin', 6),
+                ir_config.get('sensor_2', {}).get('gpio_pin', 5)
             ]
             
             timeout = ir_config.get('dispense_timeout', 10.0)

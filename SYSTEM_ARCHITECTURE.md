@@ -57,7 +57,7 @@
 │                 │                                                  │
 │  ┌──────────────────────────────────────────────────────────────┐ │
 │  │         IR Sensor Monitor                                    │ │
-│  │         (GPIO23, GPIO24)                                     │ │
+│  │         (GPIO6, GPIO5)                                        │ │
 │  │                                                              │ │
 │  │  • Detects items in bin                                    │ │
 │  │  • Multi-sensor detection logic                           │ │
@@ -162,7 +162,7 @@
 
 ┌────────────────────────────┐
 │ IR Sensors                 │
-│ (GPIO23, GPIO24 in bin)    │
+│ (GPIO6, GPIO5 in bin)      │
 └────────┬───────────────────┘
          │ Read GPIO high/low
          │ 500ms poll
@@ -245,8 +245,8 @@ All threads are daemon threads:
 │                                                           │
 │  GPIO17  ← Coin Acceptor (binary detection)             │
 │  GPIO22  ← DHT22 Sensor 2 (Humidity/Temp)               │
-│  GPIO23  ← IR Sensor 1 (Bin area detection)             │
-│  GPIO24  ← IR Sensor 2 (Bin area detection)             │
+│  GPIO6   ← IR Sensor 1 (Bin area detection)             │
+│  GPIO5   ← IR Sensor 2 (Bin area detection)             │
 │  GPIO26  ← TEC Peltier Relay (Cooling control)          │
 │  GPIO27  ← DHT22 Sensor 1 (Humidity/Temp)               │
 │                                                           │

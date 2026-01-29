@@ -18,8 +18,8 @@ The Item Dispense Monitor uses IR (Infrared) sensors to detect whether items hav
 
 | Component | GPIO | Purpose |
 |-----------|------|---------|
-| IR Sensor 1 | GPIO23 | Detects items in Slot 1 |
-| IR Sensor 2 | GPIO24 | Detects items in Slot 2 |
+| IR Sensor 1 | GPIO6 | Detects items in Slot 1 |
+| IR Sensor 2 | GPIO5 | Detects items in Slot 2 |
 
 ## How It Works
 
@@ -72,8 +72,8 @@ Add to `config.json`:
 
 ### Configuration Parameters
 
-- **sensor_1.gpio_pin**: GPIO pin for IR sensor 1 (default: 23)
-- **sensor_2.gpio_pin**: GPIO pin for IR sensor 2 (default: 24)
+- **sensor_1.gpio_pin**: GPIO pin for IR sensor 1 (default: 6)
+- **sensor_2.gpio_pin**: GPIO pin for IR sensor 2 (default: 5)
 - **dispense_timeout**: Default timeout in seconds (default: 10.0)
 
 ## Usage
@@ -258,13 +258,13 @@ Item Dispense Monitor Test
 
 1. **Check GPIO pin configuration**:
    ```bash
-   python3 -c "import RPi.GPIO as GPIO; GPIO.setmode(GPIO.BCM); GPIO.setup(23, GPIO.IN); print('GPIO23:', GPIO.input(23))"
+   python3 -c "import RPi.GPIO as GPIO; GPIO.setmode(GPIO.BCM); GPIO.setup(6, GPIO.IN); print('GPIO6:', GPIO.input(6))"
    ```
 
 2. **Verify sensor wiring**:
    - 3.3V → VCC
    - GND → GND
-   - DATA → GPIO23/24
+   - DATA → GPIO6/5
 
 3. **Check sensor lens**:
    - Clean IR lens
@@ -325,7 +325,7 @@ IR Sensor Module
     ┌────────┐
     │VCC ●───┼──→ 3.3V
     │GND ●───┼──→ GND
-    │OUT ●───┼──→ GPIO23 (with pull-up resistor)
+    │OUT ●───┼──→ GPIO6 (with pull-up resistor)
     └────────┘
 ```
 

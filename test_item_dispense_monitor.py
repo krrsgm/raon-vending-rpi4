@@ -17,7 +17,7 @@ def test_dispense_monitor():
     # Create monitor with 2 IR sensors in bin area
     # detection_mode='any' means either sensor can detect the falling item
     monitor = ItemDispenseMonitor(
-        ir_sensor_pins=[23, 24], 
+        ir_sensor_pins=[6, 5], 
         default_timeout=5.0,
         detection_mode='any'  # Either sensor detecting absence = success
     )

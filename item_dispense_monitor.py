@@ -92,12 +92,12 @@ class ItemDispenseMonitor:
     Success is marked when ANY sensor detects beam obstruction (item falling through).
     """
     
-    def __init__(self, ir_sensor_pins=[23, 24], default_timeout=15.0, detection_mode='any', simulate_detection=False):
+    def __init__(self, ir_sensor_pins=[6, 5], default_timeout=15.0, detection_mode='any', simulate_detection=False):
         """
         Initialize item dispense monitor.
         
         Args:
-            ir_sensor_pins (list): GPIO pins for IR sensors (default [GPIO23, GPIO24])
+            ir_sensor_pins (list): GPIO pins for IR sensors (default [GPIO6, GPIO5])
             default_timeout (float): Default timeout in seconds for item dispensing
             detection_mode (str): 'any' (either sensor), 'all' (both sensors), or 'first' (first to detect)
                 - 'any': Item is dispensed if ANY sensor detects obstruction (recommended for bin area)
@@ -395,7 +395,7 @@ def main():
     print("=" * 60)
     
     # Create monitor with 2 IR sensors
-    monitor = ItemDispenseMonitor(ir_sensor_pins=[23, 24], default_timeout=5.0)
+    monitor = ItemDispenseMonitor(ir_sensor_pins=[6, 5], default_timeout=5.0)
     
     # Register callbacks
     def on_dispensed(slot_id, success):

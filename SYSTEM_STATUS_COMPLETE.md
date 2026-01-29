@@ -152,8 +152,8 @@ The status panel reads from `config.json`:
       "target_temp": 10.0
     },
     "ir_sensors": {
-      "sensor_1": {"gpio_pin": 23},
-      "sensor_2": {"gpio_pin": 24},
+      "sensor_1": {"gpio_pin": 6},
+      "sensor_2": {"gpio_pin": 5},
       "detection_mode": "any"
     }
   }

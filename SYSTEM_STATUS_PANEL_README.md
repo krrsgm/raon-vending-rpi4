@@ -162,7 +162,7 @@ The status panel receives updates from multiple sources:
                         │
 ┌──────────────────┐    │
 │  IR Sensors      │    │
-│  (GPIO23, GPIO24)├────┘
+│  (GPIO6, GPIO5)├────┘
 └──────────────────┘
 ```
 

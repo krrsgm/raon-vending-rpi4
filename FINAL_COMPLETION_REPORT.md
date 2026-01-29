@@ -250,8 +250,8 @@ The status panel automatically reads from `config.json`:
       "average_sensors": true
     },
     "ir_sensors": {
-      "sensor_1": {"gpio_pin": 23},
-      "sensor_2": {"gpio_pin": 24},
+      "sensor_1": {"gpio_pin": 6},
+      "sensor_2": {"gpio_pin": 5},
       "detection_mode": "any"
     }
   }

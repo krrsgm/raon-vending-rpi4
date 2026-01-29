@@ -21,13 +21,13 @@ The two IR sensors are positioned to maximize coverage of the bin catch area:
               │
      ┌────────▼────────┐
      │  IR Sensor 1    │
-     │  (GPIO23)       │◄─── Positioned to catch items
+     │  (GPIO6)        │◄─── Positioned to catch items
      │                 │     falling to the left/center
      └─────────────────┘
      
      ┌────────────────┐
      │  IR Sensor 2   │
-     │  (GPIO24)      │◄─── Positioned to catch items
+     │  (GPIO5)       │◄─── Positioned to catch items
      │                │     falling to the right/center
      └────────────────┘
      
@@ -51,7 +51,7 @@ IR Sensor Module
     ┌────────────┐
     │VCC ●───┬──→ 3.3V
     │GND ●───┬──→ GND
-    │OUT ●───┬──→ GPIO23 (Sensor 1) / GPIO24 (Sensor 2)
+    │OUT ●───┬──→ GPIO6 (Sensor 1) / GPIO5 (Sensor 2)
     └────────┘    with 10kΩ pull-up resistor
 
 Repeating for both sensors on different GPIO pins.
@@ -219,7 +219,7 @@ T=0.5s  Result: SUCCESS in 0.5 seconds
 7. 10 seconds elapsed
 8. Monitor triggers timeout callback
 9. Alert popup: "⚠️ Item from Slot 2 failed to dispense!"
-10. Status: "GPIO23=PRESENT, GPIO24=PRESENT"
+10. Status: "GPIO6=PRESENT, GPIO5=PRESENT"
 11. User intervention required
 ```
 
@@ -253,18 +253,18 @@ for i in range(10):
 
 **Typical Output**:
 ```
-GPIO23: True   (item in slot)
-GPIO24: True   (item in slot)
+GPIO6: True   (item in slot)
+GPIO5: True   (item in slot)
 
 [... item falls ...]
 
-GPIO23: False  (item passed)
-GPIO24: True   (still in zone)
+GPIO6: False  (item passed)
+GPIO5: True   (still in zone)
 
 [... second sensor triggers ...]
 
-GPIO23: False
-GPIO24: False  (both detected)
+GPIO6: False
+GPIO5: False  (both detected)
 ```
 
 ### Testing Detection Modes

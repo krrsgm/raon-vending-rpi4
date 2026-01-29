@@ -79,11 +79,11 @@
       "enabled": true,
       "sensor_1": {
         "enabled": true,
-        "gpio_pin": 23
+        "gpio_pin": 6
       },
       "sensor_2": {
         "enabled": true,
-        "gpio_pin": 24
+        "gpio_pin": 5
       },
       "dispense_timeout": 10.0,
       "detection_mode": "any",

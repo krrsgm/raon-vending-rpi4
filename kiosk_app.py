@@ -303,7 +303,7 @@ class KioskFrame(tk.Frame):
 
         right_frame = tk.Frame(self.header, bg=header_bg)
         right_frame.pack(side='right', padx=12)
-        cart_btn = tk.Button(right_frame, text='Cart', bg='#2ecc71', fg='white', relief='flat', font=('Helvetica', 14, 'bold'), padx=20, pady=10, command=lambda: self.controller.show_cart())
+        cart_btn = tk.Button(right_frame, text='Cart', bg='#3498db', fg='white', relief='flat', font=('Helvetica', 14, 'bold'), padx=20, pady=10, command=lambda: self.controller.show_cart())
         cart_btn.pack()
 
         # Main content area: left sidebar + main product area

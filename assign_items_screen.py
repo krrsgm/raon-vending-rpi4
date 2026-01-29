@@ -9,6 +9,7 @@ import json
 import os
 import io
 from esp32_client import pulse_slot, send_command
+from fix_paths import get_absolute_path
 
 def pil_to_photoimage(pil_image):
     """Convert PIL Image to Tkinter PhotoImage using PPM format (no ImageTk needed)"""
@@ -16,6 +17,42 @@ def pil_to_photoimage(pil_image):
         pil_image.save(output, format="PPM")
         data = output.getvalue()
     return tk.PhotoImage(data=data)
+
+
+def convert_image_path_to_relative(absolute_path: str) -> str:
+    """
+    Convert an absolute image path to a relative path for cross-platform compatibility.
+    
+    If the path is already relative or is in the images directory, returns it as-is.
+    If it's an absolute path, tries to make it relative to the project root or images directory.
+    """
+    if not absolute_path:
+        return absolute_path
+    
+    # If it's already a relative path, return as-is
+    if not os.path.isabs(absolute_path):
+        return absolute_path
+    
+    try:
+        # Get project root
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # Try to make it relative to project root
+        try:
+            rel_path = os.path.relpath(absolute_path, project_root)
+            # If it doesn't go up too many directories, use it
+            if not rel_path.startswith('..'):
+                return rel_path
+        except ValueError:
+            # Different drives on Windows
+            pass
+        
+        # Try to extract just the filename and put it in images directory
+        filename = os.path.basename(absolute_path)
+        return f"./images/{filename}"
+    except Exception as e:
+        print(f"Error converting path {absolute_path}: {e}")
+        return absolute_path
 
 
 class EditSlotDialog(tk.Toplevel):
@@ -105,12 +142,17 @@ class EditSlotDialog(tk.Toplevel):
             tk.messagebox.showerror("Validation", "Quantity must be an integer", parent=self)
             return
 
+        # Convert image path to relative path for cross-platform compatibility
+        image_path = self.image_entry.get().strip()
+        if image_path:
+            image_path = convert_image_path_to_relative(image_path)
+
         data = {
             'name': name,
             'category': self.category_entry.get().strip(),
             'price': price,
             'quantity': qty,
-            'image': self.image_entry.get().strip(),
+            'image': image_path,
             'description': self.desc_text.get('1.0', 'end-1c').strip(),
         }
         self.result = data

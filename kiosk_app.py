@@ -5,6 +5,7 @@ import os
 import io
 from dht11_handler import DHT22Display
 from system_status_panel import SystemStatusPanel
+from fix_paths import get_absolute_path
 
 def pil_to_photoimage(pil_image):
     """Convert PIL Image to Tkinter PhotoImage using PPM format (no ImageTk needed)"""
@@ -157,23 +158,43 @@ class KioskFrame(tk.Frame):
         image_label.pack(expand=True)
 
         image_path = item_data.get("image")
-        if image_path and os.path.exists(image_path):
-            try:
-                # Open, resize, and display the image
-                img = Image.open(image_path)
-                
-                # Resize image to fit the frame height while maintaining aspect ratio
-                base_height = image_height - 8  # Account for padding
-                h_percent = (base_height / float(img.size[1]))
-                w_size = int((float(img.size[0]) * float(h_percent)))
-                img = img.resize((w_size, base_height), Image.Resampling.LANCZOS)
+        if image_path:
+            # Try to resolve the image path - could be relative or absolute
+            resolved_path = None
+            
+            # If it's an absolute path, check if it exists
+            if os.path.isabs(image_path) and os.path.exists(image_path):
+                resolved_path = image_path
+            else:
+                # Try as relative path from project root
+                abs_path = get_absolute_path(image_path)
+                if os.path.exists(abs_path):
+                    resolved_path = abs_path
+                # Try as relative path from current directory
+                elif os.path.exists(image_path):
+                    resolved_path = image_path
+            
+            if resolved_path:
+                try:
+                    # Open, resize, and display the image
+                    img = Image.open(resolved_path)
+                    
+                    # Resize image to fit the frame height while maintaining aspect ratio
+                    base_height = image_height - 8  # Account for padding
+                    h_percent = (base_height / float(img.size[1]))
+                    w_size = int((float(img.size[0]) * float(h_percent)))
+                    img = img.resize((w_size, base_height), Image.Resampling.LANCZOS)
 
-                photo = pil_to_photoimage(img)
-                image_label.config(image=photo)
-                image_label.image = photo # Keep a reference!
-            except Exception as e:
-                print(f"Error loading image {image_path}: {e}")
-                image_label.config(text="Image Error", font=self.fonts['image_placeholder'], fg=self.colors['gray_fg'])
+                    photo = pil_to_photoimage(img)
+                    image_label.config(image=photo)
+                    image_label.image = photo # Keep a reference!
+                except Exception as e:
+                    print(f"Error loading image {resolved_path}: {e}")
+                    image_label.config(text="Image Error", font=self.fonts['image_placeholder'], fg=self.colors['gray_fg'])
+            else:
+                # Show placeholder if image not found
+                print(f"Image not found: {image_path}")
+                image_label.config(text="No Image", font=self.fonts['image_placeholder'], fg=self.colors['gray_fg'])
         else:
             # Show placeholder if no image
             image_label.config(text="No Image", font=self.fonts['image_placeholder'], fg=self.colors['gray_fg'])

@@ -17,17 +17,18 @@ class CartScreen(tk.Frame):
         # Default to /dev/ttyACM0 for USB-connected Arduino Uno; can be overridden in config
         bill_serial = bill_cfg.get('serial_port', '/dev/ttyACM0')
         bill_baud = bill_cfg.get('baudrate') or bill_cfg.get('serial_baud')
-        # By default, assume the TB74 is proxied by the ESP32 if the user has a serial port configured
-        esp32_mode = bool(bill_cfg.get('proxy_via_esp32', True))
+        # TB74 is directly connected to Arduino Uno (not proxied through ESP32)
+        # It connects via USB at /dev/ttyACM0
+        esp32_mode = False  # Disabled: TB74 is on Arduino USB, not ESP32
         self.payment_handler = PaymentHandler(
             controller.config,
             coin_pin=17,
             bill_port=bill_serial,
             bill_baud=bill_baud,
             bill_esp32_mode=esp32_mode,
-            bill_esp32_serial_port=bill_serial,
-            bill_esp32_host=controller.config.get('esp32_host') if isinstance(controller.config, dict) else None,
-            bill_esp32_port=controller.config.get('esp32_port', 5000) if isinstance(controller.config, dict) else 5000
+            bill_esp32_serial_port=None,
+            bill_esp32_host=None,
+            bill_esp32_port=5000
         )  # Using GPIO17 for coin signal
         self.payment_in_progress = False
         self.payment_received = 0.0

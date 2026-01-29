@@ -170,8 +170,8 @@ class BillAcceptor:
         s_upper = s.upper()
         print(f"===== DEBUG BILL ACCEPTOR: Processing line for parsing: '{s}' =====")
 
-        # human friendly
-        m = re.search(r'BILL\s*INSERTED[:\s]*\u20B1?\s*(\d+)', s_upper)
+        # human friendly - matches "Bill inserted: ₱20" or "BILL INSERTED 20"
+        m = re.search(r'BILL\s+INSERTED[:\s]*[\u20B1₱]?\s*(\d+)', s_upper)
         if m:
             try:
                 amount = int(m.group(1))

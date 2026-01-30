@@ -279,10 +279,22 @@ class CartScreen(tk.Frame):
                 self.payment_window.attributes('-topmost', True)
             except Exception:
                 pass
-            self.payment_window.grab_set()  # Make it modal
+            # Note: modal grabs can interfere with touchscreen events on some systems.
+            # Disable grab_set to avoid blocking touch/click events; rely on focused transient window.
+            try:
+                # self.payment_window.grab_set()  # Disabled for touch compatibility
+                print("DEBUG: Payment window opened (grab_set disabled for touch compatibility)")
+            except Exception:
+                pass
             try:
                 self.payment_window.focus_force()
                 self.payment_window.focus_set()
+            except Exception:
+                pass
+
+            # Ensure the window close button triggers cancellation
+            try:
+                self.payment_window.protocol("WM_DELETE_WINDOW", self.cancel_payment)
             except Exception:
                 pass
 
@@ -553,6 +565,12 @@ class CartScreen(tk.Frame):
         The method will always close the payment window (if present)
         and return the UI to the kiosk screen.
         """
+        # Debug: log cancellation attempt
+        try:
+            print(f"DEBUG: cancel_payment called, event={bool(event)}, payment_in_progress={self.payment_in_progress}")
+        except Exception:
+            pass
+
         # Ensure payment flag is reset even if exception occurs
         try:
             # If a payment was in progress, stop it and handle returned tuple
@@ -579,6 +597,10 @@ class CartScreen(tk.Frame):
         # Ensure the payment window is closed and return to kiosk
         try:
             if hasattr(self, 'payment_window') and self.payment_window:
+                try:
+                    print("DEBUG: Destroying payment window from cancel_payment")
+                except Exception:
+                    pass
                 self.payment_window.destroy()
         except Exception:
             pass

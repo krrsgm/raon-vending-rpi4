@@ -48,6 +48,15 @@ class BillAcceptor:
         self._last_bill_amount = None
         self._bill_debounce_ms = 300
 
+        # Dispatcher queue to invoke callbacks outside of the serial read thread.
+        # We enqueue the running received total and a background thread will call
+        # the registered callback (if any) so callback exceptions don't affect
+        # the serial read thread execution.
+        self._dispatch_queue = Queue()
+        self._dispatcher_thread = threading.Thread(target=self._dispatch_loop, daemon=True)
+        self._dispatcher_thread.start()
+
+
     def _choose_stopbits_for_port(self, port_name: str):
         if not port_name:
             return serial.STOPBITS_TWO
@@ -260,19 +269,39 @@ class BillAcceptor:
             self.received_amount += denomination
             self.bill_queue.put(denomination)
         print(f"✓ Bill accepted: ₱{denomination} (Total: ₱{self.received_amount:.2f})")
-        # Debug: show whether a callback is registered and attempt to call it
+        # Enqueue dispatch request so a separate thread invokes the registered callback.
         try:
-            print(f"DEBUG: callback present = {bool(self._callback)}, callback={self._callback}")
-        except Exception:
-            pass
-        if self._callback:
+            print(f"DEBUG: Enqueueing bill callback for amount {self.received_amount}")
+            self._dispatch_queue.put_nowait(self.received_amount)
+        except Exception as e:
+            print(f"DEBUG: Failed to enqueue callback: {e}")
+
+    def _dispatch_loop(self):
+        """Background loop to call the registered callback with the latest total.
+
+        Running in a dedicated daemon thread so serial reading isn't blocked by
+        slow callbacks or GUI interactions. If no callback is set the value is
+        dropped with a debug message.
+        """
+        import time, traceback
+        while True:
             try:
-                import threading, traceback
-                print(f"DEBUG: Invoking bill acceptor callback now on thread {threading.current_thread().name} with amount={self.received_amount}")
-                self._callback(self.received_amount)
-                print("DEBUG: Callback invocation complete")
+                amt = self._dispatch_queue.get(timeout=1.0)
+            except Exception:
+                # Timeout - loop again
+                continue
+            try:
+                if self._callback:
+                    print(f"DEBUG: Dispatcher invoking callback on thread {threading.current_thread().name} with amount={amt}")
+                    try:
+                        self._callback(amt)
+                    except Exception as e:
+                        print(f"DEBUG: Dispatcher callback error: {e}")
+                        traceback.print_exc()
+                else:
+                    print(f"DEBUG: Dispatcher dropped callback (no callback registered) for amount={amt}")
             except Exception as e:
-                print(f"Callback error: {e}")
+                print(f"DEBUG: Dispatcher loop unexpected error: {e}")
                 try:
                     traceback.print_exc()
                 except Exception:

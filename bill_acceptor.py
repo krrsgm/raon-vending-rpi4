@@ -267,13 +267,22 @@ class BillAcceptor:
             pass
         if self._callback:
             try:
-                print("DEBUG: Invoking bill acceptor callback now...")
+                import threading, traceback
+                print(f"DEBUG: Invoking bill acceptor callback now on thread {threading.current_thread().name} with amount={self.received_amount}")
                 self._callback(self.received_amount)
                 print("DEBUG: Callback invocation complete")
             except Exception as e:
                 print(f"Callback error: {e}")
+                try:
+                    traceback.print_exc()
+                except Exception:
+                    pass
 
     def set_callback(self, callback):
+        try:
+            print(f"DEBUG: BillAcceptor.set_callback: callback set = {bool(callback)}, callback={callback}")
+        except Exception:
+            pass
         self._callback = callback
 
     def get_received_amount(self):

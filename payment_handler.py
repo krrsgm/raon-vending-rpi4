@@ -69,7 +69,7 @@ class PaymentHandler:
                 )
                 if self.bill_acceptor.connect():
                     # Register callback to notify UI of bill updates
-                        try:
+                    try:
                         # Register bill acceptor callback directly to PaymentHandler._on_bill_update
                         self.bill_acceptor.set_callback(self._on_bill_update)
                         logger.info("Bill acceptor callback registered")

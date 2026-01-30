@@ -203,6 +203,20 @@ class BillAcceptor:
             except Exception:
                 pass
 
+        # tolerant fallback parsing: some forwarders send different human-friendly lines
+        # e.g. "BILL 100", "INSERTED 100", "PAYMENT: 100", or just "₱100". Try to
+        # extract an amount if the line contains bill-related keywords or currency symbols.
+        try:
+            if any(k in s_upper for k in ('INSERT', 'PAY', 'BILL', '\u20B1', '₱', 'PESO', 'PHP')):
+                m2 = re.search(r'[:\s]*[\u20B1₱]?\s*(\d{2,4})', s)
+                if m2:
+                    amount = int(m2.group(1))
+                    print(f"DEBUG: Fallback parsed amount {amount} from '{s}'")
+                    self._debounced_register(amount)
+                    return
+        except Exception:
+            pass
+
         # hex
         try:
             hexval = s

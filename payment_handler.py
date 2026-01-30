@@ -76,8 +76,11 @@ class PaymentHandler:
                     try:
                         self.bill_acceptor.set_callback(on_bill_received)
                         logger.info("Bill acceptor callback registered")
+                        # Extra debug print to ensure callback registration is visible in logs
+                        print("DEBUG: PaymentHandler set BillAcceptor callback")
                     except Exception as e:
                         logger.warning(f"Could not register bill acceptor callback: {e}")
+                        print(f"DEBUG: Failed to set BillAcceptor callback: {e}")
                     
                     self.bill_acceptor.start_reading()
                     logger.info("Bill acceptor reading started")

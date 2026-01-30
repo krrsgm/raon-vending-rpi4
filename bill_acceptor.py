@@ -246,9 +246,16 @@ class BillAcceptor:
             self.received_amount += denomination
             self.bill_queue.put(denomination)
         print(f"✓ Bill accepted: ₱{denomination} (Total: ₱{self.received_amount:.2f})")
+        # Debug: show whether a callback is registered and attempt to call it
+        try:
+            print(f"DEBUG: callback present = {bool(self._callback)}, callback={self._callback}")
+        except Exception:
+            pass
         if self._callback:
             try:
+                print("DEBUG: Invoking bill acceptor callback now...")
                 self._callback(self.received_amount)
+                print("DEBUG: Callback invocation complete")
             except Exception as e:
                 print(f"Callback error: {e}")
 

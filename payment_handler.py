@@ -133,6 +133,11 @@ class PaymentHandler:
             on_payment_update (callable, optional): Callback(amount) when coins received
         """
         self._callback = on_payment_update
+        # Debug: show that start_payment_session set the callback
+        try:
+            print(f"DEBUG: PaymentHandler.start_payment_session: callback set = {bool(self._callback)}")
+        except Exception:
+            pass
         self.coin_acceptor.reset_amount()
         return True
 
@@ -141,10 +146,17 @@ class PaymentHandler:
 
         We forward combined total (coins + bills) to the UI callback if set.
         """
+        # Debug: incoming bill update
+        try:
+            print(f"DEBUG: PaymentHandler._on_bill_update received bill_total_amount={bill_total_amount}, current_total={self.get_current_amount()}, callback_present={bool(self._callback)}")
+        except Exception:
+            pass
+
         if self._callback:
             try:
                 self._callback(self.get_current_amount())
-            except Exception:
+            except Exception as e:
+                print(f"DEBUG: PaymentHandler._on_bill_update callback error: {e}")
                 pass
 
     def get_current_amount(self):

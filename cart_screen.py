@@ -268,9 +268,24 @@ class CartScreen(tk.Frame):
             self.payment_window = tk.Toplevel(self)
             self.payment_window.title("Insert Coins")
             self.payment_window.geometry("400x400")
-            self.payment_window.transient(self)  # Make it float on top
+            # Attach to the main toplevel window so focus and touch events work
+            parent_toplevel = self.winfo_toplevel()
+            try:
+                self.payment_window.transient(parent_toplevel)
+            except Exception:
+                pass
+            # Keep it above the fullscreen app and force focus
+            try:
+                self.payment_window.attributes('-topmost', True)
+            except Exception:
+                pass
             self.payment_window.grab_set()  # Make it modal
-            
+            try:
+                self.payment_window.focus_force()
+                self.payment_window.focus_set()
+            except Exception:
+                pass
+
             # Bind ESC key to cancel payment
             self.payment_window.bind('<Escape>', lambda e: self.cancel_payment())
             

@@ -53,6 +53,7 @@ class BillAcceptor:
         # the registered callback (if any) so callback exceptions don't affect
         # the serial read thread execution.
         self._dispatch_queue = Queue()
+        self._dispatch_running = True
         self._dispatcher_thread = threading.Thread(target=self._dispatch_loop, daemon=True)
         self._dispatcher_thread.start()
 
@@ -243,10 +244,12 @@ class BillAcceptor:
             if self._last_bill_amount == amount and (now_ms - self._last_bill_time_ms) < self._bill_debounce_ms:
                 print(f"DEBUG: Debounce ignored duplicate amount {amount}")
                 return
+            # Record last bill metadata under lock but call _register_bill outside the lock
             self._last_bill_amount = amount
             self._last_bill_time_ms = now_ms
-            print(f"DEBUG: Registering bill amount {amount}")
-            self._register_bill(amount)
+        print(f"DEBUG: Registering bill amount {amount}")
+        # Call registration without holding self._lock to avoid deadlocks
+        self._register_bill(amount)
 
     def _is_valid_denomination(self, denomination: int) -> bool:
         """Check if the bill is one of the accepted denominations: 20, 50, 100, 500 pesos."""
@@ -288,8 +291,13 @@ class BillAcceptor:
             try:
                 amt = self._dispatch_queue.get(timeout=1.0)
             except Exception:
-                # Timeout - loop again
+                # Timeout - check if we should keep running
+                if not getattr(self, '_dispatch_running', True):
+                    break
                 continue
+            # Recognize sentinel None to stop the dispatcher
+            if amt is None:
+                break
             try:
                 if self._callback:
                     print(f"DEBUG: Dispatcher invoking callback on thread {threading.current_thread().name} with amount={amt}")
@@ -349,6 +357,20 @@ class BillAcceptor:
         return False
 
     def cleanup(self):
+        # Stop dispatcher thread cleanly
+        try:
+            self._dispatch_running = False
+            try:
+                self._dispatch_queue.put_nowait(None)
+            except Exception:
+                pass
+            try:
+                if hasattr(self, '_dispatcher_thread') and self._dispatcher_thread.is_alive():
+                    self._dispatcher_thread.join(timeout=1.0)
+            except Exception:
+                pass
+        except Exception:
+            pass
         self.disconnect()
 
 

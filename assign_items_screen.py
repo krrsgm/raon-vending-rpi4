@@ -19,6 +19,82 @@ def pil_to_photoimage(pil_image):
     return tk.PhotoImage(data=data)
 
 
+class PriceStockDialog(tk.Toplevel):
+    """Modal dialog to edit price and stock amount only (preset mode)."""
+    def __init__(self, parent, item_data=None):
+        """
+        Args:
+            parent: parent window
+            item_data: dict with 'price' and 'quantity' keys
+        """
+        super().__init__(parent)
+        self.item_data = item_data or {}
+        self.result = None
+        
+        self.title("Edit Price & Stock")
+        self.transient(parent)
+        self.grab_set()
+        self._create_widgets()
+    
+    def _create_widgets(self):
+        frame = ttk.Frame(self, padding=12)
+        frame.pack(fill="both", expand=True)
+        
+        # Title
+        ttk.Label(frame, text="Edit Price & Stock", font=("Helvetica", 12, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0,12))
+        
+        # Item name (display only)
+        item_name = self.item_data.get('name', 'Unknown')
+        ttk.Label(frame, text=f"Item: {item_name}", font=("Helvetica", 10)).grid(row=1, column=0, columnspan=2, sticky="w", pady=(0,8))
+        
+        # Price
+        ttk.Label(frame, text="Price ($):").grid(row=2, column=0, sticky="w", pady=4)
+        self.price_entry = ttk.Entry(frame, width=20)
+        self.price_entry.grid(row=2, column=1, sticky="ew", pady=4)
+        self.price_entry.insert(0, str(self.item_data.get('price', 0.0)))
+        
+        # Quantity/Stock
+        ttk.Label(frame, text="Stock Quantity:").grid(row=3, column=0, sticky="w", pady=4)
+        self.qty_entry = ttk.Entry(frame, width=20)
+        self.qty_entry.grid(row=3, column=1, sticky="ew", pady=4)
+        self.qty_entry.insert(0, str(self.item_data.get('quantity', 0)))
+        
+        # Buttons
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=4, column=0, columnspan=2, sticky="e", pady=(12,0))
+        
+        save_btn = ttk.Button(btn_frame, text="Save", command=self._on_save)
+        save_btn.pack(side="right", padx=4)
+        
+        cancel_btn = ttk.Button(btn_frame, text="Cancel", command=self._on_cancel)
+        cancel_btn.pack(side="right")
+        
+        frame.columnconfigure(1, weight=1)
+    
+    def _on_save(self):
+        try:
+            price = float(self.price_entry.get().strip()) if self.price_entry.get().strip() else 0.0
+        except Exception:
+            tk.messagebox.showerror("Validation", "Price must be a number", parent=self)
+            return
+        
+        try:
+            qty = int(self.qty_entry.get().strip()) if self.qty_entry.get().strip() else 0
+        except Exception:
+            tk.messagebox.showerror("Validation", "Stock must be an integer", parent=self)
+            return
+        
+        # Return updated item data
+        self.result = dict(self.item_data)
+        self.result['price'] = price
+        self.result['quantity'] = qty
+        self.destroy()
+    
+    def _on_cancel(self):
+        self.result = None
+        self.destroy()
+
+
 def convert_image_path_to_relative(absolute_path: str) -> str:
     """
     Convert an absolute image path to a relative path for cross-platform compatibility.
@@ -341,7 +417,17 @@ class AssignItemsScreen(tk.Frame):
     def _create_widgets(self):
         header = ttk.Frame(self, padding=12)
         header.pack(fill='x')
-        ttk.Label(header, text="Assign Items to Slots", font=("Helvetica", 18, 'bold')).pack(side='left')
+        
+        left_section = ttk.Frame(header)
+        left_section.pack(side='left')
+        ttk.Label(left_section, text="Assign Items to Slots", font=("Helvetica", 18, 'bold')).pack(side='left')
+        
+        # Term selector dropdown
+        ttk.Label(left_section, text="Term:", font=("Helvetica", 11)).pack(side='left', padx=(20, 4))
+        self.term_var = tk.StringVar(value='Term 1')
+        term_combo = ttk.Combobox(left_section, textvariable=self.term_var, values=[f'Term {i+1}' for i in range(self.TERM_COUNT)], state='readonly', width=10)
+        term_combo.pack(side='left', padx=(0, 12))
+        term_combo.bind('<<ComboboxSelected>>', lambda e: self._on_term_change())
 
         btn_frame = ttk.Frame(header)
         btn_frame.pack(side='right')
@@ -532,7 +618,6 @@ class AssignItemsScreen(tk.Frame):
         slot_entry = self.slots[idx] if idx < len(self.slots) else None
         if (not slot_entry) or (isinstance(slot_entry, dict) and all(t is None for t in slot_entry.get('terms', []))):
             try:
-                # Debug: report save path and existence
                 print(f"[DEBUG] edit_slot({idx+1}) _save_path={self._save_path} exists={os.path.exists(self._save_path)}")
                 if os.path.exists(self._save_path):
                     try:
@@ -550,25 +635,21 @@ class AssignItemsScreen(tk.Frame):
             except Exception as e:
                 print(f"[DEBUG] load_slots failed: {e}")
 
-        # If after loading the requested slot is still empty, attempt reading known fallback paths
+        # Fallback loading from alternate paths
         try:
             slot_after = self.slots[idx] if idx < len(self.slots) else None
             if (not slot_after) or all(t is None for t in slot_after.get('terms', [])):
-                # Candidate fallback locations to check for assigned_items.json
                 fallback_paths = [
                     os.path.join(os.path.dirname(os.path.abspath(__file__)), self.SAVE_FILENAME),
                     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), self.SAVE_FILENAME),
                     os.path.join(os.path.expanduser('~'), 'Documents', self.SAVE_FILENAME),
                 ]
                 for p in fallback_paths:
-                    if p == self._save_path:
-                        continue
-                    if not os.path.exists(p):
+                    if p == self._save_path or not os.path.exists(p):
                         continue
                     try:
                         with open(p, 'r', encoding='utf-8') as _f:
                             _data = json.load(_f)
-                        # Only accept full 64-slot files
                         if isinstance(_data, list) and len(_data) == self.MAX_SLOTS:
                             migrated = []
                             for entry in _data:
@@ -594,19 +675,25 @@ class AssignItemsScreen(tk.Frame):
         # Ensure slot wrapper exists
         if not self.slots[idx]:
             self.slots[idx] = {'terms': [None] * self.TERM_COUNT}
-        # Get the 3 term options for this slot
-        term_options = self.slots[idx].get('terms') or [None]*self.TERM_COUNT
-        # Debug: print summary of options to console for troubleshooting
+        
+        # Get the item for the current term
+        current_item = None
         try:
-            names = [t.get('name') if t else None for t in term_options]
-            print(f"[DEBUG] edit_slot {idx+1} term options: {names}")
+            slot = self.slots[idx]
+            if slot and 'terms' in slot and len(slot['terms']) > self.current_term:
+                current_item = slot['terms'][self.current_term]
         except Exception:
             pass
-        # Open dialog with all 3 term options
-        dlg = EditSlotDialog(self.master, slot_idx=idx, term_options=term_options, current_term_idx=self.current_term)
+        
+        if not current_item:
+            tk.messagebox.showwarning("Empty Slot", f"Slot {idx+1} is empty for Term {self.current_term+1}.\nUse Custom mode to assign an item.", parent=self)
+            return
+        
+        # Open Price/Stock editor
+        dlg = PriceStockDialog(self.master, item_data=current_item)
         self.master.wait_window(dlg)
-        if getattr(dlg, 'result', None):
-            # Assign selected item to current term
+        
+        if dlg.result:
             self.slots[idx]['terms'][self.current_term] = dlg.result
             self.refresh_slot(idx)
             self._publish_assignments()

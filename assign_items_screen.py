@@ -892,6 +892,11 @@ class AssignItemsScreen(tk.Frame):
         """Publish current assigned slots to the main controller and update kiosk view if present."""
         try:
             setattr(self.controller, 'assigned_slots', self.slots)
+            # Also publish which term index is currently selected so kiosk can display correct term
+            try:
+                setattr(self.controller, 'assigned_term', self.current_term)
+            except Exception:
+                pass
         except Exception:
             pass
         try:

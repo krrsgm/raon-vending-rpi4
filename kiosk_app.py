@@ -247,7 +247,10 @@ class KioskFrame(tk.Frame):
 
         max_q = max(0, int(item_data.get('quantity', 0)))
         qty_var = tk.IntVar(value=1)
-        spin = tk.Spinbox(controls, from_=1, to=max(1, max_q), width=12, textvariable=qty_var, bg='white', fg='#2222a8', buttonbackground='#2222a8', font=('Helvetica', 14, 'bold'), highlightthickness=2, highlightbackground='#2222a8', highlightcolor='#2222a8', relief='solid', bd=2)
+        # Make spinbox width proportional to card width so it doesn't overlap other text
+        spin_width = max(3, min(8, self.card_width // 40))
+        spin_font_size = max(10, int(self.card_height * 0.06))
+        spin = tk.Spinbox(controls, from_=1, to=max(1, max_q), width=spin_width, textvariable=qty_var, bg='white', fg='#2222a8', buttonbackground='#2222a8', font=('Helvetica', spin_font_size, 'bold'), highlightthickness=1, highlightbackground='#2222a8', highlightcolor='#2222a8', relief='solid', bd=1)
         spin.pack(side='left', padx=(0,6), pady=4)
 
         def on_add(qvar=qty_var, data=item_data):
@@ -261,7 +264,7 @@ class KioskFrame(tk.Frame):
             except Exception:
                 pass
 
-        add_btn = tk.Button(controls, text='Add', bg='white', fg='#2222a8', relief='flat', font=('Helvetica', 11, 'bold'), padx=14, pady=6, command=on_add)
+        add_btn = tk.Button(controls, text='Add', bg='white', fg='#2222a8', relief='flat', font=('Helvetica', max(10, spin_font_size-2), 'bold'), padx=max(6, self.card_width//60), pady=max(4, self.card_height//90), command=on_add)
         add_btn.pack(side='left')
 
         # Bind click/drag behavior for cards that are purchasable
@@ -287,7 +290,9 @@ class KioskFrame(tk.Frame):
                             child.config(bg=disabled_bg)
                         except Exception:
                             pass
-            tk.Label(bottom_frame, text="Out of Stock", font=self.fonts['out_of_stock'], bg=disabled_bg, fg=self.colors['out_of_stock_fg']).pack()
+            # Place out-of-stock label on the right where controls were, to avoid overlapping price
+            out_lbl = tk.Label(bottom_frame, text="Out of Stock", font=self.fonts['out_of_stock'], bg=disabled_bg, fg=self.colors['out_of_stock_fg'])
+            out_lbl.pack(side='right')
 
         return card
 
@@ -348,11 +353,7 @@ class KioskFrame(tk.Frame):
             # older tkinter fallback
             self.search_var.trace('w', lambda *a: self.populate_items())
 
-        # Recent / Popular toggles (visual only)
-        toggles = tk.Frame(sidebar, bg='#f7fafc')
-        toggles.pack(fill='x', padx=8, pady=(0,8))
-        ttk.Button(toggles, text='Recent').pack(side='left', expand=True, fill='x')
-        ttk.Button(toggles, text='Popular').pack(side='left', expand=True, fill='x', padx=(6,0))
+        # (Removed Recent/Popular toggles) — kept search box only for simplicity
 
         # Categories list
         ttk.Label(sidebar, text='Component Categories', background='#f7fafc', font=self.fonts['description']).pack(anchor='w', padx=8, pady=(12,4))
@@ -526,9 +527,30 @@ class KioskFrame(tk.Frame):
 
         # Decide source of items: use assigned slots if present, otherwise master list
         assigned = getattr(self.controller, 'assigned_slots', None)
+        source_items = None
+        # Handle two possible shapes: old list-of-item-dicts, or new list-of-slot-wrappers with 'terms'
         if isinstance(assigned, list) and any(assigned):
-            source_items = [s for s in assigned if s]
-        else:
+            first = assigned[0]
+            if isinstance(first, dict) and 'terms' in first:
+                # It's the per-slot wrapper format; extract current term index published by admin
+                term_idx = getattr(self.controller, 'assigned_term', 0) or 0
+                extracted = []
+                for slot in assigned:
+                    try:
+                        if not slot or not isinstance(slot, dict):
+                            continue
+                        terms = slot.get('terms', [])
+                        if len(terms) > term_idx and terms[term_idx]:
+                            extracted.append(terms[term_idx])
+                    except Exception:
+                        continue
+                if extracted:
+                    source_items = extracted
+            else:
+                # assume old-style list of item dicts
+                source_items = [s for s in assigned if s]
+
+        if source_items is None:
             source_items = list(self.controller.items)
 
         # Filter items by selected category and search text

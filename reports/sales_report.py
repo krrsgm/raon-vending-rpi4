@@ -248,6 +248,61 @@ def generate_report_for(date: str, project_root: Optional[Path] = None) -> Dict:
     except Exception:
         pass
 
+    # Optionally upload reports to S3 and generate presigned links
+    try:
+        cfg_path = project_root / 'config.json'
+        if cfg_path.exists():
+            cfg = json.loads(cfg_path.read_text(encoding='utf-8'))
+            s3_cfg = cfg.get('s3', {}) if isinstance(cfg, dict) else {}
+            if s3_cfg.get('enabled'):
+                try:
+                    from reports import s3_uploader
+
+                    bucket = s3_cfg.get('bucket')
+                    region = s3_cfg.get('region')
+                    expires = int(s3_cfg.get('expires_seconds', 86400) or 86400)
+                    extra_args = s3_cfg.get('extra_args') or {}
+
+                    uploaded_keys = []
+                    for p in (txt_path, json_path):
+                        key = f"reports/{p.name}"
+                        try:
+                            uploaded_key = s3_uploader.upload_file_to_s3(p, bucket, key=key, region=region, extra_args=extra_args)
+                            uploaded_keys.append(uploaded_key)
+                            print(f"Uploaded {p.name} to s3://{bucket}/{uploaded_key}")
+                        except Exception as e:
+                            print(f"S3 upload failed for {p.name}: {e}")
+
+                    # Generate presigned URL for the JSON (or first uploaded) file
+                    if uploaded_keys:
+                        try:
+                            presigned = s3_uploader.generate_presigned_url(bucket, uploaded_keys[0], expires_in=expires, region=region)
+                            print(f"Presigned URL (expires in {expires}s): {presigned}")
+
+                            # Optionally email the link
+                            if s3_cfg.get('email_link'):
+                                try:
+                                    if 'email_cfg' not in locals():
+                                        email_cfg = cfg.get('email', {})
+                                    if email_cfg.get('enabled'):
+                                        from reports import emailer
+                                        subject = email_cfg.get('subject_template', 'RAON Sales Report - {date}').format(date=date)
+                                        body = f"Daily sales report uploaded to S3: {presigned}\n\nThis link will expire in {expires} seconds."
+                                        ok = emailer.send_email_with_attachments(email_cfg, subject, body, [])
+                                        if ok:
+                                            print('S3 link emailed successfully')
+                                        else:
+                                            print('Failed to email S3 link')
+                                except Exception as e:
+                                    print(f'Failed to email S3 link: {e}')
+
+                        except Exception as e:
+                            print(f"Failed to generate presigned URL: {e}")
+                except Exception as e:
+                    print(f"S3 integration error: {e}")
+    except Exception:
+        pass
+
     return report
 
 
@@ -294,11 +349,80 @@ def _default_date_str(yesterday: bool = True) -> str:
     return d.isoformat()
 
 
+def test_email(recipient: Optional[str], project_root: Optional[Path] = None) -> bool:
+    """Send a small test email to verify SMTP config.
+
+    If `config.json` exists it will be used; otherwise a sane Gmail default is
+    constructed (smtp.gmail.com:587) and the recipient defaults to the
+    `recipient` argument or `bsece4araon@gmail.com`.
+    """
+    project_root = (project_root or Path('.')).resolve()
+    cfg_path = project_root / 'config.json'
+
+    # Load existing config or build a default Gmail test config
+    if cfg_path.exists():
+        try:
+            cfg = json.loads(cfg_path.read_text(encoding='utf-8'))
+            email_cfg = cfg.get('email', {}) if isinstance(cfg, dict) else {}
+        except Exception:
+            email_cfg = {}
+    else:
+        email_cfg = {}
+
+    # Ensure we have a recipient
+    recipient = recipient or (email_cfg.get('to')[0] if email_cfg.get('to') else 'bsece4araon@gmail.com')
+
+    # Fill defaults if missing
+    if not email_cfg.get('smtp_server'):
+        email_cfg['smtp_server'] = 'smtp.gmail.com'
+    if not email_cfg.get('smtp_port'):
+        email_cfg['smtp_port'] = 587
+    if 'use_tls' not in email_cfg:
+        email_cfg['use_tls'] = True
+    if not email_cfg.get('username'):
+        # Default username to the recipient for quick testing
+        email_cfg['username'] = recipient
+    if not email_cfg.get('from'):
+        email_cfg['from'] = recipient
+    if not email_cfg.get('to'):
+        email_cfg['to'] = [recipient]
+    if not (email_cfg.get('password_env') or email_cfg.get('password')):
+        # Recommend using env var RAON_SMTP_PASSWORD
+        email_cfg['password_env'] = 'RAON_SMTP_PASSWORD'
+
+    print(f"Testing SMTP send to: {recipient} via {email_cfg['smtp_server']}:{email_cfg['smtp_port']}")
+    print('Make sure the SMTP password is available via the configured environment variable (e.g. RAON_SMTP_PASSWORD).')
+
+    try:
+        from reports import emailer
+        subject = f"RAON Test Email - {datetime.now().date().isoformat()}"
+        body = "This is a test email from the RAON sales report system. If you received this, SMTP settings are working." 
+        ok = emailer.send_email_with_attachments(email_cfg, subject, body, [])
+        if ok:
+            print('Test email sent successfully!')
+        else:
+            print('Test email FAILED. See errors above and verify SMTP settings and password.')
+        return bool(ok)
+    except Exception as e:
+        print(f'Failed to run email test: {e}')
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description='Generate daily sales report')
     parser.add_argument('--date', help='Date YYYY-MM-DD (default: yesterday)', default=_default_date_str(True))
     parser.add_argument('--project-root', help='Project root to search for item_list.json', default=str(Path('.')))
+    parser.add_argument('--test-email', action='store_true', help='Send a test email (uses config.json or Gmail defaults)')
+    parser.add_argument('--test-recipient', help='Override recipient for --test-email')
     args = parser.parse_args()
+
+    if args.test_email:
+        success = test_email(args.test_recipient, Path(args.project_root))
+        if success:
+            print('Email test completed successfully.')
+        else:
+            print('Email test failed.')
+        return
 
     report = generate_report_for(args.date, Path(args.project_root))
     print(f"Report generated for {args.date}")

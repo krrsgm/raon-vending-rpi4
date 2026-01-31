@@ -64,3 +64,12 @@ This will generate the report for the previous day (default) and save it under `
 Email reports
 
 You can enable automatic emailing of the daily report by adding an `email` section to your `config.json` following the example in `config.example.json`. For security, prefer setting the SMTP password in an environment variable and referencing it via `password_env` (example: `"password_env": "RAON_SMTP_PASSWORD"`). The report generator will attach both the TXT and JSON report files and send them to the configured recipients after report generation.
+
+S3 uploads
+
+You can optionally upload generated reports to S3 and have the script produce a presigned link. Add an `s3` block to `config.json` (see `config.example.json`). Important notes:
+- Credentials: provide AWS credentials using `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` environment variables or use an EC2/instance role.
+- Required permissions: `s3:PutObject` and `s3:GetObject` (for presigned links).
+- The script uses `boto3`. Install with: `pip install boto3`.
+
+If `s3.email_link` is set to `true`, the presigned link is emailed to the recipients configured in the `email` block.

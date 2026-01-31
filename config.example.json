@@ -40,27 +40,6 @@
       "log_filename": "sensors.log"
     }
   },
-  
-  "email": {
-    "enabled": false,
-    "smtp_server": "smtp.example.com",
-    "smtp_port": 587,
-    "use_tls": true,
-    "username": "user@example.com",
-    "# password_env": "RAON_SMTP_PASSWORD",
-    "from": "raon@example.com",
-    "to": ["bsece4araon@gmail.com"],
-    "subject_template": "RAON Sales Report - {date}"
-  },
-
-  "s3": {
-    "enabled": false,
-    "bucket": "my-raon-reports",
-    "region": "us-east-1",
-    "expires_seconds": 86400,
-    "extra_args": {"ACL": "private"},
-    "email_link": false
-  },
 
   "coin_hoppers": {
     "one_peso": {

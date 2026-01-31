@@ -365,20 +365,52 @@ class KioskFrame(tk.Frame):
 
         # (Removed Recent/Popular toggles) — kept search box only for simplicity
 
-        # Categories list
+        # Categories list: extract dynamically from assigned items (or config if no assigned items)
         ttk.Label(sidebar, text='Component Categories', background='#f7fafc', font=self.fonts['description']).pack(anchor='w', padx=8, pady=(12,4))
         self.categories_frame = tk.Frame(sidebar, bg='#f7fafc')
         self.categories_frame.pack(fill='both', expand=True, padx=8)
-        categories = ["All Components"] + self.controller.config.get('categories', [])
-        # use tk.Button so we can change bg to show active selection
+        
+        # Build categories list: either from assigned items or from config
         self._category_buttons = {}
+        self._active_category = 'All Components'
+        
+        def build_categories():
+            """Build category list from assigned items or config."""
+            categories = ["All Components"]
+            assigned = getattr(self.controller, 'assigned_slots', None)
+            
+            # If we have assigned items, extract categories from them
+            if isinstance(assigned, list) and any(assigned):
+                term_idx = getattr(self.controller, 'assigned_term', 0) or 0
+                extracted_cats = set()
+                for slot in assigned:
+                    try:
+                        if not slot or not isinstance(slot, dict):
+                            continue
+                        terms = slot.get('terms', [])
+                        if len(terms) > term_idx and terms[term_idx]:
+                            item = terms[term_idx]
+                            cat = item.get('category', '')
+                            if cat:
+                                extracted_cats.add(cat)
+                    except Exception:
+                        continue
+                categories.extend(sorted(extracted_cats))
+            else:
+                # Fallback to config categories
+                categories.extend(self.controller.config.get('categories', []))
+            
+            return categories
+        
+        # Initial population
+        categories = build_categories()
+        
         for cat in categories:
             b = tk.Button(self.categories_frame, text=cat, relief='flat', bg='#f7fafc', anchor='w', command=lambda c=cat: self._on_category_click(c))
             b.pack(fill='x', pady=2)
             self._category_buttons[cat] = b
-        # default active category
-        self._active_category = 'All Components'
-        # highlight default
+        
+        # Highlight default
         if 'All Components' in self._category_buttons:
             self._set_active_category_button('All Components')
 

@@ -20,18 +20,18 @@ def pil_to_photoimage(pil_image):
 
 
 class PriceStockDialog(tk.Toplevel):
-    """Modal dialog to edit price and stock amount only (preset mode)."""
+    """Modal dialog to edit price, stock, image, and other item fields."""
     def __init__(self, parent, item_data=None):
         """
         Args:
             parent: parent window
-            item_data: dict with 'price' and 'quantity' keys
+            item_data: dict with item details
         """
         super().__init__(parent)
         self.item_data = item_data or {}
         self.result = None
         
-        self.title("Edit Price & Stock")
+        self.title("Edit Item Details")
         self.transient(parent)
         self.grab_set()
         self._create_widgets()
@@ -41,27 +41,48 @@ class PriceStockDialog(tk.Toplevel):
         frame.pack(fill="both", expand=True)
         
         # Title
-        ttk.Label(frame, text="Edit Price & Stock", font=("Helvetica", 12, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0,12))
+        ttk.Label(frame, text="Edit Item Details", font=("Helvetica", 12, "bold")).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0,12))
         
         # Item name (display only)
         item_name = self.item_data.get('name', 'Unknown')
-        ttk.Label(frame, text=f"Item: {item_name}", font=("Helvetica", 10)).grid(row=1, column=0, columnspan=2, sticky="w", pady=(0,8))
+        ttk.Label(frame, text=f"Item: {item_name}", font=("Helvetica", 10)).grid(row=1, column=0, columnspan=3, sticky="w", pady=(0,8))
         
         # Price
         ttk.Label(frame, text="Price ($):").grid(row=2, column=0, sticky="w", pady=4)
         self.price_entry = ttk.Entry(frame, width=20)
-        self.price_entry.grid(row=2, column=1, sticky="ew", pady=4)
+        self.price_entry.grid(row=2, column=1, columnspan=2, sticky="ew", pady=4)
         self.price_entry.insert(0, str(self.item_data.get('price', 0.0)))
         
         # Quantity/Stock
         ttk.Label(frame, text="Stock Quantity:").grid(row=3, column=0, sticky="w", pady=4)
         self.qty_entry = ttk.Entry(frame, width=20)
-        self.qty_entry.grid(row=3, column=1, sticky="ew", pady=4)
+        self.qty_entry.grid(row=3, column=1, columnspan=2, sticky="ew", pady=4)
         self.qty_entry.insert(0, str(self.item_data.get('quantity', 0)))
+        
+        # Category
+        ttk.Label(frame, text="Category:").grid(row=4, column=0, sticky="w", pady=4)
+        self.category_entry = ttk.Entry(frame, width=20)
+        self.category_entry.grid(row=4, column=1, columnspan=2, sticky="ew", pady=4)
+        self.category_entry.insert(0, self.item_data.get('category', ''))
+        
+        # Description
+        ttk.Label(frame, text="Description:").grid(row=5, column=0, sticky="nw", pady=4)
+        self.desc_text = tk.Text(frame, width=40, height=3)
+        self.desc_text.grid(row=5, column=1, columnspan=2, sticky="ew", pady=4)
+        self.desc_text.insert('1.0', self.item_data.get('description', ''))
+        
+        # Image path
+        ttk.Label(frame, text="Image:").grid(row=6, column=0, sticky="w", pady=4)
+        self.image_entry = ttk.Entry(frame, width=25)
+        self.image_entry.grid(row=6, column=1, sticky="ew", pady=4)
+        self.image_entry.insert(0, self.item_data.get('image', ''))
+        
+        browse_btn = ttk.Button(frame, text="Browse", command=self._browse_image)
+        browse_btn.grid(row=6, column=2, padx=(4, 0), pady=4)
         
         # Buttons
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=4, column=0, columnspan=2, sticky="e", pady=(12,0))
+        btn_frame.grid(row=7, column=0, columnspan=3, sticky="e", pady=(12,0))
         
         save_btn = ttk.Button(btn_frame, text="Save", command=self._on_save)
         save_btn.pack(side="right", padx=4)
@@ -70,6 +91,19 @@ class PriceStockDialog(tk.Toplevel):
         cancel_btn.pack(side="right")
         
         frame.columnconfigure(1, weight=1)
+    
+    def _browse_image(self):
+        """Open file dialog to select an image."""
+        path = filedialog.askopenfilename(
+            title='Select image',
+            filetypes=[('Images', '*.png;*.jpg;*.jpeg;*.gif;*.bmp'), ('All files', '*.*')],
+            initialdir='./Product List'
+        )
+        if path:
+            # Convert to relative path if possible
+            path = convert_image_path_to_relative(path)
+            self.image_entry.delete(0, tk.END)
+            self.image_entry.insert(0, path)
     
     def _on_save(self):
         try:
@@ -88,6 +122,9 @@ class PriceStockDialog(tk.Toplevel):
         self.result = dict(self.item_data)
         self.result['price'] = price
         self.result['quantity'] = qty
+        self.result['category'] = self.category_entry.get().strip()
+        self.result['description'] = self.desc_text.get('1.0', 'end-1c').strip()
+        self.result['image'] = self.image_entry.get().strip()
         self.destroy()
     
     def _on_cancel(self):
@@ -401,6 +438,7 @@ class AssignItemsScreen(tk.Frame):
         self.selected_slots = set()
         self._thumb_cache = {}
         self.current_term = 0  # 0-based term index
+        self.custom_mode = False  # Toggle between Preset and Custom modes
 
         # Prefer controller's configured path (if provided). Otherwise use this module's directory
         cfg_path = getattr(controller, 'config_path', None)
@@ -428,6 +466,15 @@ class AssignItemsScreen(tk.Frame):
         term_combo = ttk.Combobox(left_section, textvariable=self.term_var, values=[f'Term {i+1}' for i in range(self.TERM_COUNT)], state='readonly', width=10)
         term_combo.pack(side='left', padx=(0, 12))
         term_combo.bind('<<ComboboxSelected>>', lambda e: self._on_term_change())
+        
+        # Mode indicator and Custom toggle
+        ttk.Label(left_section, text="Mode:", font=("Helvetica", 11)).pack(side='left', padx=(20, 4))
+        self.mode_var = tk.StringVar(value='Preset')
+        self.mode_label = ttk.Label(left_section, text='Preset', font=("Helvetica", 11, 'bold'), foreground='green')
+        self.mode_label.pack(side='left', padx=(0, 8))
+        
+        custom_btn = ttk.Button(left_section, text='Switch to Custom', command=self._toggle_custom_mode, width=18)
+        custom_btn.pack(side='left', padx=(0, 12))
 
         btn_frame = ttk.Frame(header)
         btn_frame.pack(side='right')
@@ -577,13 +624,21 @@ class AssignItemsScreen(tk.Frame):
     def _on_term_change(self):
         txt = self.term_var.get() or 'Term 1'
         try:
-            # expect format 'Term N'
+            # Expect format 'Term N'
             n = int(txt.split()[-1])
             self.current_term = max(0, min(self.TERM_COUNT-1, n-1))
         except Exception:
             self.current_term = 0
         # Refresh all slots to display selected term
         self.refresh_all()
+
+    def _toggle_custom_mode(self):
+        """Toggle between Preset and Custom mode."""
+        self.custom_mode = not self.custom_mode
+        if self.custom_mode:
+            self.mode_label.config(text='Custom', foreground='red')
+        else:
+            self.mode_label.config(text='Preset', foreground='green')
 
     def auto_assign_current_term(self):
         """Auto-populate all 64 slots with products from current term in assigned_items.json."""
@@ -685,6 +740,19 @@ class AssignItemsScreen(tk.Frame):
         except Exception:
             pass
         
+        # In custom mode, open full editor; in preset, open price/stock editor
+        if self.custom_mode:
+            # Custom mode: open full EditSlotDialog for item selection/creation
+            term_options = self.slots[idx].get('terms') or [None]*self.TERM_COUNT
+            dlg = EditSlotDialog(self.master, slot_idx=idx, term_options=term_options, current_term_idx=self.current_term)
+            self.master.wait_window(dlg)
+            if getattr(dlg, 'result', None):
+                self.slots[idx]['terms'][self.current_term] = dlg.result
+                self.refresh_slot(idx)
+                self._publish_assignments()
+            return
+        
+        # Preset mode: only allow price/stock/image editing
         if not current_item:
             tk.messagebox.showwarning("Empty Slot", f"Slot {idx+1} is empty for Term {self.current_term+1}.\nUse Custom mode to assign an item.", parent=self)
             return

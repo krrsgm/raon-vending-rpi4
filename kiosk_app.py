@@ -159,6 +159,8 @@ class KioskFrame(tk.Frame):
 
         image_path = item_data.get("image")
         if image_path:
+            # Normalize path separators (convert backslash to forward slash for cross-platform consistency)
+            image_path = image_path.replace('\\', '/')
             # Try to resolve the image path - could be relative or absolute
             resolved_path = None
             
@@ -173,6 +175,14 @@ class KioskFrame(tk.Frame):
                 # Try as relative path from current directory
                 elif os.path.exists(image_path):
                     resolved_path = image_path
+                # Also try from images/ directly if no images/ prefix
+                elif not image_path.startswith('images/'):
+                    fallback = f"images/{os.path.basename(image_path)}"
+                    abs_fallback = get_absolute_path(fallback)
+                    if os.path.exists(abs_fallback):
+                        resolved_path = abs_fallback
+                    elif os.path.exists(fallback):
+                        resolved_path = fallback
             
             if resolved_path:
                 try:
@@ -247,11 +257,11 @@ class KioskFrame(tk.Frame):
 
         max_q = max(0, int(item_data.get('quantity', 0)))
         qty_var = tk.IntVar(value=1)
-        # Make spinbox width proportional to card width so it doesn't overlap other text
-        spin_width = max(3, min(8, self.card_width // 40))
-        spin_font_size = max(10, int(self.card_height * 0.06))
-        spin = tk.Spinbox(controls, from_=1, to=max(1, max_q), width=spin_width, textvariable=qty_var, bg='white', fg='#2222a8', buttonbackground='#2222a8', font=('Helvetica', spin_font_size, 'bold'), highlightthickness=1, highlightbackground='#2222a8', highlightcolor='#2222a8', relief='solid', bd=1)
-        spin.pack(side='left', padx=(0,6), pady=4)
+        # Make spinbox very compact so Add button remains visible
+        spin_width = 3
+        spin_font_size = 9
+        spin = tk.Spinbox(controls, from_=1, to=max(1, max_q), width=spin_width, textvariable=qty_var, bg='white', fg='#2222a8', buttonbackground='#2222a8', font=('Helvetica', spin_font_size), highlightthickness=0, relief='solid', bd=1)
+        spin.pack(side='left', padx=(0,3), pady=2)
 
         def on_add(qvar=qty_var, data=item_data):
             q = int(qvar.get()) if qvar.get() else 1
@@ -264,7 +274,7 @@ class KioskFrame(tk.Frame):
             except Exception:
                 pass
 
-        add_btn = tk.Button(controls, text='Add', bg='white', fg='#2222a8', relief='flat', font=('Helvetica', max(10, spin_font_size-2), 'bold'), padx=max(6, self.card_width//60), pady=max(4, self.card_height//90), command=on_add)
+        add_btn = tk.Button(controls, text='Add', bg='white', fg='#2222a8', relief='flat', font=('Helvetica', 9, 'bold'), padx=4, pady=2, command=on_add)
         add_btn.pack(side='left')
 
         # Bind click/drag behavior for cards that are purchasable

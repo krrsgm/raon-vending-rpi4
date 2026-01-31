@@ -41,6 +41,18 @@
     }
   },
   
+  "email": {
+    "enabled": false,
+    "smtp_server": "smtp.example.com",
+    "smtp_port": 587,
+    "use_tls": true,
+    "username": "user@example.com",
+    "# password_env": "RAON_SMTP_PASSWORD",
+    "from": "raon@example.com",
+    "to": ["owner@example.com"],
+    "subject_template": "RAON Sales Report - {date}"
+  },
+
   "coin_hoppers": {
     "one_peso": {
       "motor_pin": 5,

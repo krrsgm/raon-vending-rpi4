@@ -3,7 +3,7 @@ from tkinter import font as tkfont, ttk
 from PIL import Image
 import os
 import io
-from dht11_handler import DHT22Display
+from dht22_handler import DHT22Display
 from system_status_panel import SystemStatusPanel
 from fix_paths import get_absolute_path
 
@@ -242,9 +242,12 @@ class KioskFrame(tk.Frame):
         bottom_frame = tk.Frame(card, bg=self.colors['card_bg'])
         bottom_frame.pack(fill='x', padx=10, pady=(0, 10))
 
+        # Use configured currency symbol from controller.config when available
+        cfg = getattr(self.controller, 'config', {}) or {}
+        currency = cfg.get('currency_symbol', getattr(self.controller, 'currency_symbol', '₱'))
         price_lbl = tk.Label(
             bottom_frame,
-            text=f"{self.controller.currency_symbol}{item_data.get('price',0):.2f}",
+            text=f"{currency}{item_data.get('price',0):.2f}",
             font=self.fonts['price'],
             bg=self.colors['card_bg'],
             fg=self.colors['price_fg']
@@ -430,6 +433,41 @@ class KioskFrame(tk.Frame):
         self.canvas.bind('<ButtonPress-1>', self.on_canvas_press)
         self.canvas.bind('<B1-Motion>', self.on_canvas_drag)
 
+        # Enable mouse wheel / touchpad scrolling for the kiosk (cross-platform)
+        def _on_mousewheel_kiosk(event):
+            try:
+                # Prefer using event.delta (Windows/macOS). delta is multiple of 120 on Windows.
+                if hasattr(event, 'delta') and event.delta:
+                    # Normalize to number of scroll units
+                    step = int(event.delta / 120)
+                    # Reverse sign for natural scrolling consistency
+                    if step != 0:
+                        self.canvas.yview_scroll(-step, 'units')
+                        return
+                # Fallback for X11 mouse wheel (Button-4/5)
+                if getattr(event, 'num', None) == 4:
+                    self.canvas.yview_scroll(-3, 'units')
+                elif getattr(event, 'num', None) == 5:
+                    self.canvas.yview_scroll(3, 'units')
+            except Exception:
+                pass
+
+        # Bind wheel events for different platforms
+        try:
+            # Windows and macOS: bind to canvas and scrollable frame too
+            self.canvas.bind_all('<MouseWheel>', _on_mousewheel_kiosk)
+            scrollable_frame.bind('<MouseWheel>', _on_mousewheel_kiosk)
+        except Exception:
+            pass
+        try:
+            # Linux (X11)
+            self.canvas.bind_all('<Button-4>', _on_mousewheel_kiosk)
+            self.canvas.bind_all('<Button-5>', _on_mousewheel_kiosk)
+            scrollable_frame.bind('<Button-4>', _on_mousewheel_kiosk)
+            scrollable_frame.bind('<Button-5>', _on_mousewheel_kiosk)
+        except Exception:
+            pass
+
         # Populate grid with item cards
         self.populate_items()
 
@@ -600,7 +638,10 @@ class KioskFrame(tk.Frame):
         search_text = (getattr(self, 'search_var', tk.StringVar()).get() or '').strip().lower()
         filtered_items = []
         for item in source_items:
-            cat_ok = (selected_category in ['All Components', 'All Categories']) or (item.get('category','') == selected_category)
+            # Normalize category matching: case-insensitive, trim whitespace, allow substring match
+            item_cat = (item.get('category','') or '').strip().lower()
+            sel_cat = (selected_category or '').strip().lower()
+            cat_ok = (sel_cat in ['all components', 'all categories']) or (item_cat == sel_cat) or (sel_cat and sel_cat in item_cat)
             text_ok = (not search_text) or (search_text in item.get('name','').lower())
             if cat_ok and text_ok:
                 filtered_items.append(item)

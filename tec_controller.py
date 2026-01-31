@@ -13,7 +13,7 @@ except Exception:
 import time
 import threading
 from threading import Thread, Lock
-from dht11_handler import DHT22Sensor
+from dht22_handler import DHT22Sensor
 
 
 class TECController:
@@ -66,6 +66,7 @@ class TECController:
         
         # Callbacks for UI updates
         self._on_status_update = None  # Called with (enabled, current_temp, target_temp)
+        self._on_dht_update = None  # Called with (sensor_number, temperature, humidity)
         
         sensor_list = ", ".join([f"GPIO{pin}" for pin in sensor_pins])
     def _control_loop(self):
@@ -113,6 +114,24 @@ class TECController:
                             )
                         except Exception as e:
                             print(f"[TECController] Callback error: {e}")
+
+                # After updating aggregated status, notify per-sensor readings if callback is set
+                try:
+                    if self._on_dht_update:
+                        # Notify for each sensor with its latest reading
+                        for idx, pin in enumerate(self.sensor_pins):
+                            temp = None
+                            humid = None
+                            with self._lock:
+                                temp = self.sensor_temps.get(pin)
+                                humid = self.sensor_humidities.get(pin)
+                            try:
+                                # sensor_number: 1-based index
+                                self._on_dht_update(idx+1, temp, humid)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
                     
                     # Control logic: Hysteresis-based on/off control
                     with self._lock:
@@ -168,6 +187,15 @@ class TECController:
             callback: Function called with (enabled, active, target_temp, current_temp)
         """
         self._on_status_update = callback
+
+    def set_on_dht_update(self, callback):
+        """
+        Set callback for individual DHT22 sensor updates.
+
+        Args:
+            callback: Function called with (sensor_number, temperature, humidity)
+        """
+        self._on_dht_update = callback
     
     def get_status(self):
         """Get current TEC status."""

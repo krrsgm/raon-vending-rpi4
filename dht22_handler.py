@@ -95,8 +95,6 @@ class DHT22Display(tk.Frame):
         self.sensor_number = sensor_number
         
         # Create sensor with specified GPIO pin
-        pin = 4 if sensor_number == 1 else 17
-        # Create sensor with specified GPIO pin
         pin = 27 if sensor_number == 1 else 22
         self.sensor = DHT22Sensor(pin=pin)
         

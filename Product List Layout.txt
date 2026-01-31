@@ -1,0 +1,188 @@
+Term 1
+Row1
+	Slot 1: SS1 - Sensor: IR Sensor, Photodiode, PIR Sensor - P185
+	Slot 2: FC - Ferric Chloride: Ferric Chloride, Glove - P36
+	Slot 3: SD - Solder Bundle: Soldering Lead,Soldering Paster - P110
+	Slot 4: JMM - Jumper Wires (Male to Male) - P87
+	Slot 5: JFF - Jumper Wires (Female to Female) - P87
+	Slot 6: JMF - Jumper Wires (Male to Female) - P87
+	Slot 7: BB - Breadboard - P90
+	Slot 8: AC - Alligator Clips - P137
+Row2
+	Slot 9: UNO - Arduino UNO - P180
+	Slot 10: PSP - Power Supply Potentiometer: 5k ohm Potentiometer - P47
+	Slot 11: AMPCB - Amplifier Circuit Board: Pre-sensitized PCB Single Sided 4"x6" with Developer - ₱338.00
+Row3
+	Slot 17: D1 - Diode: 1N4002, 1N5400 - P39
+	Slot 18: T1 - Transistor 1: 2N3904, 2N3906, TIP3055, TIP2955 - P211
+	Slot 19: VR1 - Voltage Regulator: LM7805, LM317T - P110
+	Slot 20: IC1 - AND-NAND: 7408, 7421, 7400, 7420 - P146
+	Slot 21: IC2 - OR-NOR: 7432, 7431, 7402, 7425 - P63
+	Slot 22: IC3 - XOR-XNOR: 7486, 74268, 74266 - P63
+	Slot 23: IC4 - NOT: 7404 - P63
+	Slot 24: IC5 - MUX: 74153, 74155 - P106
+
+Row4
+	Slot 25: IC6 - Display: 74147, 7448, 7 Segment Cathode - P129
+	Slot 26: IC7 - Sequential IC: 74195, 74194, 74193 - P150
+	Slot 27: M1 - Miscellaneous: 555 Timer, LM393 , 74LS74 - P86
+	Slot 28: SR22 - Stranded Wires: 22 AWG - P113
+	Slot 29: SR18 - Stranded Wires: 18 AWG - P105
+	Slot 30: SD22 - Solid Wires: 22 AWG - P83
+	Slot 31: PB - Push Buttons: Push Buttons - P13
+	Slot 32: SW - Switches - P13
+Row5
+	Slot 33: LED - LED: LED - P32
+	Slot 34: R1 - Resistor 1: 10, 22, 47, 100 - P48
+	Slot 35: R2 - Resistor 2: 150, 200, 220, 270 - P48
+	Slot 36: R3 - Resistor 3: 330, 470, 530, 680 - P48
+	Slot 37: R4 - Resistor 4: 1K, 2K, 2.2k, 3.3k - P48
+	Slot 38: R5 - Resistor 5: 4.7k, 5.1k, 6.8k, 10k - P48
+	Slot 39: R6 - Resistor 6: 20k, 47k, 51k, 68k - P48
+	Slot 40: R7 - Resistor 7: 100k, 220k, 300k, 470k - P48
+Row6
+	Slot 41: R8 - Resistor 8: 680k, 1M - P24
+	Slot 42: C1 - Capacitor 1: 0.1uF, 0.22uF, 0.47uF, 1uF, 2.2uF - P44
+	Slot 43: C2 - Capacitor 2: 3.3uF, 4.7uF, 10uF, 22uF - P54
+	Slot 44: C3 - Capacitor 3: 33uF, 47uF 16V 47uF 25V - P58
+	Slot 45: C4 - Capacitor 4: 100uF 16V, 100uF 25V, 220uF - P83
+	Slot 46: AMP R1 - Amplifier R1: R - 1M - P7
+	Slot 47: AMP R2 - Amplifier R2: R - 330 - P7
+	Slot 48: AMP R3 - Amplifier R3: R - 5.6K - P7
+Row7
+	Slot 49: AMPR4 - Amplifier R4: R- 10K - ₱13.00
+	Slot 50: AMPR5 - Amplifier R5: R - 2.2K - ₱7.00
+	Slot 51: AMPC1 - Amplifier C1: C - 4.7uF - ₱57.00
+	Slot 52: AMPC2 - Amplifier C2: C - 10uF - ₱82.00
+	Slot 53: AMPC3 - Amplifier C3: C - 1000uF - ₱157.00
+	Slot 54: AMPC4 - Amplifier C4: C - 220uF - ₱32.00
+	Slot 55: AMPC5 - Amplifier C5: C - 104 - ₱10.00
+	Slot 56: AMPC6 - Amplifier C6: C - 103 - ₱10.00
+Row8
+	Slot 57: AMPC7 - Amplifier C7: C - 222 - ₱10.00
+	Slot 58: AMPC8 - Amplifier C8: C - 224 - ₱10.00
+	Slot 59: AMPT1 - Amplifier T1: T - C945 - ₱8.00
+	Slot 60: AMPD1 - Amplifier D1: D - CR1 - ₱57.00	
+	Slot 61: AMPI1 - Amplifier I1: I - LA202 - ₱313.00
+	Slot 62: AMPM - Amplifier Miscellaneous: Knob - ₱50.00
+
+
+
+
+Term 2
+Row1
+	Slot 1: SS1 - Sensor: IR Sensor, Photodiode, PIR Sensor - P185
+	Slot 2: FC - Ferric Chloride: Ferric Chloride, Glove - P36
+	Slot 3: SD - Solder Bundle: Soldering Lead,Soldering Paster - P110
+	Slot 4: JMM - Jumper Wires (Male to Male) - P87
+	Slot 5: JFF - Jumper Wires (Female to Female) - P87
+	Slot 6: JMF - Jumper Wires (Male to Female) - P87
+	Slot 7: BB - Breadboard - P90
+	Slot 8: AC - Alligator Clips - P137
+Row2
+	Slot 9: UNO - Arduino UNO - P180
+	Slot 10: PSCB - Power Supply Circuit Board: PCB 3x5 - P94
+Row3
+	Slot 17: D1 - Diode: 1N4002, 1N5400 - P39
+	Slot 18: T1 - Transistor 1: 2N3904, 2N3906, TIP3055, TIP2955 - P211
+	Slot 19: VR1 - Voltage Regulator: LM7805, LM317T - P110
+	Slot 20: IC1 - AND-NAND: 7408, 7421, 7400, 7420 - P146
+	Slot 21: IC2 - OR-NOR: 7432, 7431, 7402, 7425 - P63
+	Slot 22: IC3 - XOR-XNOR: 7486, 74268, 74266 - P63
+	Slot 23: IC4 - NOT: 7404 - P63
+	Slot 24: IC5 - MUX: 74153, 74155 - P106
+Row4
+	Slot 25: IC6 - Display: 74147, 7448, 7 Segment Cathode - P129
+	Slot 26: IC7 - Sequential IC: 74195, 74194, 74193 - P150
+	Slot 27: M1 - Miscellaneous: 555 Timer, LM393 , 74LS74 - P86
+	Slot 28: SR22 - Stranded Wires: 22 AWG - P113
+	Slot 29: SR18 - Stranded Wires: 18 AWG - P105
+	Slot 30: SD22 - Solid Wires: 22 AWG - P83
+	Slot 31: PB - Push Buttons: Push Buttons - P13
+	Slot 32: SW - Switches - P13
+Row5
+	Slot 33: LED - LED: LED - P32
+	Slot 34: R1 - Resistor 1: 10, 22, 47, 100 - P48
+	Slot 35: R2 - Resistor 2: 150, 200, 220, 270 - P48
+	Slot 36: R3 - Resistor 3: 330, 470, 530, 680 - P48
+	Slot 37: R4 - Resistor 4: 1K, 2K, 2.2k, 3.3k - P48
+	Slot 38: R5 - Resistor 5: 4.7k, 5.1k, 6.8k, 10k - P48
+	Slot 39: R6 - Resistor 6: 20k, 47k, 51k, 68k - P48
+	Slot 40: R7 - Resistor 7: 100k, 220k, 300k, 470k - P48
+Row6
+	Slot 41: R8 - Resistor 8: 680k, 1M - P24
+	Slot 42: C1 - Capacitor 1: 0.1uF, 0.22uF, 0.47uF, 1uF, 2.2uF - P44
+	Slot 43: C2 - Capacitor 2: 3.3uF, 4.7uF, 10uF, 22uF - P54
+	Slot 44: C3 - Capacitor 3: 33uF, 47uF 16V 47uF 25V - P58
+	Slot 45: C4 - Capacitor 4: 100uF 16V, 100uF 25V, 220uF - P83
+	Slot 46: PSP - Power Supply Potentiometer: 5k ohm Potentiometer - P47
+	Slot 47: PSR - Power Supply Resistor: 0.22 ohms, 240 ohms, 1k ohms - P78
+	Slot 48: PSC - Power Supply Capacitor: 4700uF - P125
+Row7
+	Slot 49: PSD - Power Supply Diode: 1N5400, 1N4001, Zener Diode - P126
+	Slot 50: PSF - Power Supply Fuse:1A, 3A - 117
+	Slot 51: PSV - Power Supply Voltmeter: Voltmeter - P51
+	Slot 52: PST&VR - Power Supply Transistor & Voltage Regulator: LM317T, TIP2955 - P117
+	Slot 53: PSM - Power Supply Miscellaneous: Knob, Binding Posts, Switch Indicator, Fuse, Holder - P97
+
+
+
+Term 3
+Row1
+	Slot 1: SS1 - Sensor: IR Sensor, Photodiode, PIR Sensor - P185
+	Slot 2: FC - Ferric Chloride: Ferric Chloride, Glove - P36
+	Slot 3: SD - Solder Bundle: Soldering Lead,Soldering Paster - P110
+	Slot 4: JMM - Jumper Wires (Male to Male) - P87
+	Slot 5: JFF - Jumper Wires (Female to Female) - P87
+	Slot 6: JMF - Jumper Wires (Male to Female) - P87
+	Slot 7: BB - Breadboard - P90
+	Slot 8: AC - Alligator Clips - P137
+Row2
+	Slot 9: UNO - Arduino UNO - P180
+	Slot 10: PSCB - Power Supply Circuit Board: PCB 3x5 - P94
+Row3
+	Slot 17: D1 - Diode: 1N4002, 1N5400 - P39
+	Slot 18: T1 - Transistor 1: 2N3904, 2N3906, TIP3055, TIP2955 - P211
+	Slot 19: VR1 - Voltage Regulator: LM7805, LM317T - P110
+	Slot 20: IC1 - AND-NAND: 7408, 7421, 7400, 7420 - P146
+	Slot 21: IC2 - OR-NOR: 7432, 7431, 7402, 7425 - P63
+	Slot 22: IC3 - XOR-XNOR: 7486, 74268, 74266 - P63
+	Slot 23: IC4 - NOT: 7404 - P63
+	Slot 24: IC5 - MUX: 74153, 74155 - P106
+
+Row4
+	Slot 25: IC6 - Display: 74147, 7448, 7 Segment Cathode - P129
+	Slot 26: IC7 - Sequential IC: 74195, 74194, 74193 - P150
+	Slot 27: M1 - Miscellaneous: 555 Timer, LM393 , 74LS74 - P86
+	Slot 28: SR22 - Stranded Wires: 22 AWG - P113
+	Slot 29: SR18 - Stranded Wires: 18 AWG - P105
+	Slot 30: SD22 - Solid Wires: 22 AWG - P83
+	Slot 31: PB - Push Buttons: Push Buttons - P13
+	Slot 32: SW - Switches - P13
+Row5
+	Slot 33: LED - LED: LED - P32
+	Slot 34: R1 - Resistor 1: 10, 22, 47, 100 - P48
+	Slot 35: R2 - Resistor 2: 150, 200, 220, 270 - P48
+	Slot 36: R3 - Resistor 3: 330, 470, 530, 680 - P48
+	Slot 37: R4 - Resistor 4: 1K, 2K, 2.2k, 3.3k - P48
+	Slot 38: R5 - Resistor 5: 4.7k, 5.1k, 6.8k, 10k - P48
+	Slot 39: R6 - Resistor 6: 20k, 47k, 51k, 68k - P48
+	Slot 40: R7 - Resistor 7: 100k, 220k, 300k, 470k - P48
+Row6
+	Slot 41: R8 - Resistor 8: 680k, 1M - P24
+	Slot 42: C1 - Capacitor 1: 0.1uF, 0.22uF, 0.47uF, 1uF, 2.2uF - P44
+	Slot 43: C2 - Capacitor 2: 3.3uF, 4.7uF, 10uF, 22uF - P54
+	Slot 44: C3 - Capacitor 3: 33uF, 47uF 16V 47uF 25V - P58
+	Slot 45: C4 - Capacitor 4: 100uF 16V, 100uF 25V, 220uF - P83
+	Slot 46: PSP - Power Supply Potentiometer: 5k ohm Potentiometer - P47
+	Slot 47: PSR - Power Supply Resistor: 0.22 ohms, 240 ohms, 1k ohms - P78
+	Slot 48: PSC - Power Supply Capacitor: 4700uF - P125
+
+Row7
+	Slot 49: PSD - Power Supply Diode: 1N5400, 1N4001, Zener Diode - P126
+	Slot 50: PSF - Power Supply Fuse:1A, 3A - 117
+	Slot 51: PSV - Power Supply Voltmeter: Voltmeter - P51
+	Slot 52: PST&VR - Power Supply Transistor & Voltage Regulator: LM317T, TIP2955 - P117
+	Slot 53: PSM - Power Supply Miscellaneous: Knob, Binding Posts, Switch Indicator, Fuse, Holder - P97
+	Slot 54: T2 - Transistor 2: 2N6073, 2N6397, 2N6027 - ₱126.00
+	Slot 55: M2 - Miscellaneous 2: SCR (295060), 1N5758, 51mH Inductor - ₱258.00

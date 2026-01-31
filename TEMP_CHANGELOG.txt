@@ -1,0 +1,5 @@
+Change plan:
+- assign_items_screen._publish_assignments: set controller.assigned_term
+- kiosk_app.populate_items: detect assigned slot wrappers and extract current term
+- kiosk_app.create_widgets: remove Recent/Popular buttons
+- kiosk_app.create_item_card: make spinbox width proportional, adjust add button and out-of-stock label

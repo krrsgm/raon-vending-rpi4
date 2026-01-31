@@ -20,8 +20,11 @@ def pil_to_photoimage(pil_image):
 
 
 class PriceStockDialog(tk.Toplevel):
-    """Modal dialog to edit price, stock, image, and other item fields."""
-    def __init__(self, parent, item_data=None):
+    """Modal dialog to edit price, stock, image, and other item fields.
+
+    If `read_only` is True the fields are disabled and the dialog acts as a viewer.
+    """
+    def __init__(self, parent, item_data=None, read_only=False):
         """
         Args:
             parent: parent window
@@ -30,6 +33,7 @@ class PriceStockDialog(tk.Toplevel):
         super().__init__(parent)
         self.item_data = item_data or {}
         self.result = None
+        self.read_only = bool(read_only)
         
         self.title("Edit Item Details")
         self.transient(parent)
@@ -84,11 +88,15 @@ class PriceStockDialog(tk.Toplevel):
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=7, column=0, columnspan=3, sticky="e", pady=(12,0))
         
-        save_btn = ttk.Button(btn_frame, text="Save", command=self._on_save)
-        save_btn.pack(side="right", padx=4)
-        
-        cancel_btn = ttk.Button(btn_frame, text="Cancel", command=self._on_cancel)
-        cancel_btn.pack(side="right")
+        if self.read_only:
+            close_btn = ttk.Button(btn_frame, text="Close", command=self._on_cancel)
+            close_btn.pack(side="right")
+        else:
+            save_btn = ttk.Button(btn_frame, text="Save", command=self._on_save)
+            save_btn.pack(side="right", padx=4)
+            
+            cancel_btn = ttk.Button(btn_frame, text="Cancel", command=self._on_cancel)
+            cancel_btn.pack(side="right")
         
         frame.columnconfigure(1, weight=1)
     
@@ -104,6 +112,35 @@ class PriceStockDialog(tk.Toplevel):
             path = convert_image_path_to_relative(path)
             self.image_entry.delete(0, tk.END)
             self.image_entry.insert(0, path)
+
+    def _set_readonly(self):
+        """Disable input widgets when in read-only mode."""
+        # Keep price and quantity editable in preset read-only viewer
+        # (user requested price/stock editable in preset mode)
+        try:
+            self.category_entry.state(['disabled'])
+        except Exception:
+            try:
+                self.category_entry.config(state='disabled')
+            except Exception:
+                pass
+        try:
+            self.image_entry.state(['disabled'])
+        except Exception:
+            try:
+                self.image_entry.config(state='disabled')
+            except Exception:
+                pass
+        try:
+            self.desc_text.config(state='disabled')
+        except Exception:
+            pass
+        # Hide browse button when read-only
+        try:
+            for child in self.winfo_children():
+                pass
+        except Exception:
+            pass
     
     def _on_save(self):
         try:
@@ -439,6 +476,8 @@ class AssignItemsScreen(tk.Frame):
         self._thumb_cache = {}
         self.current_term = 0  # 0-based term index
         self.custom_mode = False  # Toggle between Preset and Custom modes
+        # Snapshot of presets taken when entering custom mode; used to restore originals
+        self._presets_snapshot = None
 
         # Prefer controller's configured path (if provided). Otherwise use this module's directory
         cfg_path = getattr(controller, 'config_path', None)
@@ -630,14 +669,51 @@ class AssignItemsScreen(tk.Frame):
         except Exception:
             self.current_term = 0
         # Refresh all slots to display selected term
+        # If slots appear empty, attempt to load from disk first to pick up presets
+        try:
+            # Quick check: are most slots empty for the selected term?
+            empty_count = 0
+            for s in self.slots:
+                try:
+                    if not s or not isinstance(s, dict) or not s.get('terms'):
+                        empty_count += 1
+                        continue
+                    if not s.get('terms')[self.current_term]:
+                        empty_count += 1
+                except Exception:
+                    empty_count += 1
+            # If a large portion are empty and a save file exists, reload
+            if empty_count > (self.MAX_SLOTS // 2) and os.path.exists(self._save_path):
+                try:
+                    self.load_slots()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # Refresh UI (text fast, images deferred)
         self.refresh_all()
 
     def _toggle_custom_mode(self):
         """Toggle between Preset and Custom mode."""
-        self.custom_mode = not self.custom_mode
+        # Toggle mode
+        entering = not self.custom_mode
+        self.custom_mode = entering
         if self.custom_mode:
+            # Take a deep snapshot of current presets so they can be restored later
+            try:
+                self._presets_snapshot = copy.deepcopy(self.slots)
+            except Exception:
+                self._presets_snapshot = None
             self.mode_label.config(text='Custom', foreground='red')
         else:
+            # Leaving custom mode: restore original presets (discard temporary edits)
+            try:
+                if self._presets_snapshot is not None:
+                    self.slots = copy.deepcopy(self._presets_snapshot)
+                    self._presets_snapshot = None
+                    self.refresh_all()
+            except Exception:
+                pass
             self.mode_label.config(text='Preset', foreground='green')
 
     def auto_assign_current_term(self):
@@ -756,15 +832,15 @@ class AssignItemsScreen(tk.Frame):
         if not current_item:
             tk.messagebox.showwarning("Empty Slot", f"Slot {idx+1} is empty for Term {self.current_term+1}.\nUse Custom mode to assign an item.", parent=self)
             return
-        
-        # Open Price/Stock editor
-        dlg = PriceStockDialog(self.master, item_data=current_item)
+
+        # Open Price/Stock viewer in read-only mode (presets are not editable here)
+        dlg = PriceStockDialog(self.master, item_data=current_item, read_only=True)
+        # Ensure widgets are disabled when shown
+        try:
+            dlg._set_readonly()
+        except Exception:
+            pass
         self.master.wait_window(dlg)
-        
-        if dlg.result:
-            self.slots[idx]['terms'][self.current_term] = dlg.result
-            self.refresh_slot(idx)
-            self._publish_assignments()
 
     def _check_esp32_connection(self, esp32_host):
         """Check if ESP32 is reachable by sending a STATUS command."""
@@ -887,31 +963,74 @@ class AssignItemsScreen(tk.Frame):
         else:
             slot_ui['name'].config(text='Empty')
             slot_ui['details'].config(text='')
-        # handle thumbnail if available
+        # handle thumbnail if available - image loading is deferred via scheduled batches
         try:
             img_path = data.get('image','') if data else ''
         except Exception:
             img_path = ''
+        # Only load images synchronously when requested via the deferred loader
+        img = None
         if img_path and PIL_AVAILABLE and os.path.exists(img_path):
-            try:
-                if not PIL_AVAILABLE:
-                    return  # Skip image loading if PIL not available
-                img = self._thumb_cache.get(idx)
-                if img is None:
-                    pil = Image.open(img_path)
-                    pil.thumbnail((80,80))
-                    img = pil_to_photoimage(pil)
-                    self._thumb_cache[idx] = img
+            img = self._thumb_cache.get(idx)
+            if img:
                 slot_ui['thumb'].config(image=img, text='')
                 slot_ui['thumb'].image = img
-            except Exception:
-                slot_ui['thumb'].config(text='No Image', image='')
+            else:
+                # Show placeholder until deferred loader converts to thumbnail
+                slot_ui['thumb'].config(text='Image', image='')
         else:
             slot_ui['thumb'].config(text='No Image', image='')
 
     def refresh_all(self):
+        # Fast refresh: update text/details quickly, defer image thumbnail generation
         for idx in range(self.MAX_SLOTS):
             self.refresh_slot(idx)
+        # Schedule background thumbnail loading in small batches to avoid UI freeze
+        try:
+            self._schedule_load_images(batch=8, delay=40)
+        except Exception:
+            pass
+
+    def _schedule_load_images(self, batch=8, delay=40):
+        """Load thumbnails in small batches to keep UI responsive."""
+        if getattr(self, '_img_load_job', None):
+            # already scheduled
+            return
+        self._img_load_index = 0
+        def _step():
+            start = self._img_load_index
+            end = min(self.MAX_SLOTS, start + batch)
+            for i in range(start, end):
+                try:
+                    # Force image load by re-running thumbnail code
+                    r, c = self._slot_to_position(i)
+                    slot_ui = self.slot_frames[r][c]
+                    term_idx = self.current_term
+                    slot = self.slots[i]
+                    data = None
+                    if slot and 'terms' in slot and len(slot['terms']) > term_idx:
+                        data = slot['terms'][term_idx]
+                    img_path = data.get('image','') if data else ''
+                    if img_path and PIL_AVAILABLE and os.path.exists(img_path):
+                        if not self._thumb_cache.get(i):
+                            try:
+                                pil = Image.open(img_path)
+                                pil.thumbnail((80,80))
+                                img = pil_to_photoimage(pil)
+                                self._thumb_cache[i] = img
+                                slot_ui['thumb'].config(image=img, text='')
+                                slot_ui['thumb'].image = img
+                            except Exception:
+                                slot_ui['thumb'].config(text='No Image', image='')
+                except Exception:
+                    pass
+            self._img_load_index = end
+            if self._img_load_index < self.MAX_SLOTS:
+                self._img_load_job = self.after(delay, _step)
+            else:
+                self._img_load_job = None
+        # Start after a short pause to let UI update
+        self._img_load_job = self.after(120, _step)
 
     def _update_slot_selection_visual(self, idx):
         r, c = self._slot_to_position(idx)
@@ -983,6 +1102,7 @@ class AssignItemsScreen(tk.Frame):
     def clear_all(self):
         if tk.messagebox.askyesno("Confirm", "Clear all assigned slots?"):
             self.slots = [{'terms': [None] * self.TERM_COUNT} for _ in range(self.MAX_SLOTS)]
+            # Fast refresh (no immediate image processing)
             self.refresh_all()
             self._publish_assignments()
 
@@ -1064,7 +1184,66 @@ class AssignItemsScreen(tk.Frame):
                     kf.populate_items()
         except Exception:
             pass
+        # Also update controller.config categories from assigned slots so admin and kiosk configs stay in sync
+        try:
+            cfg = getattr(self.controller, 'config', {}) or {}
+            cats = set()
+            for slot in self.slots:
+                try:
+                    for term in (slot.get('terms') or []):
+                        if term and isinstance(term, dict):
+                            c = term.get('category')
+                            if c:
+                                cats.add(c)
+                except Exception:
+                    pass
+            cfg['categories'] = sorted(cats)
+            try:
+                setattr(self.controller, 'config', cfg)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     # Optional helper to return slot assignment list
     def get_assigned_slots(self):
         return self.slots
+    
+    def restore_slot_from_disk(self, slot_idx: int, term_idx: int = 0) -> bool:
+        """Restore a specific slot's term from the saved assigned_items.json on disk.
+
+        Returns True if restored, False otherwise.
+        """
+        try:
+            # Try primary save path first
+            paths = [self._save_path,
+                     os.path.join(os.path.dirname(os.path.abspath(__file__)), self.SAVE_FILENAME),
+                     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), self.SAVE_FILENAME),
+                     os.path.join(os.path.expanduser('~'), 'Documents', self.SAVE_FILENAME)]
+            for p in paths:
+                if not p or not os.path.exists(p):
+                    continue
+                try:
+                    with open(p, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    if isinstance(data, list) and len(data) >= slot_idx+1:
+                        entry = data[slot_idx]
+                        if entry and isinstance(entry, dict) and 'terms' in entry and isinstance(entry['terms'], list):
+                            # Ensure self.slots has wrapper
+                            if slot_idx >= len(self.slots):
+                                # expand
+                                while len(self.slots) <= slot_idx:
+                                    self.slots.append({'terms': [None] * self.TERM_COUNT})
+                            # copy the term value
+                            src_term = entry['terms']
+                            if term_idx < len(src_term):
+                                self.slots[slot_idx]['terms'][term_idx] = copy.deepcopy(src_term[term_idx])
+                                # refresh and publish
+                                self.refresh_slot(slot_idx)
+                                self._publish_assignments()
+                                return True
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return False

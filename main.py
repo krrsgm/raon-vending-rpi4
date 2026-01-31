@@ -196,6 +196,11 @@ class MainApp(tk.Tk):
             
             # Register status callback for UI panel
             self.tec_controller.set_on_status_update(self._on_tec_status_update)
+            # Register per-DHT updates for detailed sensor display
+            try:
+                self.tec_controller.set_on_dht_update(self._on_dht22_update)
+            except Exception:
+                pass
             
             self.tec_controller.start()
             print("[MainApp] TEC controller initialized and started")

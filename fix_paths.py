@@ -1,8 +1,14 @@
 import os
 
 def get_project_root():
-    """Returns project root folder (directory containing main.py)."""
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    """Returns project root folder (directory containing this file).
+
+    Note: this file (`fix_paths.py`) lives in the project root, so returning
+    the directory containing this file yields the project root. Previous
+    implementation returned the parent of the project root which caused
+    path resolution to point to the user's home directory by mistake.
+    """
+    return os.path.dirname(os.path.abspath(__file__))
 
 def find_file_in_search_paths(filename):
     """

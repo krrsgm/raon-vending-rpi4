@@ -83,12 +83,13 @@ class KioskFrame(tk.Frame):
             # Fallback to a reasonable default PPI
             self.ppi = 165.68
         
-        # Calculate card dimensions: 2.5 inches width x 3.5 inches height
-        self.card_width = int(self.ppi * 2.5)  # 2.5 inches
-        self.card_height = int(self.ppi * 3.5)  # 3.5 inches
+        # Calculate card dimensions (responsive to screen size)
+        # Default: 2.0 inches width x 3.0 inches height for better fit
+        self.card_width = int(self.ppi * 2.0)  # 2.0 inches (reduced from 2.5)
+        self.card_height = int(self.ppi * 3.0)  # 3.0 inches (reduced from 3.5)
         
-        # Calculate card spacing: 1 cm = 0.394 inches (tight kiosk-style layout)
-        self.card_spacing = int(self.ppi * (1 / 2.54))  # 1cm converted to inches then pixels
+        # Calculate card spacing: 0.5 cm for tighter layout
+        self.card_spacing = int(self.ppi * (0.5 / 2.54))  # 0.5cm converted to pixels
 
         # Get screen dimensions for proportional sizing
         screen_height = controller.winfo_screenheight()
@@ -655,8 +656,8 @@ class KioskFrame(tk.Frame):
             # spacing_half is on each side, so total spacing between cards is 2 * spacing_half
             total_card_with_spacing = self.card_width + self.card_spacing
             num_cols = max(1, canvas_width // total_card_with_spacing)
-            # Ensure at least 2 columns for usability, at most 6 for reasonable card size
-            num_cols = max(2, min(6, num_cols))
+            # Ensure at least 3 columns for better use of screen space, at most 8 for smaller screens
+            num_cols = max(3, min(8, num_cols))
 
         # Decide source of items: use assigned slots if present, otherwise master list
         assigned = getattr(self.controller, 'assigned_slots', None)

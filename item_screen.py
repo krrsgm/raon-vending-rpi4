@@ -3,6 +3,7 @@ from tkinter import font as tkfont
 from PIL import Image
 import os
 import io
+from fix_paths import get_absolute_path
 
 def pil_to_photoimage(pil_image):
     """Convert PIL Image to Tkinter PhotoImage using PPM format (no ImageTk needed)"""
@@ -197,10 +198,36 @@ class ItemScreen(tk.Frame):
         
         # --- Update Image ---
         image_path = item_data.get("image")
-        if image_path and os.path.exists(image_path):
+        resolved_path = None
+        
+        if image_path:
+            # Try to resolve the image path using multiple search strategies
+            image_path = image_path.replace('\\', '/')
+            
+            # If absolute path, use as-is
+            if os.path.isabs(image_path) and os.path.exists(image_path):
+                resolved_path = image_path
+            else:
+                # Try using get_absolute_path (searches home, project root, cwd)
+                abs_path = get_absolute_path(image_path)
+                if os.path.exists(abs_path):
+                    resolved_path = abs_path
+                # Try as relative from current directory
+                elif os.path.exists(image_path):
+                    resolved_path = image_path
+                # Try images/ directory directly
+                elif not image_path.startswith('images/'):
+                    fallback = f"images/{os.path.basename(image_path)}"
+                    abs_fallback = get_absolute_path(fallback)
+                    if os.path.exists(abs_fallback):
+                        resolved_path = abs_fallback
+                    elif os.path.exists(fallback):
+                        resolved_path = fallback
+        
+        if resolved_path:
             try:
                 # Open, resize, and display the image
-                img = Image.open(image_path)
+                img = Image.open(resolved_path)
 
                 # Resize to fit a 400x400 box while maintaining aspect ratio
                 img.thumbnail((400, 400), Image.Resampling.LANCZOS)
@@ -208,14 +235,16 @@ class ItemScreen(tk.Frame):
                 self.photo_image = pil_to_photoimage(img)
                 self.image_label.config(image=self.photo_image, text="")
             except Exception as e:
-                print(f"Error loading image {image_path}: {e}")
+                print(f"Error loading image {resolved_path}: {e}")
                 self.image_label.config(
                     image="", # Clear previous image
                     text="Image Error",
                     font=self.fonts['image_placeholder']
                 )
         else:
-            # Show placeholder if no image
+            # Show placeholder if no image found
+            if image_path:
+                print(f"Image not found: {image_path}")
             self.image_label.config(
                 image="", # Clear previous image
                 text="No Image",

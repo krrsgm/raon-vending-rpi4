@@ -475,11 +475,23 @@ class KioskFrame(tk.Frame):
         scrollable_frame = tk.Frame(self.canvas, bg=self.colors['background'])
         scrollable_frame.bind('<ButtonPress-1>', self.on_canvas_press)
         scrollable_frame.bind('<B1-Motion>', self.on_canvas_drag)
+        # keep scrollregion in sync when children change
         scrollable_frame.bind('<Configure>', lambda e: self.canvas.configure(scrollregion=self.canvas.bbox('all')))
         self.canvas_window = self.canvas.create_window((0,0), window=scrollable_frame, anchor='nw')
         self.canvas.pack(fill='both', expand=True)
         self.canvas.bind('<ButtonPress-1>', self.on_canvas_press)
         self.canvas.bind('<B1-Motion>', self.on_canvas_drag)
+
+        # Ensure the internal frame always matches the canvas width so grid columns
+        # can expand properly and cards don't get squeezed on narrow frames.
+        def _sync_width(event):
+            try:
+                self.canvas.itemconfig(self.canvas_window, width=event.width)
+            except Exception:
+                pass
+
+        # Bind canvas resize to sync the embedded window width
+        self.canvas.bind('<Configure>', _sync_width)
 
         # Enable mouse wheel / touchpad scrolling for the kiosk (cross-platform)
         def _on_mousewheel_kiosk(event):
@@ -859,25 +871,37 @@ class KioskFrame(tk.Frame):
                                             fg='white', bg='#2222a8')
                 return
             
-            if not os.path.exists(logo_path):
-                # File not found, show machine name initial
-                placeholder_text = (self.machine_name[:1] if self.machine_name else 'R').upper()
-                self.logo_image_label.config(text=placeholder_text, font=self.fonts['logo_placeholder'],
-                                            fg='white', bg='#2222a8')
+            # Resolve path using multi-location search (handles home, project root, cwd)
+            resolved_logo = get_absolute_path(logo_path)
+            if not os.path.exists(resolved_logo):
+                # Try the original path as-is (might be absolute)
+                if not os.path.exists(logo_path):
+                    # File not found, show machine name initial
+                    placeholder_text = (self.machine_name[:1] if self.machine_name else 'R').upper()
+                    self.logo_image_label.config(text=placeholder_text, font=self.fonts['logo_placeholder'],
+                                                fg='white', bg='#2222a8')
+                    return
+                resolved_logo = logo_path
+            
+            # Check cache first
+            if resolved_logo in self.image_cache:
+                photo = self.image_cache[resolved_logo]
+                self.logo_image_label.config(image=photo, text='')
                 return
             
             # Load and resize image - bigger size
-            img = Image.open(logo_path)
+            img = Image.open(resolved_logo)
             max_width = 160
             max_height = int(self.header_px * 0.85)
             img.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
             
             # Convert to PhotoImage and display
             photo = pil_to_photoimage(img)
-            self.image_cache[logo_path] = photo  # Keep reference
+            self.image_cache[resolved_logo] = photo  # Keep reference
             self.logo_image_label.config(image=photo, text='')
         except Exception as e:
             # On error, show placeholder
+            print(f"[KioskFrame] Failed to load logo: {e}")
             placeholder_text = (self.machine_name[:1] if self.machine_name else 'R').upper()
             self.logo_image_label.config(text=placeholder_text, font=self.fonts['logo_placeholder'],
                                         fg='white', bg='#2222a8')

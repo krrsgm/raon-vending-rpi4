@@ -189,26 +189,39 @@ class KioskFrame(tk.Frame):
             image_path = image_path.replace('\\', '/')
             # Try to resolve the image path - could be relative or absolute
             resolved_path = None
+            debug_log = []
+            debug_log.append(f"Looking for image: {image_path}")
             
             # If it's an absolute path, check if it exists
             if os.path.isabs(image_path) and os.path.exists(image_path):
                 resolved_path = image_path
+                debug_log.append(f"✓ Found as absolute path")
             else:
-                # Try as relative path from project root
+                # Try as relative path from project root via get_absolute_path
                 abs_path = get_absolute_path(image_path)
+                debug_log.append(f"  get_absolute_path -> {abs_path}")
                 if os.path.exists(abs_path):
                     resolved_path = abs_path
+                    debug_log.append(f"  ✓ Exists at get_absolute_path result")
+                else:
+                    debug_log.append(f"  ✗ Does not exist")
+                    
                 # Try as relative path from current directory
-                elif os.path.exists(image_path):
+                if not resolved_path and os.path.exists(image_path):
                     resolved_path = image_path
+                    debug_log.append(f"✓ Found in current directory: {image_path}")
+                
                 # Also try from images/ directly if no images/ prefix
-                elif not image_path.startswith('images/'):
+                if not resolved_path and not image_path.startswith('images/'):
                     fallback = f"images/{os.path.basename(image_path)}"
                     abs_fallback = get_absolute_path(fallback)
+                    debug_log.append(f"  Trying fallback: {fallback} -> {abs_fallback}")
                     if os.path.exists(abs_fallback):
                         resolved_path = abs_fallback
+                        debug_log.append(f"  ✓ Found via fallback")
                     elif os.path.exists(fallback):
                         resolved_path = fallback
+                        debug_log.append(f"  ✓ Found fallback in cwd")
             
             if resolved_path:
                 try:
@@ -226,14 +239,17 @@ class KioskFrame(tk.Frame):
                     image_label.image = photo # Keep a reference!
                 except Exception as e:
                     print(f"Error loading image {resolved_path}: {e}")
+                    print("\n".join(debug_log))
                     image_label.config(text="Image Error", font=self.fonts['image_placeholder'], fg=self.colors['gray_fg'])
             else:
                 # Show placeholder if image not found
                 print(f"Image not found: {image_path}")
+                print("\n".join(debug_log))
                 image_label.config(text="No Image", font=self.fonts['image_placeholder'], fg=self.colors['gray_fg'])
         else:
             # Show placeholder if no image
             image_label.config(text="No Image", font=self.fonts['image_placeholder'], fg=self.colors['gray_fg'])
+
 
 
         # Frame for text content - minimal padding
@@ -380,6 +396,7 @@ class KioskFrame(tk.Frame):
 
         right_frame = tk.Frame(self.header, bg=header_bg)
         right_frame.pack(side='right', padx=12)
+        
         cart_btn = tk.Button(right_frame, text='Cart', bg='white', fg='#2222a8', relief='flat', font=self.fonts['cart_btn'], padx=20, pady=10, command=lambda: self.controller.show_cart())
         cart_btn.pack()
 
@@ -716,6 +733,11 @@ class KioskFrame(tk.Frame):
 
         # Repopulate grid with filtered item cards (4 columns)
         max_cols = num_cols
+        
+        # Configure grid columns to expand evenly
+        for col in range(max_cols):
+            scrollable_frame.grid_columnconfigure(col, weight=1)
+        
         for i, item in enumerate(filtered_items):
             row = i // max_cols
             col = i % max_cols
@@ -859,4 +881,3 @@ class KioskFrame(tk.Frame):
             placeholder_text = (self.machine_name[:1] if self.machine_name else 'R').upper()
             self.logo_image_label.config(text=placeholder_text, font=self.fonts['logo_placeholder'],
                                         fg='white', bg='#2222a8')
-

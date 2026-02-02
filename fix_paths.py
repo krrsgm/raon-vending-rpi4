@@ -13,12 +13,14 @@ def find_file_in_search_paths(filename):
     Returns the first path where the file exists, or None if not found.
     """
     search_paths = [
-        os.path.expanduser(f"~/{filename}"),           # Home directory
-        os.path.join(get_project_root(), filename),    # Project root
-        os.path.join(os.getcwd(), filename),           # Current working directory
+        os.path.join(os.path.expanduser("~"), filename),  # Home directory - properly join paths
+        os.path.join(get_project_root(), filename),        # Project root
+        os.path.join(os.getcwd(), filename),               # Current working directory
     ]
     
     for path in search_paths:
+        # Normalize path separators for consistency
+        path = os.path.normpath(path)
         if os.path.exists(path):
             return path
     

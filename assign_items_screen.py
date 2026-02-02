@@ -1299,6 +1299,13 @@ class AssignItemsScreen(tk.Frame):
                 setattr(self.controller, 'assigned_term', self.current_term)
             except Exception:
                 pass
+            
+            # Update controller.items to reflect current term's items (for admin screen and kiosk)
+            try:
+                extracted_items = self._extract_items_from_current_term()
+                setattr(self.controller, 'items', extracted_items)
+            except Exception:
+                pass
         except Exception:
             pass
         try:
@@ -1309,6 +1316,16 @@ class AssignItemsScreen(tk.Frame):
                     kf.reset_state()
                 except Exception:
                     kf.populate_items()
+        except Exception:
+            pass
+        try:
+            af = self.controller.frames.get('AdminScreen')
+            if af:
+                # Update admin screen items display
+                try:
+                    af.populate_items()
+                except Exception:
+                    pass
         except Exception:
             pass
         # Also update controller.config categories from assigned slots so admin and kiosk configs stay in sync
@@ -1331,6 +1348,19 @@ class AssignItemsScreen(tk.Frame):
                 pass
         except Exception:
             pass
+
+    def _extract_items_from_current_term(self):
+        """Extract items from current term for display in admin/kiosk."""
+        items = []
+        try:
+            for slot in self.slots:
+                if isinstance(slot, dict) and 'terms' in slot:
+                    terms = slot.get('terms', [])
+                    if len(terms) > self.current_term and terms[self.current_term]:
+                        items.append(terms[self.current_term])
+        except Exception as e:
+            print(f"Error extracting items: {e}")
+        return items
 
     # Optional helper to return slot assignment list
     def get_assigned_slots(self):

@@ -73,10 +73,19 @@ class MainApp(tk.Tk):
         else:
             # On Windows: use override redirect for fullscreen effect (no decorations)
             self.overrideredirect(True)  # Remove window decorations and title bar
-        self.items_file_path = get_absolute_path("item_list.json")
+        
+        # Load config first
         self.config_path = get_absolute_path("config.json")
-        self.items = self.load_items_from_json(self.items_file_path)
         self.config = self.load_config_from_json(self.config_path)
+        
+        # Load items from assigned_items.json (the primary data source)
+        self.assigned_items_path = get_absolute_path("assigned_items.json")
+        self.assigned_slots = self.load_items_from_json(self.assigned_items_path)
+        
+        # For backward compatibility, also populate items array
+        # Extract items from assigned slots for display in admin and kiosk
+        self.items = self._extract_items_from_slots(self.assigned_slots)
+        self.items_file_path = get_absolute_path("item_list.json")  # For legacy support
         self.currency_symbol = self.config.get("currency_symbol", "$")
         self.title("Vending Machine UI")
         # Initialize TEC Controller if enabled in config
@@ -339,6 +348,30 @@ class MainApp(tk.Tk):
             messagebox.showwarning(title, message)
         else:
             messagebox.showinfo(title, message)
+
+    def _extract_items_from_slots(self, assigned_slots):
+        """Extract items from assigned slots for display in admin/kiosk screens.
+        
+        Converts the slot structure (with terms) into a flat list of items.
+        Uses the currently selected term (default 0 = Term 1).
+        """
+        items = []
+        try:
+            term_idx = getattr(self, 'assigned_term', 0) or 0
+            
+            if isinstance(assigned_slots, list):
+                for slot in assigned_slots:
+                    if isinstance(slot, dict) and 'terms' in slot:
+                        terms = slot.get('terms', [])
+                        if len(terms) > term_idx and terms[term_idx]:
+                            items.append(terms[term_idx])
+                    elif isinstance(slot, dict) and 'name' in slot:
+                        # Legacy format - just add the slot directly
+                        items.append(slot)
+        except Exception as e:
+            print(f"Error extracting items from slots: {e}")
+        
+        return items
 
     def load_items_from_json(self, file_path):
         """Loads item data from a JSON file."""

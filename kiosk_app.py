@@ -3,6 +3,7 @@ from tkinter import font as tkfont, ttk
 from PIL import Image
 import os
 import io
+import platform
 from dht22_handler import DHT22Display
 from system_status_panel import SystemStatusPanel
 from fix_paths import get_absolute_path
@@ -83,13 +84,20 @@ class KioskFrame(tk.Frame):
             # Fallback to a reasonable default PPI
             self.ppi = 165.68
         
-        # Calculate card dimensions (responsive to screen size)
-        # Default: 2.0 inches width x 3.0 inches height for better fit
-        self.card_width = int(self.ppi * 2.0)  # 2.0 inches (reduced from 2.5)
-        self.card_height = int(self.ppi * 3.0)  # 3.0 inches (reduced from 3.5)
+        # Detect if running on Raspberry Pi for better card sizing
+        is_pi = platform.machine() in ['armv7l', 'armv6l', 'aarch64']
         
-        # Calculate card spacing: 0.5 cm for tighter layout
-        self.card_spacing = int(self.ppi * (0.5 / 2.54))  # 0.5cm converted to pixels
+        # Calculate card dimensions (responsive to screen size)
+        if is_pi:
+            # On Pi 7" touchscreen (1024x600), use smaller cards for 4-5 per row
+            self.card_width = int(self.ppi * 1.5)   # 1.5 inches (optimized for Pi)
+            self.card_height = int(self.ppi * 2.2)  # 2.2 inches (optimized for Pi)
+            self.card_spacing = int(self.ppi * (0.3 / 2.54))  # 0.3cm spacing
+        else:
+            # On larger desktop displays, use standard sizing
+            self.card_width = int(self.ppi * 2.0)   # 2.0 inches
+            self.card_height = int(self.ppi * 3.0)  # 3.0 inches
+            self.card_spacing = int(self.ppi * (0.5 / 2.54))  # 0.5cm spacing
 
         # Get screen dimensions for proportional sizing
         screen_height = controller.winfo_screenheight()

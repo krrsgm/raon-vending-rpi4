@@ -24,19 +24,22 @@ def build_slots(image_files):
     for i in range(SLOTS):
         img = image_files[i % len(image_files)] if image_files else None
         code = os.path.splitext(img)[0] if img else f"ITEM{i+1:02d}"
-        entry = {
-            "terms": [
-                {
-                    "code": code,
-                    "name": code,
-                    "category": "Uncategorized",
-                    "price": 0.0,
-                    "quantity": 1,
-                    "image": f"{IMAGES_DIR}/{img}" if img else "",
-                    "description": ""
-                }
-            ]
-        }
+        
+        # Create 3 terms per slot (academic year: Term 1, 2, 3)
+        terms = []
+        for term_idx in range(3):
+            term_entry = {
+                "code": code,
+                "name": code,
+                "category": "Uncategorized",
+                "price": 0.0,
+                "quantity": 1,
+                "image": f"{IMAGES_DIR}/{img}" if img else "",
+                "description": ""
+            }
+            terms.append(term_entry)
+        
+        entry = {"terms": terms}
         slots.append(entry)
     return slots
 

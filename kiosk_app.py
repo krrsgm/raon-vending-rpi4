@@ -863,25 +863,34 @@ class KioskFrame(tk.Frame):
     def load_header_logo(self):
         """Load and display header logo image from config path."""
         try:
-            logo_path = self.header_logo_path.strip()
-            if not logo_path:
-                # Show placeholder with first letter of machine name
+            logo_path = self.header_logo_path.strip() if self.header_logo_path else ''
+            resolved_logo = None
+            
+            # Try config path first
+            if logo_path:
+                resolved_logo = get_absolute_path(logo_path)
+                if not os.path.exists(resolved_logo):
+                    # Try without path resolution in case it's absolute
+                    if os.path.exists(logo_path):
+                        resolved_logo = logo_path
+                    else:
+                        resolved_logo = None
+            
+            # If config path didn't work, search for common logo filenames
+            if not resolved_logo:
+                common_names = ['LOGO.png', 'logo.png', 'Logo.png', 'LOGO.jpg', 'logo.jpg']
+                for fname in common_names:
+                    test_path = get_absolute_path(fname)
+                    if os.path.exists(test_path):
+                        resolved_logo = test_path
+                        break
+            
+            # If still not found, show placeholder
+            if not resolved_logo:
                 placeholder_text = (self.machine_name[:1] if self.machine_name else 'R').upper()
                 self.logo_image_label.config(text=placeholder_text, font=self.fonts['logo_placeholder'], 
                                             fg='white', bg='#2222a8')
                 return
-            
-            # Resolve path using multi-location search (handles home, project root, cwd)
-            resolved_logo = get_absolute_path(logo_path)
-            if not os.path.exists(resolved_logo):
-                # Try the original path as-is (might be absolute)
-                if not os.path.exists(logo_path):
-                    # File not found, show machine name initial
-                    placeholder_text = (self.machine_name[:1] if self.machine_name else 'R').upper()
-                    self.logo_image_label.config(text=placeholder_text, font=self.fonts['logo_placeholder'],
-                                                fg='white', bg='#2222a8')
-                    return
-                resolved_logo = logo_path
             
             # Check cache first
             if resolved_logo in self.image_cache:
@@ -889,7 +898,7 @@ class KioskFrame(tk.Frame):
                 self.logo_image_label.config(image=photo, text='')
                 return
             
-            # Load and resize image - bigger size
+            # Load and resize image
             img = Image.open(resolved_logo)
             max_width = 160
             max_height = int(self.header_px * 0.85)
@@ -897,7 +906,7 @@ class KioskFrame(tk.Frame):
             
             # Convert to PhotoImage and display
             photo = pil_to_photoimage(img)
-            self.image_cache[resolved_logo] = photo  # Keep reference
+            self.image_cache[resolved_logo] = photo
             self.logo_image_label.config(image=photo, text='')
         except Exception as e:
             # On error, show placeholder

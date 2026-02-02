@@ -106,7 +106,7 @@ class CartScreen(tk.Frame):
 
         self.checkout_button = tk.Button(
             action_frame,
-            text="Pay with Coins",
+            text="Pay",
             font=self.fonts["action_button"],
             bg=self.colors["total_fg"],
             fg=self.colors["background"],
@@ -245,7 +245,7 @@ class CartScreen(tk.Frame):
             delete_btn.pack(side="left")
 
         self.total_label.config(
-            text=f"Grand Total: {self.controller.currency_symbol}{grand_total:.2f}"
+            text=f"Total: {self.controller.currency_symbol}{grand_total:.2f}"
         )
 
     def handle_checkout(self):
@@ -266,9 +266,15 @@ class CartScreen(tk.Frame):
             
             # Create payment status window with fixed size and position
             self.payment_window = tk.Toplevel(self)
-            self.payment_window.title("Insert Coins")
-            self.payment_window.geometry("400x400")
-            # Attach to the main toplevel window so focus and touch events work
+            self.payment_window.title("Insert Payment")
+            self.payment_window.geometry("400x400")            # Center the payment window on screen
+            try:
+                self.payment_window.update_idletasks()
+                x = (self.payment_window.winfo_screenwidth() // 2) - (550 // 2)
+                y = (self.payment_window.winfo_screenheight() // 2) - (500 // 2)
+                self.payment_window.geometry(f"550x500+{x}+{y}")
+            except Exception:
+                pass            # Attach to the main toplevel window so focus and touch events work
             parent_toplevel = self.winfo_toplevel()
             try:
                 self.payment_window.transient(parent_toplevel)
@@ -331,9 +337,12 @@ class CartScreen(tk.Frame):
             self.payment_status = tk.Label(
                 status_frame,
                 text="Coins: ₱0.00 | Bills: ₱0.00\nTotal Received: ₱0.00\nRemaining: ₱{:.2f}".format(total_amount),
-                font=self.fonts["item_details"],
+                font=tkfont.Font(family="Helvetica", size=11),
                 bg=self.colors["payment_bg"],
-                fg=self.colors["payment_fg"]
+                fg=self.colors["payment_fg"],
+                justify=tk.LEFT,
+                anchor='w',
+                wraplength=480
             )
             self.payment_status.pack()
             
@@ -358,16 +367,20 @@ class CartScreen(tk.Frame):
             
             coins_text = (
                 "Coins: • ₱1 • ₱5 • ₱10 (Old and New)\n"
-                "Bills: • ₱20 • ₱50 • ₱100 • ₱500 • ₱1000"
+                "Bills: • ₱20 • ₱50 • ₱100 • ₱500\n"
+                "Please pay in exact amount only.\n"
+                "This machine does not dispense change at the moment."
             )
             
             tk.Label(
                 self.payment_window,
                 text=coins_text,
-                font=self.fonts["item_details"],
+                font=tkfont.Font(family="Helvetica", size=11),
                 bg=self.colors["payment_bg"],
                 fg=self.colors["text_fg"],
-                justify=tk.LEFT
+                justify=tk.LEFT,
+                wraplength=480,
+                anchor='w'
             ).pack()
             
             # Cancel button

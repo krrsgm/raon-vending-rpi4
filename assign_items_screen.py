@@ -10,6 +10,7 @@ import os
 import io
 from esp32_client import pulse_slot, send_command
 from fix_paths import get_absolute_path
+import copy
 
 def pil_to_photoimage(pil_image):
     """Convert PIL Image to Tkinter PhotoImage using PPM format (no ImageTk needed)"""
@@ -83,6 +84,8 @@ class PriceStockDialog(tk.Toplevel):
         
         browse_btn = ttk.Button(frame, text="Browse", command=self._browse_image)
         browse_btn.grid(row=6, column=2, padx=(4, 0), pady=4)
+        # Keep a reference so we can disable it when showing the dialog in restricted modes
+        self.browse_btn = browse_btn
         
         # Buttons
         btn_frame = ttk.Frame(frame)
@@ -131,14 +134,17 @@ class PriceStockDialog(tk.Toplevel):
                 self.image_entry.config(state='disabled')
             except Exception:
                 pass
+        # Leave description editable in Preset mode (user request)
+        # Disable/hide browse button since image path should not be changed in preset viewer
         try:
-            self.desc_text.config(state='disabled')
-        except Exception:
-            pass
-        # Hide browse button when read-only
-        try:
-            for child in self.winfo_children():
-                pass
+            if hasattr(self, 'browse_btn'):
+                try:
+                    self.browse_btn.state(['disabled'])
+                except Exception:
+                    try:
+                        self.browse_btn.config(state='disabled')
+                    except Exception:
+                        pass
         except Exception:
             pass
     
@@ -478,6 +484,17 @@ class AssignItemsScreen(tk.Frame):
         self.custom_mode = False  # Toggle between Preset and Custom modes
         # Snapshot of presets taken when entering custom mode; used to restore originals
         self._presets_snapshot = None
+        
+        # Pre-compute keyword map for fast category detection (only once, not per item)
+        self._keyword_map = {
+            'Resistor': ['resistor', 'ohm'],
+            'Capacitor': ['capacitor', 'farad', 'µf', 'uf', 'pf'],
+            'IC': ['ic', 'chip', 'integrated circuit'],
+            'Amplifier': ['amplifier', 'amp', 'opamp', 'op-amp'],
+            'Board': ['board', 'pcb', 'breadboard', 'shield'],
+            'Bundle': ['bundle', 'kit', 'pack'],
+            'Wires': ['wire', 'cable', 'cord', 'lead']
+        }
 
         # Prefer controller's configured path (if provided). Otherwise use this module's directory
         cfg_path = getattr(controller, 'config_path', None)
@@ -699,9 +716,38 @@ class AssignItemsScreen(tk.Frame):
         entering = not self.custom_mode
         self.custom_mode = entering
         if self.custom_mode:
-            # Take a deep snapshot of current presets so they can be restored later
+            # Take a deep snapshot of the original presets so they can be restored later.
+            # Prefer the last-saved assigned_items.json on disk (so accidental in-memory
+            # edits/clears made while in Preset mode can be reverted). Fall back to the
+            # current in-memory `self.slots` if no save file exists or migration fails.
             try:
-                self._presets_snapshot = copy.deepcopy(self.slots)
+                if os.path.exists(self._save_path):
+                    try:
+                        with open(self._save_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                        # Migrate various persisted formats into per-slot 'terms' wrapper
+                        if isinstance(data, list) and len(data) == self.MAX_SLOTS:
+                            migrated = []
+                            for entry in data:
+                                if entry is None:
+                                    migrated.append({'terms': [None] * self.TERM_COUNT})
+                                    continue
+                                if isinstance(entry, dict) and 'terms' in entry and isinstance(entry['terms'], list):
+                                    terms = (entry['terms'] + [None]*self.TERM_COUNT)[:self.TERM_COUNT]
+                                    migrated.append({'terms': terms})
+                                    continue
+                                if isinstance(entry, dict):
+                                    migrated.append({'terms': [entry] + [None]*(self.TERM_COUNT-1)})
+                                    continue
+                                migrated.append({'terms': [None] * self.TERM_COUNT})
+                            self._presets_snapshot = copy.deepcopy(migrated)
+                        else:
+                            # Unexpected on-disk format; fallback to current memory
+                            self._presets_snapshot = copy.deepcopy(self.slots)
+                    except Exception:
+                        self._presets_snapshot = copy.deepcopy(self.slots)
+                else:
+                    self._presets_snapshot = copy.deepcopy(self.slots)
             except Exception:
                 self._presets_snapshot = None
             self.mode_label.config(text='Custom', foreground='red')
@@ -833,14 +879,40 @@ class AssignItemsScreen(tk.Frame):
             tk.messagebox.showwarning("Empty Slot", f"Slot {idx+1} is empty for Term {self.current_term+1}.\nUse Custom mode to assign an item.", parent=self)
             return
 
-        # Open Price/Stock viewer in read-only mode (presets are not editable here)
-        dlg = PriceStockDialog(self.master, item_data=current_item, read_only=True)
-        # Ensure widgets are disabled when shown
+        # Auto-fill description if it's just a price or empty
+        item_to_edit = dict(current_item)
+        current_desc = item_to_edit.get('description', '').strip()
+        if not current_desc or current_desc.startswith('P') and current_desc[1:].isdigit():
+            # Description is empty or just a price, auto-generate one
+            auto_desc = self._generate_description_for_item(
+                item_to_edit.get('name', ''),
+                item_to_edit.get('price', 0)
+            )
+            item_to_edit['description'] = auto_desc
+
+        # Open Price/Stock viewer but allow editing of price, quantity and description
+        dlg = PriceStockDialog(self.master, item_data=item_to_edit, read_only=False)
+        # Restrict some fields (keep price/qty/description editable; disable category/image)
         try:
             dlg._set_readonly()
         except Exception:
             pass
         self.master.wait_window(dlg)
+        # If user saved changes, merge editable fields back into the slot and publish
+        try:
+            if getattr(dlg, 'result', None):
+                updated = dlg.result
+                # update only editable fields to avoid changing name/code unintentionally
+                cur = self.slots[idx]['terms'][self.current_term] or {}
+                cur = dict(cur)
+                for k in ('price', 'quantity', 'category', 'description', 'image'):
+                    if k in updated:
+                        cur[k] = updated[k]
+                self.slots[idx]['terms'][self.current_term] = cur
+                self.refresh_slot(idx)
+                self._publish_assignments()
+        except Exception:
+            pass
 
     def _check_esp32_connection(self, esp32_host):
         """Check if ESP32 is reachable by sending a STATUS command."""
@@ -944,6 +1016,58 @@ class AssignItemsScreen(tk.Frame):
         self.refresh_slot(idx)
         self._publish_assignments()
 
+    def _get_categories_from_item_name(self, item_name):
+        """Extract categories from item name based on keywords.
+        
+        Returns a list of categories the item belongs to based on keywords.
+        If no keywords match, returns ['Misc'].
+        """
+        if not item_name:
+            return ['Misc']
+        
+        name_lower = item_name.lower()
+        categories = set()
+        
+        # Check each category for keywords using pre-computed keyword map
+        for cat, keywords in self._keyword_map.items():
+            for keyword in keywords:
+                if keyword in name_lower:
+                    categories.add(cat)
+                    break  # Found this category, move to next
+        
+        # If no categories matched, put in Misc
+        if not categories:
+            return ['Misc']
+        
+        return sorted(list(categories))
+
+    def _generate_description_for_item(self, item_name, item_price):
+        """Auto-generate a meaningful description based on item category.
+        
+        Returns a description string with category and specs hint.
+        """
+        if not item_name:
+            return f"Price: ₱{item_price:.2f}"
+        
+        categories = self._get_categories_from_item_name(item_name)
+        category_text = ', '.join(categories) if categories else 'Miscellaneous'
+        
+        # Generate description based on category
+        desc_map = {
+            'Resistor': 'Resistor - Electronic component for limiting current',
+            'Capacitor': 'Capacitor - Energy storage and filtering component',
+            'IC': 'Integrated Circuit - Microchip for signal processing',
+            'Amplifier': 'Amplifier - Signal amplification component',
+            'Board': 'PCB/Board - Circuit board or development board',
+            'Bundle': 'Bundle/Kit - Assorted electronic components pack',
+            'Wires': 'Wires/Cables - Connection and wiring components',
+            'Misc': 'Miscellaneous electronic component'
+        }
+        
+        # Get description from primary category
+        base_desc = desc_map.get(categories[0] if categories else 'Misc', 'Electronic component')
+        return f"{base_desc} - ₱{item_price:.2f}"
+
     def refresh_slot(self, idx):
         r, c = self._slot_to_position(idx)
         slot_ui = self.slot_frames[r][c]
@@ -959,7 +1083,10 @@ class AssignItemsScreen(tk.Frame):
 
         if data:
             slot_ui['name'].config(text=(data.get('name','') or '')[:18])
-            slot_ui['details'].config(text=f"{data.get('category','')} | {data.get('quantity',0)} pcs | ${data.get('price',0):.2f}")
+            # Get auto-detected categories from item name
+            item_categories = self._get_categories_from_item_name(data.get('name', ''))
+            category_text = ', '.join(item_categories) if item_categories else 'Misc'
+            slot_ui['details'].config(text=f"{category_text} | {data.get('quantity',0)} pcs | ${data.get('price',0):.2f}")
         else:
             slot_ui['name'].config(text='Empty')
             slot_ui['details'].config(text='')

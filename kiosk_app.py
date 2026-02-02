@@ -27,6 +27,7 @@ class KioskFrame(tk.Frame):
         self._clicked_item_data = None
         self._resize_job = None
         self.image_cache = {} # To prevent images from being garbage-collected
+        self._category_cache = {} # Cache for category detection (item_name -> categories)
 
         # --- Color and Font Scheme ---
         self.colors = {
@@ -47,7 +48,23 @@ class KioskFrame(tk.Frame):
             'quantity': tkfont.Font(family="Helvetica", size=12),
             'image_placeholder': tkfont.Font(family="Helvetica", size=14),
             'out_of_stock': tkfont.Font(family="Helvetica", size=14, weight="bold"),
+            'category': tkfont.Font(family="Helvetica", size=8),
+            'control_small': tkfont.Font(family="Helvetica", size=9),
+            'control_bold': tkfont.Font(family="Helvetica", size=9, weight="bold"),
+            'cart_btn': tkfont.Font(family="Helvetica", size=14, weight="bold"),
         }
+        
+        # Pre-compute keyword map for fast category detection (only once, not per item)
+        self._keyword_map = {
+            'Resistor': ['resistor', 'ohm'],
+            'Capacitor': ['capacitor', 'farad', 'µf', 'uf', 'pf'],
+            'IC': ['ic', 'chip', 'integrated circuit'],
+            'Amplifier': ['amplifier', 'amp', 'opamp', 'op-amp'],
+            'Board': ['board', 'pcb', 'breadboard', 'shield'],
+            'Bundle': ['bundle', 'kit', 'pack'],
+            'Wires': ['wire', 'cable', 'cord', 'lead']
+        }
+        
         # --- Calculate header/footer pixel sizes based on screen and physical diagonal ---
         # Use display diagonal from config if provided (in inches), default 13.3"
         diagonal_inches = 13.3
@@ -225,6 +242,19 @@ class KioskFrame(tk.Frame):
         )
         name_label.pack(fill='x', pady=(6, 2))
 
+        # 1b. Category based on item name keywords
+        item_categories = self._get_categories_from_item_name(item_data.get('name', ''))
+        category_text = ', '.join(item_categories) if item_categories else 'Misc'
+        category_label = tk.Label(
+            text_frame,
+            text=f"Category: {category_text}",
+            font=self.fonts['category'],
+            bg=self.colors['card_bg'],
+            fg='#8B7355',
+            anchor='w'
+        )
+        category_label.pack(fill='x', pady=(0, 2))
+
         # 2. Short description
         desc_label = tk.Label(
             text_frame,
@@ -262,8 +292,7 @@ class KioskFrame(tk.Frame):
         qty_var = tk.IntVar(value=1)
         # Make spinbox very compact so Add button remains visible
         spin_width = 3
-        spin_font_size = 9
-        spin = tk.Spinbox(controls, from_=1, to=max(1, max_q), width=spin_width, textvariable=qty_var, bg='white', fg='#2222a8', buttonbackground='#2222a8', font=('Helvetica', spin_font_size), highlightthickness=0, relief='solid', bd=1)
+        spin = tk.Spinbox(controls, from_=1, to=max(1, max_q), width=spin_width, textvariable=qty_var, bg='white', fg='#2222a8', buttonbackground='#2222a8', font=self.fonts['control_small'], highlightthickness=0, relief='solid', bd=1)
         spin.pack(side='left', padx=(0,3), pady=2)
 
         def on_add(qvar=qty_var, data=item_data):
@@ -277,7 +306,7 @@ class KioskFrame(tk.Frame):
             except Exception:
                 pass
 
-        add_btn = tk.Button(controls, text='Add', bg='white', fg='#2222a8', relief='flat', font=('Helvetica', 9, 'bold'), padx=4, pady=2, command=on_add)
+        add_btn = tk.Button(controls, text='Add', bg='white', fg='#2222a8', relief='flat', font=self.fonts['control_bold'], padx=4, pady=2, command=on_add)
         add_btn.pack(side='left')
 
         # Bind click/drag behavior for cards that are purchasable
@@ -342,7 +371,7 @@ class KioskFrame(tk.Frame):
 
         right_frame = tk.Frame(self.header, bg=header_bg)
         right_frame.pack(side='right', padx=12)
-        cart_btn = tk.Button(right_frame, text='Cart', bg='white', fg='#2222a8', relief='flat', font=('Helvetica', 14, 'bold'), padx=20, pady=10, command=lambda: self.controller.show_cart())
+        cart_btn = tk.Button(right_frame, text='Cart', bg='white', fg='#2222a8', relief='flat', font=self.fonts['cart_btn'], padx=20, pady=10, command=lambda: self.controller.show_cart())
         cart_btn.pack()
 
         # Main content area: left sidebar + main product area
@@ -354,21 +383,9 @@ class KioskFrame(tk.Frame):
         sidebar.pack(side='left', fill='y', padx=(12,6), pady=12)
         sidebar.pack_propagate(False)
 
-        # Search box
-        ttk.Label(sidebar, text='Search components', background='#f7fafc').pack(anchor='w', padx=8, pady=(8,4))
-        self.search_var = tk.StringVar()
-        search_entry = ttk.Entry(sidebar, textvariable=self.search_var, width=28)
-        search_entry.pack(padx=8, pady=(0,8))
-        # live search: update as you type
-        try:
-            self.search_var.trace_add('write', lambda *a: self.populate_items())
-        except Exception:
-            # older tkinter fallback
-            self.search_var.trace('w', lambda *a: self.populate_items())
+        # (Search box removed — category-only browsing)
 
-        # (Removed Recent/Popular toggles) — kept search box only for simplicity
-
-        # Categories list: extract dynamically from assigned items (or config if no assigned items)
+        # Categories display: extract dynamically from assigned items
         ttk.Label(sidebar, text='Component Categories', background='#f7fafc', font=self.fonts['description']).pack(anchor='w', padx=8, pady=(12,4))
         self.categories_frame = tk.Frame(sidebar, bg='#f7fafc')
         self.categories_frame.pack(fill='both', expand=True, padx=8)
@@ -378,14 +395,13 @@ class KioskFrame(tk.Frame):
         self._active_category = 'All Components'
         
         def build_categories():
-            """Build category list from assigned items or config."""
-            categories = ["All Components"]
+            """Build category list from assigned items using auto-detected keywords."""
+            categories = set(['All Components'])
             assigned = getattr(self.controller, 'assigned_slots', None)
             
             # If we have assigned items, extract categories from them
             if isinstance(assigned, list) and any(assigned):
                 term_idx = getattr(self.controller, 'assigned_term', 0) or 0
-                extracted_cats = set()
                 for slot in assigned:
                     try:
                         if not slot or not isinstance(slot, dict):
@@ -393,17 +409,23 @@ class KioskFrame(tk.Frame):
                         terms = slot.get('terms', [])
                         if len(terms) > term_idx and terms[term_idx]:
                             item = terms[term_idx]
-                            cat = item.get('category', '')
-                            if cat:
-                                extracted_cats.add(cat)
+                            item_name = item.get('name', '')
+                            # Get categories from item name keywords
+                            item_cats = self._get_categories_from_item_name(item_name)
+                            categories.update(item_cats)
                     except Exception:
                         continue
-                categories.extend(sorted(extracted_cats))
             else:
-                # Fallback to config categories
-                categories.extend(self.controller.config.get('categories', []))
+                # No assigned items, use default categories from item names if any
+                for item in self.controller.items:
+                    try:
+                        item_name = item.get('name', '')
+                        item_cats = self._get_categories_from_item_name(item_name)
+                        categories.update(item_cats)
+                    except Exception:
+                        continue
             
-            return categories
+            return ['All Components'] + sorted([c for c in categories if c != 'All Components'])
         
         # Initial population
         categories = build_categories()
@@ -583,6 +605,37 @@ class KioskFrame(tk.Frame):
         """Filter items based on selected category."""
         self.populate_items()
 
+    def _get_categories_from_item_name(self, item_name):
+        """Extract categories from item name based on keywords (cached).
+        
+        Returns a list of categories the item belongs to based on keywords.
+        If no keywords match, returns ['Misc'].
+        An item can belong to multiple categories if multiple keywords are found.
+        """
+        # Check cache first
+        if item_name in self._category_cache:
+            return self._category_cache[item_name]
+        
+        if not item_name:
+            result = ['Misc']
+            self._category_cache[item_name] = result
+            return result
+        
+        name_lower = item_name.lower()
+        categories = set()
+        
+        # Check each category for keywords using pre-computed keyword map
+        for cat, keywords in self._keyword_map.items():
+            for keyword in keywords:
+                if keyword in name_lower:
+                    categories.add(cat)
+                    break  # Found this category, move to next
+        
+        # If no categories matched, put in Misc
+        result = sorted(list(categories)) if categories else ['Misc']
+        self._category_cache[item_name] = result
+        return result
+
     def populate_items(self):
         """Clears and repopulates the scrollable frame with item cards."""
         scrollable_frame = self.canvas.nametowidget(self.canvas.itemcget(self.canvas_window, 'window'))
@@ -633,18 +686,24 @@ class KioskFrame(tk.Frame):
         if source_items is None:
             source_items = list(self.controller.items)
 
-        # Filter items by selected category and search text
+        # Filter items by selected category based on item name keywords
         selected_category = getattr(self, '_active_category', 'All Components')
-        search_text = (getattr(self, 'search_var', tk.StringVar()).get() or '').strip().lower()
         filtered_items = []
+        
         for item in source_items:
-            # Normalize category matching: case-insensitive, trim whitespace, allow substring match
-            item_cat = (item.get('category','') or '').strip().lower()
+            # Get categories for this item based on name keywords
+            item_categories = self._get_categories_from_item_name(item.get('name', ''))
+            
+            # Check if item matches selected category
             sel_cat = (selected_category or '').strip().lower()
-            cat_ok = (sel_cat in ['all components', 'all categories']) or (item_cat == sel_cat) or (sel_cat and sel_cat in item_cat)
-            text_ok = (not search_text) or (search_text in item.get('name','').lower())
-            if cat_ok and text_ok:
+            if sel_cat in ['all components', 'all categories']:
                 filtered_items.append(item)
+            else:
+                # Check if item's categories include the selected one (case-insensitive)
+                for item_cat in item_categories:
+                    if item_cat.lower() == sel_cat:
+                        filtered_items.append(item)
+                        break
 
         # Repopulate grid with filtered item cards (4 columns)
         max_cols = num_cols
@@ -678,20 +737,63 @@ class KioskFrame(tk.Frame):
 
     def reset_state(self):
         """Resets the kiosk screen to its initial state."""
-        # Refresh category list from controller config so any changes made by
-        # the admin are immediately available to buyers when the kiosk is shown.
+        # Clear category cache since item list may have changed
+        self._category_cache = {}
+        
+        # Rebuild category buttons from assigned items (fresh list after admin changes)
         try:
-            cfg = getattr(self.controller, 'config', {})
-            categories = ["All Categories"] + cfg.get('categories', [])
-            # Update combobox values if it exists
-            if hasattr(self, 'category_combo'):
-                self.category_combo['values'] = categories
-                # Preserve selection when possible, otherwise reset
-                if self.category_var.get() not in categories:
-                    self.category_var.set('All Categories')
-        except Exception:
-            # Non-fatal: continue to populate items even if categories fail
-            pass
+            # Clear old category buttons
+            for cat_btn in self._category_buttons.values():
+                try:
+                    cat_btn.destroy()
+                except Exception:
+                    pass
+            self._category_buttons = {}
+            
+            # Rebuild categories list dynamically from item names using keywords
+            categories = set(['All Components'])
+            assigned = getattr(self.controller, 'assigned_slots', None)
+            
+            if isinstance(assigned, list) and any(assigned):
+                term_idx = getattr(self.controller, 'assigned_term', 0) or 0
+                for slot in assigned:
+                    try:
+                        if not slot or not isinstance(slot, dict):
+                            continue
+                        terms = slot.get('terms', [])
+                        if len(terms) > term_idx and terms[term_idx]:
+                            item = terms[term_idx]
+                            item_name = item.get('name', '')
+                            # Get categories from item name keywords
+                            item_cats = self._get_categories_from_item_name(item_name)
+                            categories.update(item_cats)
+                    except Exception:
+                        continue
+            else:
+                # No assigned items, use default categories from item names if any
+                for item in self.controller.items:
+                    try:
+                        item_name = item.get('name', '')
+                        item_cats = self._get_categories_from_item_name(item_name)
+                        categories.update(item_cats)
+                    except Exception:
+                        continue
+            
+            # Sort categories (keep "All Components" first)
+            cat_list = ['All Components'] + sorted([c for c in categories if c != 'All Components'])
+            
+            # Rebuild category buttons
+            for cat in cat_list:
+                b = tk.Button(self.categories_frame, text=cat, relief='flat', bg='#f7fafc', anchor='w', command=lambda c=cat: self._on_category_click(c))
+                b.pack(fill='x', pady=2)
+                self._category_buttons[cat] = b
+            
+            # Reset active category to "All Components"
+            self._active_category = 'All Components'
+            self._set_active_category_button('All Components')
+            
+        except Exception as e:
+            print(f"[KioskFrame] Error rebuilding categories: {e}")
 
         self.populate_items()
 

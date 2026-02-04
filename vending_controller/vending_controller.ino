@@ -67,7 +67,7 @@ const int MUX4_S0 = 17;
 const int MUX4_S1 = 5;
 const int MUX4_S2 = 18;
 const int MUX4_S3 = 19;
-const int MUX4_SIG = 35;
+// MUX4_SIG monitored directly on Raspberry Pi GPIO
 
 // ============================================================================
 // STATE TRACKING
@@ -122,7 +122,7 @@ void setup() {
   pinMode(MUX4_S1, OUTPUT);
   pinMode(MUX4_S2, OUTPUT);
   pinMode(MUX4_S3, OUTPUT);
-  pinMode(MUX4_SIG, OUTPUT);
+  // MUX4_SIG controlled by Raspberry Pi
 
   // Initialize all outputs to OFF
   for (int i = 0; i < NUM_OUTPUTS; i++) {
@@ -216,7 +216,7 @@ void setOutput(int idx, bool on) {
       break;
     case 3:
       mux4.channel(channel);
-      digitalWrite(MUX4_SIG, on ? HIGH : LOW);
+      // MUX4_SIG controlled by Raspberry Pi (not by ESP32)
       break;
   }
 }

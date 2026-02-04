@@ -49,6 +49,14 @@ except Exception as e:
     def pulse_slot(host, slot, ms=800):
         raise RuntimeError(f"ESP32 client not available. Cannot pulse slot {slot}. Import error: {e}")
 
+# MUX4 Controller for Slots 49-64
+try:
+    from mux4_controller import MUX4Controller
+    MUX4_AVAILABLE = True
+except Exception as e:
+    MUX4_AVAILABLE = False
+    print(f"MUX4 Controller not available: {e}")
+
 
 class MainApp(tk.Tk):
     def __init__(self, *args, **kwargs):
@@ -56,6 +64,7 @@ class MainApp(tk.Tk):
         self.cart = []
         self.tec_controller = None  # TEC Peltier module controller
         self.dispense_monitor = None  # Item dispense IR sensor monitor
+        self.mux4_controller = None  # MUX4 SIG pin controller for slots 49-64
 
         # Start in fullscreen mode for kiosk display
         self.is_fullscreen = True
@@ -93,6 +102,9 @@ class MainApp(tk.Tk):
         
         # Initialize Item Dispense Monitor if enabled in config
         self._init_dispense_monitor()
+        
+        # Initialize MUX4 Controller for slots 49-64
+        self._init_mux4_controller()
         
         # Apply fullscreen and rotation according to config
         # Apply fullscreen and rotation according to config
@@ -267,6 +279,29 @@ class MainApp(tk.Tk):
         except Exception as e:
             print(f"[MainApp] Failed to initialize Dispense Monitor: {e}")
             self.dispense_monitor = None
+    
+    def _init_mux4_controller(self):
+        """Initialize MUX4 SIG controller for slots 49-64."""
+        if not MUX4_AVAILABLE:
+            return
+        
+        try:
+            hardware_config = self.config.get('hardware', {})
+            mux4_config = hardware_config.get('mux4', {})
+            
+            if not mux4_config.get('enabled', True):
+                print("[MainApp] MUX4 controller disabled in config")
+                return
+            
+            sig_pin = mux4_config.get('sig_pin', 23)
+            
+            self.mux4_controller = MUX4Controller(sig_pin=sig_pin)
+            print(f"[MainApp] MUX4 controller initialized on GPIO{sig_pin}")
+        
+        except Exception as e:
+            print(f"[MainApp] Failed to initialize MUX4 Controller: {e}")
+            self.mux4_controller = None
+    
     
     def _on_tec_status_update(self, enabled, active, target_temp, current_temp):
         """Handle TEC controller status updates - update status panel."""
@@ -742,11 +777,18 @@ class MainApp(tk.Tk):
                     print(f'[VEND] WARNING: Dispense monitor not available - no IR sensor verification')
                 
                 try:
-                    result = pulse_slot(host, slot_number, pulse_ms)
-                    print(f'[VEND] SUCCESS: Pulse sent to slot {slot_number}, response: {result}')
+                    # Check if slot is in MUX4 range (49-64)
+                    if 49 <= slot_number <= 64 and self.mux4_controller:
+                        # For MUX4 slots, RPi controls SIG pin directly
+                        print(f'[VEND] MUX4 slot detected - controlling SIG on Raspberry Pi')
+                        self.mux4_controller.pulse(pulse_ms)
+                        print(f'[VEND] SUCCESS: Pulse sent via MUX4 controller for slot {slot_number}')
+                    else:
+                        # For slots 1-48, ESP32 controls everything
+                        result = pulse_slot(host, slot_number, pulse_ms)
+                        print(f'[VEND] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')
                 except Exception as e:
-                    print(f'[VEND] CRITICAL ERROR: Failed to send pulse to ESP32 for slot {slot_number}: {e}')
-                    print(f'[VEND]   Host: {host}')
+                    print(f'[VEND] CRITICAL ERROR: Failed to send pulse for slot {slot_number}: {e}')
                     print(f'[VEND]   Slot: {slot_number}')
                     print(f'[VEND]   Pulse duration: {pulse_ms}ms')
             except Exception as e:

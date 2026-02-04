@@ -51,144 +51,166 @@ class MockGPIO:
 
 
 class MUX4Controller:
-    """Controls MUX4 SIG output pin on Raspberry Pi."""
-    
-    def __init__(self, sig_pin=23):
+    """Controls MUX4 selector pins (S0-S3) and SIG output on Raspberry Pi."""
+
+    def __init__(self, s0_pin=17, s1_pin=5, s2_pin=18, s3_pin=19, sig_pin=23):
         """
-        Initialize MUX4 SIG controller.
-        
+        Initialize MUX4 controller.
+
         Args:
-            sig_pin: GPIO pin number (BCM) for MUX4 SIG signal
-                    Default: GPIO23 (available on Raspberry Pi 4)
+            s0_pin..s3_pin: BCM GPIO pins for multiplexer selectors (S0..S3)
+            sig_pin: BCM GPIO pin for SIG output
         """
+        self.s0_pin = s0_pin
+        self.s1_pin = s1_pin
+        self.s2_pin = s2_pin
+        self.s3_pin = s3_pin
         self.sig_pin = sig_pin
+
         self.is_initialized = False
         self._lock = threading.Lock()
         self._pulse_thread = None
         self._stop_pulse = False
-        
-        # Determine if we're on Raspberry Pi
+
+        # Determine platform (RPi vs mock)
         try:
             with open('/proc/device-tree/model', 'r') as f:
                 self.is_raspberry_pi = 'Raspberry Pi' in f.read()
         except (FileNotFoundError, IOError):
             self.is_raspberry_pi = False
-        
-        # Select GPIO library
+
         if GPIO_AVAILABLE and self.is_raspberry_pi:
             self.gpio = GPIO
             self._init_hardware()
         else:
             self.gpio = MockGPIO
             print("[MUX4] Using mock GPIO (not on Raspberry Pi or GPIO not available)")
-        
+
     def _init_hardware(self):
-        """Initialize GPIO hardware."""
         try:
-            if self.is_raspberry_pi and GPIO_AVAILABLE:
-                # Check if GPIO is already initialized
-                try:
-                    self.gpio.setmode(self.gpio.BCM)
-                except RuntimeError as e:
-                    if "already been set" in str(e):
-                        print(f"[MUX4] GPIO mode already set, continuing...")
-                    else:
-                        raise
-                
-                self.gpio.setup(self.sig_pin, self.gpio.OUT, initial=self.gpio.LOW)
-                self.is_initialized = True
-                print(f"[MUX4] SIG pin initialized on GPIO{self.sig_pin}")
+            # Use BCM numbering
+            try:
+                self.gpio.setmode(self.gpio.BCM)
+            except RuntimeError:
+                pass
+
+            # Setup selector pins as outputs
+            self.gpio.setup(self.s0_pin, self.gpio.OUT, initial=self.gpio.LOW)
+            self.gpio.setup(self.s1_pin, self.gpio.OUT, initial=self.gpio.LOW)
+            self.gpio.setup(self.s2_pin, self.gpio.OUT, initial=self.gpio.LOW)
+            self.gpio.setup(self.s3_pin, self.gpio.OUT, initial=self.gpio.LOW)
+            # Setup SIG pin as output
+            self.gpio.setup(self.sig_pin, self.gpio.OUT, initial=self.gpio.LOW)
+
+            self.is_initialized = True
+            print(f"[MUX4] Initialized S0={self.s0_pin},S1={self.s1_pin},S2={self.s2_pin},S3={self.s3_pin},SIG={self.sig_pin}")
         except Exception as e:
             print(f"[MUX4] ERROR initializing hardware: {e}")
-            print(f"[MUX4] Falling back to mock mode")
             self.gpio = MockGPIO
-    
+
+    def select_channel(self, channel):
+        """Select multiplexer `channel` (0-15) by setting S0..S3."""
+        if channel < 0 or channel > 15:
+            raise ValueError("channel must be 0..15")
+        with self._lock:
+            # Set bits on S0..S3 (LSB = S0)
+            bits = [(channel >> i) & 1 for i in range(4)]
+            try:
+                self.gpio.output(self.s0_pin, self.gpio.HIGH if bits[0] else self.gpio.LOW)
+                self.gpio.output(self.s1_pin, self.gpio.HIGH if bits[1] else self.gpio.LOW)
+                self.gpio.output(self.s2_pin, self.gpio.HIGH if bits[2] else self.gpio.LOW)
+                self.gpio.output(self.s3_pin, self.gpio.HIGH if bits[3] else self.gpio.LOW)
+            except Exception as e:
+                print(f"[MUX4] ERROR selecting channel: {e}")
+
     def set_output(self, state):
-        """
-        Set MUX4 SIG output HIGH or LOW.
-        
-        Args:
-            state: True for HIGH, False for LOW
-        """
         with self._lock:
             try:
                 self.gpio.output(self.sig_pin, self.gpio.HIGH if state else self.gpio.LOW)
-                status = "HIGH" if state else "LOW"
-                print(f"[MUX4] SIG set to {status}")
             except Exception as e:
-                print(f"[MUX4] ERROR setting output: {e}")
-    
+                print(f"[MUX4] ERROR setting SIG: {e}")
+
     def pulse(self, duration_ms):
-        """
-        Pulse the MUX4 SIG output for a specified duration.
-        
-        Args:
-            duration_ms: Pulse duration in milliseconds
-        """
+        """Pulse SIG only (assumes selector already set)."""
         with self._lock:
             try:
                 self.gpio.output(self.sig_pin, self.gpio.HIGH)
-                print(f"[MUX4] Pulse START ({duration_ms}ms)")
                 time.sleep(duration_ms / 1000.0)
                 self.gpio.output(self.sig_pin, self.gpio.LOW)
-                print(f"[MUX4] Pulse END")
             except Exception as e:
                 print(f"[MUX4] ERROR during pulse: {e}")
-    
+
     def pulse_async(self, duration_ms):
-        """
-        Pulse the MUX4 SIG output asynchronously (non-blocking).
-        
-        Args:
-            duration_ms: Pulse duration in milliseconds
-        """
-        # Cancel any existing pulse
+        """Non-blocking pulse of SIG (no channel)."""
+        # Reuse the existing thread slot so async pulses don't pile up
         if self._pulse_thread and self._pulse_thread.is_alive():
-            self._stop_pulse = True
-            self._pulse_thread.join(timeout=2.0)
-        
-        # Start new pulse thread
-        self._stop_pulse = False
-        self._pulse_thread = threading.Thread(
-            target=self.pulse,
-            args=(duration_ms,),
-            daemon=True
-        )
+            try:
+                self._pulse_thread.join(timeout=0.1)
+            except Exception:
+                pass
+
+        def _worker():
+            try:
+                self.pulse(duration_ms)
+            except Exception as e:
+                print(f"[MUX4] ERROR in async pulse: {e}")
+
+        self._pulse_thread = threading.Thread(target=_worker, daemon=True)
         self._pulse_thread.start()
-    
-    def read_input(self):
-        """
-        Read the MUX4 SIG pin as an input (for feedback verification).
-        Note: This temporarily switches pin mode to INPUT.
-        
-        Returns:
-            True if pin is HIGH, False if LOW
-        """
+
+    def pulse_channel(self, slot_number, duration_ms):
+        """Select channel based on `slot_number` (49-64) and pulse SIG."""
+        if slot_number < 49 or slot_number > 64:
+            raise ValueError("slot_number must be in 49..64")
+        channel = (slot_number - 49) % 16
         with self._lock:
             try:
-                # Temporarily switch to input mode
+                self.select_channel(channel)
+                # small settle time for selectors
+                time.sleep(0.01)
+                self.pulse(duration_ms)
+            except Exception as e:
+                print(f"[MUX4] ERROR pulsing channel for slot {slot_number}: {e}")
+
+    def pulse_async_channel(self, slot_number, duration_ms):
+        # Non-blocking pulse for a channel
+        if self._pulse_thread and self._pulse_thread.is_alive():
+            try:
+                self._pulse_thread.join(timeout=0.1)
+            except Exception:
+                pass
+        self._pulse_thread = threading.Thread(target=self.pulse_channel, args=(slot_number, duration_ms), daemon=True)
+        self._pulse_thread.start()
+
+    def read_input(self):
+        # Temporarily make SIG an input and read state
+        with self._lock:
+            try:
                 self.gpio.setup(self.sig_pin, self.gpio.IN)
                 state = self.gpio.input(self.sig_pin)
-                # Switch back to output mode
                 self.gpio.setup(self.sig_pin, self.gpio.OUT, initial=self.gpio.LOW)
                 return bool(state)
             except Exception as e:
-                print(f"[MUX4] ERROR reading input: {e}")
+                print(f"[MUX4] ERROR reading SIG: {e}")
                 return False
-    
+
     def cleanup(self):
-        """Clean up GPIO resources."""
         try:
             if self._pulse_thread and self._pulse_thread.is_alive():
-                self._stop_pulse = True
-                self._pulse_thread.join(timeout=1.0)
-            
+                self._pulse_thread.join(timeout=0.1)
             if self.gpio != MockGPIO and GPIO_AVAILABLE:
-                self.gpio.cleanup(self.sig_pin)
-                print(f"[MUX4] Cleaned up GPIO{self.sig_pin}")
+                # cleanup individual pins
+                try:
+                    self.gpio.cleanup(self.sig_pin)
+                except Exception:
+                    pass
+                for p in (self.s0_pin, self.s1_pin, self.s2_pin, self.s3_pin):
+                    try:
+                        self.gpio.cleanup(p)
+                    except Exception:
+                        pass
         except Exception as e:
             print(f"[MUX4] ERROR during cleanup: {e}")
-    
+
     def __del__(self):
-        """Cleanup on object destruction."""
         self.cleanup()

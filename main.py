@@ -293,10 +293,21 @@ class MainApp(tk.Tk):
                 print("[MainApp] MUX4 controller disabled in config")
                 return
             
+            # Get all MUX4 pins from config with fallback to defaults
+            s0_pin = mux4_config.get('s0_pin', 16)
+            s1_pin = mux4_config.get('s1_pin', 5)
+            s2_pin = mux4_config.get('s2_pin', 18)
+            s3_pin = mux4_config.get('s3_pin', 19)
             sig_pin = mux4_config.get('sig_pin', 23)
             
-            self.mux4_controller = MUX4Controller(sig_pin=sig_pin)
-            print(f"[MainApp] MUX4 controller initialized on GPIO{sig_pin}")
+            self.mux4_controller = MUX4Controller(
+                s0_pin=s0_pin,
+                s1_pin=s1_pin,
+                s2_pin=s2_pin,
+                s3_pin=s3_pin,
+                sig_pin=sig_pin
+            )
+            print(f"[MainApp] MUX4 controller initialized: S0={s0_pin},S1={s1_pin},S2={s2_pin},S3={s3_pin},SIG={sig_pin}")
         
         except Exception as e:
             print(f"[MainApp] Failed to initialize MUX4 Controller: {e}")

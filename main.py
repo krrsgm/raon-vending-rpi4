@@ -779,9 +779,9 @@ class MainApp(tk.Tk):
                 try:
                     # Check if slot is in MUX4 range (49-64)
                     if 49 <= slot_number <= 64 and self.mux4_controller:
-                        # For MUX4 slots, RPi controls SIG pin directly
-                        print(f'[VEND] MUX4 slot detected - controlling SIG on Raspberry Pi')
-                        self.mux4_controller.pulse(pulse_ms)
+                        # For MUX4 slots, Raspberry Pi controls selectors and SIG
+                        print(f'[VEND] MUX4 slot detected - selecting channel + pulsing on Raspberry Pi')
+                        self.mux4_controller.pulse_channel(slot_number, pulse_ms)
                         print(f'[VEND] SUCCESS: Pulse sent via MUX4 controller for slot {slot_number}')
                     else:
                         # For slots 1-48, ESP32 controls everything

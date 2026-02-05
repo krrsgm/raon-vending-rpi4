@@ -957,7 +957,18 @@ class AssignItemsScreen(tk.Frame):
             
             # Pulse the motor for 800ms with longer timeout for serial
             print(f"[TEST MOTOR] Pulsing slot {slot_num}...")
-            result = pulse_slot(esp32_host, slot_num, 800, timeout=3.0)
+            # If slot is in MUX4 range and a MUX4 controller is present, use Raspberry Pi
+            mux4_ctrl = getattr(self.controller, 'mux4_controller', None)
+            if 49 <= slot_num <= 64 and mux4_ctrl:
+                try:
+                    mux4_ctrl.pulse_channel(slot_num, 800)
+                    result = 'OK (RPi MUX4)'
+                    print(f"[TEST MOTOR] SUCCESS (RPi MUX4): Slot {slot_num} pulsed via Raspberry Pi")
+                except Exception as e:
+                    result = f'ERR (RPi MUX4): {e}'
+                    print(f"[TEST MOTOR] FAILED (RPi MUX4) for slot {slot_num}: {e}")
+            else:
+                result = pulse_slot(esp32_host, slot_num, 800, timeout=3.0)
             
             # Validate response - should contain "OK"
             if result and "OK" in result.upper():

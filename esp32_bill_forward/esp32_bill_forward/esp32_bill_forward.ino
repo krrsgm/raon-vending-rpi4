@@ -33,8 +33,8 @@ int last_one_state = HIGH;  // Track previous state for edge detection
 int last_five_state = HIGH;
 
 // Debounce timing (ms) - requires stable state before counting
-// Increased from 10ms to 50ms to prevent sensor bouncing from double-counting coins
-const unsigned long DEBOUNCE_MS = 50;
+// Reduced to 20ms to allow short coin pulses to be detected reliably
+const unsigned long DEBOUNCE_MS = 20;
 unsigned long one_last_transition = 0;
 unsigned long five_last_transition = 0;
 

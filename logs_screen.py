@@ -121,8 +121,20 @@ class LogsScreen(tk.Frame):
         
         try:
             summary = self.logger.get_today_summary()
+            items_sold = self.logger.get_items_sold_summary()
+            
             if summary:
                 today = datetime.now().strftime("%A, %B %d, %Y")
+                
+                # Build items list
+                items_display = ""
+                if items_sold:
+                    items_display = "\n📦 ITEMS SOLD:\n"
+                    for item_name in sorted(items_sold.keys()):
+                        qty = items_sold[item_name]
+                        items_display += f"   {item_name:<35} x{qty:>3}\n"
+                else:
+                    items_display = "\n📦 ITEMS SOLD:\n   (No items sold yet)\n"
                 
                 display = f"""
 ╔════════════════════════════════════════════════════╗
@@ -132,7 +144,7 @@ class LogsScreen(tk.Frame):
 
 📊 TRANSACTIONS:
    Total Transactions: {summary['total_transactions']}
-   
+{items_display}
 💰 REVENUE:
    Coins Received:     ₱{summary['total_coins']:>10,.2f}
    Bills Received:     ₱{summary['total_bills']:>10,.2f}

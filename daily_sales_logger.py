@@ -197,6 +197,44 @@ class DailySalesLogger:
         except Exception as e:
             print(f"[Logger] ERROR reading summary: {e}")
             return None
+    
+    def get_items_sold_summary(self):
+        """Get summary of items sold today with quantities.
+        
+        Returns:
+            dict: Item names mapped to total quantities sold
+        """
+        try:
+            log_file = self._get_log_filename()
+            if not os.path.exists(log_file):
+                return {}
+            
+            items_sold = {}
+            
+            with self._lock:
+                with open(log_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if "TRANSACTION |" in line and "Items:" in line:
+                            # Extract items section between "Items:" and "|"
+                            try:
+                                items_section = line.split("Items: ")[1].split(" | ")[0]
+                                # Parse "Item1 x2, Item2 x1" format
+                                item_entries = items_section.split(", ")
+                                for entry in item_entries:
+                                    if " x" in entry:
+                                        name, qty_str = entry.rsplit(" x", 1)
+                                        qty = int(qty_str)
+                                        if name in items_sold:
+                                            items_sold[name] += qty
+                                        else:
+                                            items_sold[name] = qty
+                            except Exception:
+                                pass
+            
+            return items_sold
+        except Exception as e:
+            print(f"[Logger] ERROR reading items sold: {e}")
+            return {}
 
 
 # Global logger instance

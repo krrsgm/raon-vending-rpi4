@@ -33,8 +33,8 @@ int last_one_state = HIGH;  // Track previous state for edge detection
 int last_five_state = HIGH;
 
 // Debounce timing (ms) - requires stable state before counting
-// Reduced to 20ms to allow short coin pulses to be detected reliably
-const unsigned long DEBOUNCE_MS = 20;
+// Increased from 10ms to 50ms to prevent sensor bouncing from double-counting coins
+const unsigned long DEBOUNCE_MS = 50;
 unsigned long one_last_transition = 0;
 unsigned long five_last_transition = 0;
 
@@ -43,8 +43,7 @@ unsigned long last_display_time = 0;
 const unsigned long DISPLAY_INTERVAL = 1000; // ms
 
 // Debug flag: set to 1 to enable continuous raw pin reads (for troubleshooting)
-// Disable PIN debug output when UI is connected
-int DEBUG_PIN_READS = 0;
+int DEBUG_PIN_READS = 1;
 unsigned long last_debug_time = 0;
 const unsigned long DEBUG_INTERVAL = 100; // Print raw pin state every 100ms for debugging
 
@@ -224,12 +223,6 @@ void processLine(String line, Stream &out) {
     report_status(out);
   } else if (cmd == "STOP"){
     stop_all_jobs("user", out);
-  } else if (cmd == "RESET"){
-    one_count = 0;
-    five_count = 0;
-    one_count_locked = false;
-    five_count_locked = false;
-    out.println("OK COUNTERS RESET");
   } else {
     out.println("ERR unknown command");
   }
@@ -279,24 +272,21 @@ void setup(){
   last_one_state = digitalRead(ONE_SENSOR_PIN);
   last_five_state = digitalRead(FIVE_SENSOR_PIN);
   
-  // Diagnostics
+  // Minimal startup message
   Serial.println("\n========================================");
-  Serial.println("Simple Coin Hopper & Bill Acceptor ready");
-  Serial.println("Sensors: PIN 11 (1-peso) and PIN 12 (5-peso) - normal HIGH via pull-up, LOW when coin passes");
-  // Initial pin states suppressed to avoid noisy output in UI
+  Serial.println("Coin Hopper & Bill Acceptor ready");
   Serial.println("========================================\n");
 }
 
 void loop(){
-  // Report pulse events for diagnostics
+  // Report pulse events for diagnostics (disabled to reduce serial noise)
   if (pulseEvent) {
     int pulses;
     noInterrupts();
     pulses = pulseCount;
     pulseEvent = false;
     interrupts();
-    Serial.print("Pulse detected. Total: ");
-    Serial.println(pulses);
+    // Serial output disabled to avoid UI interference
   }
 
   // Bill acceptor settle handling (unchanged)
@@ -317,11 +307,8 @@ void loop(){
       billProcessed = true;
       lastReportedPulseCount = -1;
     } else {
-      if (pulses != lastReportedPulseCount) {
-        Serial.print("Unknown pulse count: ");
-        Serial.println(pulses);
-        lastReportedPulseCount = pulses;
-      }
+      // Unknown pulse count — silent to avoid UI noise
+      lastReportedPulseCount = pulses;
       if (millis() - (unsigned long)lastPulseTime > timeout + 5000) {
         noInterrupts();
         pulseCount = 0;
@@ -379,7 +366,9 @@ void loop(){
   last_one_state = one_state;
   last_five_state = five_state;
 
-  // Debug: print raw pin states frequently (every 100ms) to help troubleshoot sensor issues
+  // Debug: print raw pin states (disabled to reduce serial noise)
+  // Uncomment the DEBUG_PIN_READS setting above to enable for troubleshooting
+  /*
   if (DEBUG_PIN_READS && (now_debounce - last_debug_time >= DEBUG_INTERVAL)) {
     last_debug_time = now_debounce;
     Serial.print("[DEBUG] PIN11: ");
@@ -393,8 +382,11 @@ void loop(){
     Serial.print(" 5P=");
     Serial.println(five_count);
   }
+  */
 
-  // Periodic status display (every DISPLAY_INTERVAL ms)
+  // Periodic status display disabled to reduce serial noise
+  // (Uncomment if needed for debugging)
+  /*
   if (now_debounce - last_display_time >= DISPLAY_INTERVAL) {
     last_display_time = now_debounce;
     Serial.println("\n--- STATUS ---");
@@ -404,6 +396,7 @@ void loop(){
     Serial.print(" coins | State: "); Serial.println(five_state == HIGH ? "HIGH" : "LOW");
     Serial.println();
   }
+  */
 
   // --- Serial Command Processing ---
   while (Serial.available()){

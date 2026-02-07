@@ -268,7 +268,7 @@ void loop(){
   while (Serial.available()){
     char c = (char) Serial.read();
     if (c == '\n'){
-      if (inputBuffer.length() > 0){ Serial.print("CMD: "); Serial.println(inputBuffer); processLine(inputBuffer); inputBuffer = ""; }
+      if (inputBuffer.length() > 0){ processLine(inputBuffer); inputBuffer = ""; }
     } else if (c != '\r'){
       inputBuffer += c;
       if (inputBuffer.length() > 256) inputBuffer = inputBuffer.substring(inputBuffer.length()-256);

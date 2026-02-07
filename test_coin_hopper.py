@@ -6,10 +6,11 @@ This test monitors coin detection and controls a relay:
 - When 5 coins pass through, turn OFF the relay
 - Reset after successful detection
 
-Coin detection uses GPIO pins:
-- GPIO26: 1₱ coin hopper sensor
-- GPIO27: 5₱ coin hopper sensor
-- GPIO4: Relay control pin (default)
+Pin assignments:
+- Pin 11: 1₱ coin hopper sensor
+- Pin 12: 5₱ coin hopper sensor
+- Pin 9: Relay control for 1₱ hopper
+- Pin 10: Relay control for 5₱ hopper
 """
 
 import RPi.GPIO as GPIO
@@ -21,20 +22,22 @@ from coin_hopper import CoinHopper
 class CoinHopperRelay:
     """Controls relay based on coin hopper detection."""
     
-    def __init__(self, coin_sensor_1p=26, coin_sensor_5p=27, relay_pin=4, 
+    def __init__(self, coin_sensor_1p=11, coin_sensor_5p=12, relay_pin_1p=9, relay_pin_5p=10,
                  serial_port='/dev/ttyUSB1', baudrate=115200):
         """Initialize coin hopper relay controller.
         
         Args:
-            coin_sensor_1p: GPIO pin for 1₱ coin sensor
-            coin_sensor_5p: GPIO pin for 5₱ coin sensor
-            relay_pin: GPIO pin for relay control
+            coin_sensor_1p: Pin for 1₱ coin sensor (default 11)
+            coin_sensor_5p: Pin for 5₱ coin sensor (default 12)
+            relay_pin_1p: Pin for 1₱ relay control (default 9)
+            relay_pin_5p: Pin for 5₱ relay control (default 10)
             serial_port: Serial port for coin hopper Arduino
             baudrate: Serial baudrate
         """
         self.coin_sensor_1p = coin_sensor_1p
         self.coin_sensor_5p = coin_sensor_5p
-        self.relay_pin = relay_pin
+        self.relay_pin_1p = relay_pin_1p
+        self.relay_pin_5p = relay_pin_5p
         self.serial_port = serial_port
         self.baudrate = baudrate
         
@@ -50,8 +53,13 @@ class CoinHopperRelay:
         self.hopper = None
         
         # Configure GPIO
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(self.relay_pin, GPIO.OUT, initial=GPIO.HIGH)  # Relay ON (HIGH)
+        GPIO.setmode(GPIO.BOARD)  # Use BOARD numbering (physical pin numbers)
+        
+        # Setup relay pins (OUTPUT)
+        GPIO.setup(self.relay_pin_1p, GPIO.OUT, initial=GPIO.HIGH)  # Relay ON (HIGH)
+        GPIO.setup(self.relay_pin_5p, GPIO.OUT, initial=GPIO.HIGH)  # Relay ON (HIGH)
+        
+        # Setup sensor pins (INPUT)
         GPIO.setup(self.coin_sensor_1p, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(self.coin_sensor_5p, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         
@@ -62,9 +70,10 @@ class CoinHopperRelay:
                             callback=self._on_5p_coin, bouncetime=100)
         
         print("[CoinHopperRelay] Initialized")
-        print(f"  Relay pin: GPIO{self.relay_pin}")
-        print(f"  1₱ sensor: GPIO{self.coin_sensor_1p}")
-        print(f"  5₱ sensor: GPIO{self.coin_sensor_5p}")
+        print(f"  1₱ relay pin: {self.relay_pin_1p}")
+        print(f"  5₱ relay pin: {self.relay_pin_5p}")
+        print(f"  1₱ sensor pin: {self.coin_sensor_1p}")
+        print(f"  5₱ sensor pin: {self.coin_sensor_5p}")
     
     def _on_1p_coin(self, channel):
         """Callback when 1₱ coin detected."""
@@ -96,28 +105,30 @@ class CoinHopperRelay:
                 self._turn_on_relay()
     
     def _turn_on_relay(self):
-        """Turn on the relay."""
+        """Turn on both relays."""
         if self.relay_active:
             return
         
         try:
-            GPIO.output(self.relay_pin, GPIO.HIGH)
+            GPIO.output(self.relay_pin_1p, GPIO.HIGH)
+            GPIO.output(self.relay_pin_5p, GPIO.HIGH)
             self.relay_active = True
-            print("[CoinHopperRelay] Relay turned ON")
+            print("[CoinHopperRelay] Relays turned ON")
         except Exception as e:
-            print(f"[CoinHopperRelay] Error turning ON relay: {e}")
+            print(f"[CoinHopperRelay] Error turning ON relays: {e}")
     
     def _turn_off_relay(self):
-        """Turn off the relay."""
+        """Turn off both relays."""
         if not self.relay_active:
             return
         
         try:
-            GPIO.output(self.relay_pin, GPIO.LOW)
+            GPIO.output(self.relay_pin_1p, GPIO.LOW)
+            GPIO.output(self.relay_pin_5p, GPIO.LOW)
             self.relay_active = False
-            print("[CoinHopperRelay] Relay turned OFF - 5 coins detected!")
+            print("[CoinHopperRelay] Relays turned OFF - 5 coins detected!")
         except Exception as e:
-            print(f"[CoinHopperRelay] Error turning OFF relay: {e}")
+            print(f"[CoinHopperRelay] Error turning OFF relays: {e}")
     
     def connect_hopper(self):
         """Connect to coin hopper via serial.
@@ -214,8 +225,12 @@ class CoinHopperRelay:
         try:
             print("\n[CoinHopperRelay] Cleaning up...")
             
-            # Turn off relay
-            self._turn_off_relay()
+            # Turn off relays
+            try:
+                GPIO.output(self.relay_pin_1p, GPIO.LOW)
+                GPIO.output(self.relay_pin_5p, GPIO.LOW)
+            except:
+                pass
             time.sleep(0.1)
             
             # Disconnect hopper
@@ -236,9 +251,10 @@ def main():
     try:
         # Initialize relay controller
         relay_controller = CoinHopperRelay(
-            coin_sensor_1p=26,
-            coin_sensor_5p=27,
-            relay_pin=4,
+            coin_sensor_1p=11,
+            coin_sensor_5p=12,
+            relay_pin_1p=9,
+            relay_pin_5p=10,
             serial_port='/dev/ttyUSB1',
             baudrate=115200
         )

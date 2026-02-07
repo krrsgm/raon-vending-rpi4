@@ -736,13 +736,10 @@ class MainApp(tk.Tk):
         return True
 
     def vend_slots_for(self, item_name, quantity=1):
-        """Find assigned slots for item_name and pulse the ESP32 outputs.
+        """Vend items by activating assigned hoppers via Arduino coin hopper controller.
 
-        This function looks at `self.assigned_slots` (populated by AssignItemsScreen)
-        and finds all slot indices mapped to `item_name`. It sends PULSE commands
-        to the ESP32 host configured under `config['esp32_host']` (fallbacks to
-        '192.168.4.1' in AP mode). Pulses are distributed round-robin across
-        matching slots.
+        Maps items to hopper denominations (1-peso or 5-peso) and sends OPEN commands
+        to the Arduino. Falls back to ESP32 if configured.
         
         Also monitors dispensing using IR sensors if dispense monitor is available.
         """
@@ -750,31 +747,52 @@ class MainApp(tk.Tk):
         if not assigned:
             print('[VEND] ERROR: No assigned_slots available to vend from')
             return
-        # find matching indices (1-based slot numbers)
+        
+        # Find matching slot(s) for this item
         matches = []
         for idx, slot in enumerate(assigned):
             if slot and isinstance(slot, dict) and slot.get('name') == item_name:
                 matches.append(idx+1)
         if not matches:
             print(f'[VEND] ERROR: No physical slots assigned for item "{item_name}"')
-            print(f'[VEND] Available slots: {[s.get("name") if isinstance(s, dict) else None for s in assigned]}')
             return
-        host = self.config.get('esp32_host') if isinstance(self.config, dict) else None
-        if not host:
-            host = '192.168.4.1'  # common AP fallback; set in config for your network
-        pulse_ms = self.config.get('esp32_pulse_ms', 800) if isinstance(self.config, dict) else 800
         
-        # Get dispense timeout from config
+        # Get configuration
+        pulse_ms = self.config.get('esp32_pulse_ms', 800) if isinstance(self.config, dict) else 800
         dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 15.0) if isinstance(self.config, dict) else 15.0
         
         print(f'[VEND] Found {len(matches)} slots for "{item_name}": {matches}')
-        print(f'[VEND] Using ESP32 host: {host}, pulse_ms: {pulse_ms}, timeout: {dispense_timeout}s')
+        print(f'[VEND] Vending {quantity} unit(s) with pulse_ms={pulse_ms}ms')
         
-        # Round-robin distribute pulses
+        # Try to use CoinHopper (Arduino-based) as primary method
+        hopper = None
+        try:
+            from coin_hopper import CoinHopper
+            # Try to connect to Arduino coin hopper (typically on /dev/ttyAMA0 or /dev/ttyUSB0)
+            for port in ['serial:/dev/ttyAMA0', 'serial:/dev/ttyUSB0', 'serial:/dev/ttyUSB1']:
+                try:
+                    hopper = CoinHopper(serial_port=port)
+                    if hopper.connect():
+                        print(f'[VEND] Connected to Arduino hopper on {port}')
+                        break
+                    hopper = None
+                except Exception as e:
+                    hopper = None
+                    continue
+        except ImportError:
+            print('[VEND] CoinHopper module not available')
+        
+        # Distribute pulses round-robin across matched slots
         for i in range(quantity):
             slot_number = matches[i % len(matches)]
+            denom = slot_number % 2  # Map slot to hopper: odd slots → 1-peso, even → 5-peso
+            if denom == 0:
+                denom = 5
+            else:
+                denom = 1
+            
             try:
-                print(f'[VEND] Pulsing slot {slot_number} for {pulse_ms}ms (item: {item_name}, quantity item {i+1}/{quantity})')
+                print(f'[VEND] Vending slot {slot_number} (denom: {denom}₱) - item {i+1}/{quantity}')
                 
                 # Start monitoring dispense for this slot if dispense monitor is available
                 if self.dispense_monitor:
@@ -783,27 +801,45 @@ class MainApp(tk.Tk):
                         timeout=dispense_timeout,
                         item_name=item_name
                     )
-                    print(f'[VEND] IR sensor monitoring started for slot {slot_number}, timeout={dispense_timeout}s')
-                else:
-                    print(f'[VEND] WARNING: Dispense monitor not available - no IR sensor verification')
+                    print(f'[VEND] IR sensor monitoring started for slot {slot_number}')
                 
                 try:
                     # Check if slot is in MUX4 range (49-64)
                     if 49 <= slot_number <= 64 and self.mux4_controller:
-                        # For MUX4 slots, Raspberry Pi controls selectors and SIG
-                        print(f'[VEND] MUX4 slot detected - selecting channel + pulsing on Raspberry Pi')
+                        print(f'[VEND] MUX4 slot detected - pulsing on Raspberry Pi')
                         self.mux4_controller.pulse_channel(slot_number, pulse_ms)
-                        print(f'[VEND] SUCCESS: Pulse sent via MUX4 controller for slot {slot_number}')
+                        print(f'[VEND] ✓ Pulse sent via MUX4 for slot {slot_number}')
+                    elif hopper:
+                        # Use Arduino coin hopper via OPEN command
+                        cmd = f"OPEN {denom}"
+                        response = hopper.send_command(cmd)
+                        print(f'[VEND] ✓ Arduino hopper: sent "{cmd}", response: {response}')
+                        # Motor runs for pulse_ms duration
+                        import time
+                        time.sleep(pulse_ms / 1000.0)
+                        hopper.send_command(f"CLOSE {denom}")
+                        print(f'[VEND] ✓ Motor stopped for denom {denom}')
                     else:
-                        # For slots 1-48, ESP32 controls everything
+                        # Fallback to ESP32 if hopper is not available
+                        host = self.config.get('esp32_host') if isinstance(self.config, dict) else None
+                        if not host:
+                            host = '192.168.4.1'
+                        print(f'[VEND] Using ESP32 fallback: {host}')
                         result = pulse_slot(host, slot_number, pulse_ms)
-                        print(f'[VEND] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')
+                        print(f'[VEND] ✓ Pulse sent to ESP32 for slot {slot_number}, response: {result}')
                 except Exception as e:
-                    print(f'[VEND] CRITICAL ERROR: Failed to send pulse for slot {slot_number}: {e}')
-                    print(f'[VEND]   Slot: {slot_number}')
-                    print(f'[VEND]   Pulse duration: {pulse_ms}ms')
+                    print(f'[VEND] ✗ ERROR vending slot {slot_number}: {e}')
+                    import traceback
+                    traceback.print_exc()
             except Exception as e:
-                print(f'[VEND] CRITICAL ERROR: Exception vending slot {slot_number}: {e}')
+                print(f'[VEND] ✗ CRITICAL ERROR with slot {slot_number}: {e}')
+        
+        # Clean up hopper connection
+        if hopper:
+            try:
+                hopper.cleanup()
+            except Exception:
+                pass
 
     def update_item(self, original_item_name, updated_item_data):
         """Updates an existing item in the master list and saves to JSON."""

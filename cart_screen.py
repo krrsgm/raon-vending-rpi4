@@ -3,6 +3,7 @@ from tkinter import font as tkfont
 from tkinter import messagebox
 from payment_handler import PaymentHandler
 from system_status_panel import SystemStatusPanel
+from daily_sales_logger import get_logger
 import threading
 
 
@@ -568,6 +569,24 @@ class CartScreen(tk.Frame):
         status_text += "\nYour items will now be dispensed."
         
         messagebox.showinfo("Payment Complete", status_text)
+        
+        # Log the transaction to daily sales log
+        try:
+            logger = get_logger()
+            items_to_log = []
+            for item in self.controller.cart:
+                items_to_log.append({
+                    'name': item.get('name', 'Unknown'),
+                    'quantity': item.get('quantity', 1)
+                })
+            logger.log_transaction(
+                items_list=items_to_log,
+                coin_amount=coin_amount,
+                bill_amount=bill_amount,
+                change_dispensed=change_dispensed
+            )
+        except Exception as e:
+            print(f"[CartScreen] Error logging transaction: {e}")
         
         # Clean up and return to main screen
         self.payment_window.destroy()

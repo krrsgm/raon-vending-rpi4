@@ -7,6 +7,7 @@ from assign_items_screen import AssignItemsScreen
 from item_screen import ItemScreen
 from cart_screen import CartScreen
 from fix_paths import get_absolute_path
+from daily_sales_logger import get_logger
 import subprocess
 import platform
 import os
@@ -326,6 +327,18 @@ class MainApp(tk.Tk):
                     target_temp=target_temp,
                     current_temp=current_temp
                 )
+            
+            # Log temperature periodically (not on every update to avoid spam)
+            try:
+                logger = get_logger()
+                # Only log if this is a significant change or periodic (checked by logger)
+                logger.log_temperature(
+                    sensor_1_temp=current_temp,
+                    relay_status=active,
+                    target_temp=target_temp
+                )
+            except Exception as e:
+                print(f"[MainApp] Error logging temperature: {e}")
         except Exception as e:
             print(f"[MainApp] Error updating TEC status panel: {e}")
     
@@ -340,6 +353,16 @@ class MainApp(tk.Tk):
                     temp=temp,
                     humidity=humidity
                 )
+            
+            # Log temperature reading (DHT22 updates less frequently)
+            try:
+                logger = get_logger()
+                if sensor_number == 1:
+                    logger.log_temperature(sensor_1_temp=temp)
+                elif sensor_number == 2:
+                    logger.log_temperature(sensor_2_temp=temp)
+            except Exception as e:
+                pass  # Silently ignore logging errors
         except Exception as e:
             print(f"[MainApp] Error updating DHT22 status panel: {e}")
     

@@ -66,90 +66,100 @@ class CoinHopperRelayTest:
             return False
     
     def relay_on(self):
-        """Turn on both relays via Arduino command.
+        """Turn on both motors via OPEN commands (1-peso and 5-peso hoppers).
         
         Returns:
             True if successful, False otherwise
         """
         try:
-            response = self.hopper.send_command("RELAY_ON")
-            if response and ("OK" in response or "ON" in response):
+            # Open both hoppers (turn on motors)
+            response1 = self.hopper.send_command("OPEN 1")
+            response2 = self.hopper.send_command("OPEN 5")
+            
+            if (response1 and "OK" in response1) and (response2 and "OK" in response2):
                 self.relay_active = True
-                print("[CoinHopperTest] Relay turned ON")
+                print("[CoinHopperTest] Relays turned ON (OPEN 1 and 5)")
                 return True
             else:
-                print(f"[CoinHopperTest] Relay ON failed: {response}")
+                print(f"[CoinHopperTest] Relay ON failed - Response 1: {response1}, Response 2: {response2}")
                 return False
         except Exception as e:
-            print(f"[CoinHopperTest] Error turning ON relay: {e}")
+            print(f"[CoinHopperTest] Error turning ON relays: {e}")
             return False
     
     def relay_off(self):
-        """Turn off both relays via Arduino command.
+        """Turn off both motors via CLOSE commands (1-peso and 5-peso hoppers).
         
         Returns:
             True if successful, False otherwise
         """
         try:
-            response = self.hopper.send_command("RELAY_OFF")
-            if response and ("OK" in response or "OFF" in response):
+            # Close both hoppers (turn off motors)
+            response1 = self.hopper.send_command("CLOSE 1")
+            response2 = self.hopper.send_command("CLOSE 5")
+            
+            if (response1 and "OK" in response1) and (response2 and "OK" in response2):
                 self.relay_active = False
-                print("[CoinHopperTest] Relay turned OFF - 5 coins detected!")
+                print("[CoinHopperTest] Relays turned OFF (CLOSE 1 and 5) - 5 coins detected!")
                 return True
             else:
-                print(f"[CoinHopperTest] Relay OFF failed: {response}")
+                print(f"[CoinHopperTest] Relay OFF failed - Response 1: {response1}, Response 2: {response2}")
                 return False
         except Exception as e:
-            print(f"[CoinHopperTest] Error turning OFF relay: {e}")
+            print(f"[CoinHopperTest] Error turning OFF relays: {e}")
             return False
     
     def get_sensor_status(self):
-        """Get sensor status from Arduino.
+        """Get sensor status from Arduino via STATUS command.
         
         Returns:
             Status string or None on error
         """
         try:
-            response = self.hopper.send_command("SENSOR_STATUS")
+            response = self.hopper.send_command("STATUS")
             return response
         except Exception as e:
             print(f"[CoinHopperTest] Error getting sensor status: {e}")
             return None
     
     def get_coin_count(self):
-        """Get current coin count from Arduino.
+        """Get current coin count from Arduino via STATUS command.
         
         Returns:
             Coin count or None on error
         """
         try:
-            response = self.hopper.send_command("COIN_COUNT")
+            response = self.hopper.send_command("STATUS")
             if response:
-                # Try to extract count from response (format: "COUNT: 5")
+                # Try to extract counts from status response
+                # Arduino returns something like: "one_count: 2 five_count: 1"
                 import re
-                match = re.search(r'(\d+)', response)
-                if match:
-                    return int(match.group(1))
+                one_match = re.search(r'one_count[:\s]+([0-9]+)', response, re.IGNORECASE)
+                five_match = re.search(r'five_count[:\s]+([0-9]+)', response, re.IGNORECASE)
+                
+                one_count = int(one_match.group(1)) if one_match else 0
+                five_count = int(five_match.group(1)) if five_match else 0
+                total = one_count + five_count
+                
+                return total
             return None
         except Exception as e:
             print(f"[CoinHopperTest] Error getting coin count: {e}")
             return None
     
     def reset_count(self):
-        """Reset coin counter on Arduino.
+        """Reset coin counters by stopping all jobs via STOP command.
         
         Returns:
             True if successful, False otherwise
         """
         try:
-            response = self.hopper.send_command("RESET_COUNT")
-            if response and "OK" in response:
-                with self._lock:
-                    self.coin_count = 0
-                    self.coin_history.clear()
-                print("[CoinHopperTest] Counter reset")
-                return True
-            return False
+            response = self.hopper.send_command("STOP")
+            with self._lock:
+                self.coin_count = 0
+                self.coin_history.clear()
+            print("[CoinHopperTest] Counter reset (STOP command)")
+            return True
         except Exception as e:
             print(f"[CoinHopperTest] Error resetting count: {e}")
             return False
@@ -300,17 +310,19 @@ def main():
         )
         
         print("\n" + "="*60)
-        print("COIN HOPPER RELAY TEST (Arduino Control)")
+        print("COIN HOPPER RELAY TEST (Compatible with Real Dispensing)")
         print("="*60)
-        print("Options:")
+        print("This test uses same Arduino commands as actual coin dispensing.")
+        print("Commands used: OPEN <denom>, CLOSE <denom>, STATUS, STOP")
+        print("\nOptions:")
         print("  1 - Test relay control (ON/OFF)")
         print("  2 - Test sensor reading")
         print("  3 - Monitor coins for 60s (target 5 coins)")
         print("  4 - Custom monitoring duration")
         print("  5 - Get current status")
-        print("  6 - Reset coin count")
-        print("  7 - Relay OFF only")
-        print("  8 - Relay ON only")
+        print("  6 - Reset coin count/stop job")
+        print("  7 - Relay OFF only (CLOSE 1 and 5)")
+        print("  8 - Relay ON only (OPEN 1 and 5)")
         print("  Q - Quit")
         print("="*60)
         

@@ -58,9 +58,20 @@ class CoinAcceptor:
             return
             
         self.last_trigger_time = current_time
-        
+        # Small settle check: ensure the line remains LOW for a short window
+        # to avoid counting very short glitches as coins.
+        try:
+            time.sleep(0.02)  # 20ms settle
+            state = GPIO.input(self.coin_pin)
+            if state == GPIO.HIGH:
+                # transient bounce/noise — ignore
+                return
+        except Exception:
+            # If GPIO read fails for any reason, fall back to accepting the trigger
+            pass
+
         with self.payment_lock:
-            # Add the current coin value when a coin is detected
+            # Add the current coin value when a valid coin is detected
             self.received_amount += self.current_coin_value
 
     def get_received_amount(self):

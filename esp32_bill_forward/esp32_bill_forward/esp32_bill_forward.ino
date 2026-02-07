@@ -43,7 +43,8 @@ unsigned long last_display_time = 0;
 const unsigned long DISPLAY_INTERVAL = 1000; // ms
 
 // Debug flag: set to 1 to enable continuous raw pin reads (for troubleshooting)
-int DEBUG_PIN_READS = 1;
+// Disable PIN debug output when UI is connected
+int DEBUG_PIN_READS = 0;
 unsigned long last_debug_time = 0;
 const unsigned long DEBUG_INTERVAL = 100; // Print raw pin state every 100ms for debugging
 
@@ -282,9 +283,7 @@ void setup(){
   Serial.println("\n========================================");
   Serial.println("Simple Coin Hopper & Bill Acceptor ready");
   Serial.println("Sensors: PIN 11 (1-peso) and PIN 12 (5-peso) - normal HIGH via pull-up, LOW when coin passes");
-  Serial.println("Initial Pin States:");
-  Serial.print("  PIN 11 (1-PESO): "); Serial.println(last_one_state == HIGH ? "HIGH" : "LOW");
-  Serial.print("  PIN 12 (5-PESO): "); Serial.println(last_five_state == HIGH ? "HIGH" : "LOW");
+  // Initial pin states suppressed to avoid noisy output in UI
   Serial.println("========================================\n");
 }
 

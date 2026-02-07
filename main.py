@@ -6,6 +6,7 @@ from admin_screen import AdminScreen
 from assign_items_screen import AssignItemsScreen
 from item_screen import ItemScreen
 from cart_screen import CartScreen
+from logs_screen import LogsScreen
 from fix_paths import get_absolute_path
 from daily_sales_logger import get_logger
 import subprocess
@@ -171,7 +172,7 @@ class MainApp(tk.Tk):
         container.grid_columnconfigure(0, weight=1)
 
         self.frames = {}
-        for F in (SelectionScreen, KioskFrame, AdminScreen, AssignItemsScreen, ItemScreen, CartScreen):
+        for F in (SelectionScreen, KioskFrame, AdminScreen, AssignItemsScreen, ItemScreen, CartScreen, LogsScreen):
             page_name = F.__name__
             frame = F(parent=container, controller=self)
             self.frames[page_name] = frame

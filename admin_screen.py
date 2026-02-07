@@ -496,6 +496,20 @@ class AdminScreen(tk.Frame):
         )
         assign_slots_btn.pack(side="right", padx=(0, 8))
 
+        # Button to view logs
+        logs_btn = tk.Button(
+            header,
+            text="View Logs",
+            font=self.fonts["button"],
+            bg="#27ae60",
+            fg=self.colors["btn_fg"],
+            relief="flat",
+            padx=12,
+            pady=5,
+            command=lambda: self.controller.show_frame("LogsScreen"),
+        )
+        logs_btn.pack(side="right", padx=(0, 8))
+
         # --- Scrollable Item List ---
         canvas_container = tk.Frame(self, bg=self.colors["background"])
         canvas_container.pack(fill="both", expand=True, padx=20, pady=(0, 20))

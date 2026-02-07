@@ -33,13 +33,27 @@ int last_one_state = HIGH;  // Track previous state for edge detection
 int last_five_state = HIGH;
 
 // Debounce timing (ms) - requires stable state before counting
-const unsigned long DEBOUNCE_MS = 10;
+// Increased from 10ms to 50ms to prevent sensor bouncing from double-counting coins
+const unsigned long DEBOUNCE_MS = 50;
 unsigned long one_last_transition = 0;
 unsigned long five_last_transition = 0;
 
 // Periodic status display
 unsigned long last_display_time = 0;
 const unsigned long DISPLAY_INTERVAL = 1000; // ms
+
+// Debug flag: set to 1 to enable continuous raw pin reads (for troubleshooting)
+int DEBUG_PIN_READS = 1;
+unsigned long last_debug_time = 0;
+const unsigned long DEBUG_INTERVAL = 100; // Print raw pin state every 100ms for debugging
+
+// State change tracking for pin 11 - to detect if sensor is responding at all
+unsigned int one_state_changes = 0;  // Count any transitions on pin 11
+int last_one_state_for_changes = HIGH;
+
+// Guard flags: prevent counting once dispense job reaches target (stops sensor bouncing after motor stops)
+bool one_count_locked = false;  // If true, ignore coin pulses on sensor 1 until next job
+bool five_count_locked = false; // If true, ignore coin pulses on sensor 5 until next job
 
 struct DispenseJob {
   bool active;
@@ -103,6 +117,7 @@ void stop_motor(int pin) {
 void start_dispense_denom(int denom, unsigned int count, unsigned long timeout_ms, Stream &out) {
   if (denom == 5) {
     five_count = 0; // start counting fresh for this job
+    five_count_locked = false;  // Unlock counting for this new job
     job_five.active = true;
     job_five.target = count;
     job_five.start_ms = millis();
@@ -111,6 +126,7 @@ void start_dispense_denom(int denom, unsigned int count, unsigned long timeout_m
     out.println("OK START FIVE");
   } else {
     one_count = 0;
+    one_count_locked = false;  // Unlock counting for this new job
     job_one.active = true;
     job_one.target = count;
     job_one.start_ms = millis();
@@ -127,6 +143,8 @@ void start_dispense_denom(int denom, unsigned int count, unsigned long timeout_m
 void stop_all_jobs(const char *reason, Stream &out) {
   job_one.active = false;
   job_five.active = false;
+  one_count_locked = false;  // Unlock both channels
+  five_count_locked = false;
   stop_motor(ONE_MOTOR_PIN);
   stop_motor(FIVE_MOTOR_PIN);
   sequence_active = false;
@@ -205,6 +223,12 @@ void processLine(String line, Stream &out) {
     report_status(out);
   } else if (cmd == "STOP"){
     stop_all_jobs("user", out);
+  } else if (cmd == "RESET"){
+    one_count = 0;
+    five_count = 0;
+    one_count_locked = false;
+    five_count_locked = false;
+    out.println("OK COUNTERS RESET");
   } else {
     out.println("ERR unknown command");
   }
@@ -241,18 +265,27 @@ void setup(){
   pinMode(FIVE_MOTOR_PIN, OUTPUT);
   digitalWrite(ONE_MOTOR_PIN, LOW);
   digitalWrite(FIVE_MOTOR_PIN, LOW);
-  pinMode(ONE_SENSOR_PIN, INPUT);
-  pinMode(FIVE_SENSOR_PIN, INPUT);
+  pinMode(ONE_SENSOR_PIN, INPUT_PULLUP);
+  pinMode(FIVE_SENSOR_PIN, INPUT_PULLUP);
   
   // Initialize bill acceptor pins
   pinMode(pulsePin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(pulsePin), countPulse, FALLING);
   
   Serial.begin(BAUD_RATE);
+  delay(100);
+  // Initialize last sensor states from pins (ensure correct initial values with pull-ups)
+  last_one_state = digitalRead(ONE_SENSOR_PIN);
+  last_five_state = digitalRead(FIVE_SENSOR_PIN);
   
   // Diagnostics
+  Serial.println("\n========================================");
   Serial.println("Simple Coin Hopper & Bill Acceptor ready");
-  Serial.println("Sensors: PIN 11 (1-peso) and PIN 12 (5-peso) - active HIGH with debounce");
+  Serial.println("Sensors: PIN 11 (1-peso) and PIN 12 (5-peso) - normal HIGH via pull-up, LOW when coin passes");
+  Serial.println("Initial Pin States:");
+  Serial.print("  PIN 11 (1-PESO): "); Serial.println(last_one_state == HIGH ? "HIGH" : "LOW");
+  Serial.print("  PIN 12 (5-PESO): "); Serial.println(last_five_state == HIGH ? "HIGH" : "LOW");
+  Serial.println("========================================\n");
 }
 
 void loop(){
@@ -307,17 +340,36 @@ void loop(){
   int one_state = digitalRead(ONE_SENSOR_PIN);
   int five_state = digitalRead(FIVE_SENSOR_PIN);
 
+  // Track ANY state change on pin 11 (for diagnostics if sensor not responding)
+  if (one_state != last_one_state_for_changes) {
+    one_state_changes++;
+    last_one_state_for_changes = one_state;
+  }
+
   // 1-peso sensor: detect HIGH->LOW transition (coin) with debounce
-  if (last_one_state == HIGH && one_state == LOW) {
+  // Skip counting if target reached (guard against bouncing after motor stop)
+  if (!one_count_locked && last_one_state == HIGH && one_state == LOW) {
     if (now_debounce - one_last_transition >= DEBOUNCE_MS) {
       one_count++;
       one_last_transition = now_debounce;
-      Serial.println("\u2713 1-PESO COIN DETECTED!");
+      Serial.println("\u2713 1-PESO COIN DETECTED (HIGH->LOW)!");
     }
   }
+  // ALTERNATIVE: If sensor uses inverted logic, detect LOW->HIGH instead
+  // Uncomment the block below if HIGH->LOW doesn't work (sensor pulls HIGH when coin passes)
+  /*
+  if (last_one_state == LOW && one_state == HIGH) {
+    if (now_debounce - one_last_transition >= DEBOUNCE_MS) {
+      one_count++;
+      one_last_transition = now_debounce;
+      Serial.println("\u2713 1-PESO COIN DETECTED (LOW->HIGH)!");
+    }
+  }
+  */
 
   // 5-peso sensor: detect HIGH->LOW transition (coin) with debounce
-  if (last_five_state == HIGH && five_state == LOW) {
+  // Skip counting if target reached (guard against bouncing after motor stop)
+  if (!five_count_locked && last_five_state == HIGH && five_state == LOW) {
     if (now_debounce - five_last_transition >= DEBOUNCE_MS) {
       five_count++;
       five_last_transition = now_debounce;
@@ -327,6 +379,21 @@ void loop(){
 
   last_one_state = one_state;
   last_five_state = five_state;
+
+  // Debug: print raw pin states frequently (every 100ms) to help troubleshoot sensor issues
+  if (DEBUG_PIN_READS && (now_debounce - last_debug_time >= DEBUG_INTERVAL)) {
+    last_debug_time = now_debounce;
+    Serial.print("[DEBUG] PIN11: ");
+    Serial.print(one_state == HIGH ? "HIGH" : "LOW");
+    Serial.print(" (changes:");
+    Serial.print(one_state_changes);
+    Serial.print(") | PIN12: ");
+    Serial.print(five_state == HIGH ? "HIGH" : "LOW");
+    Serial.print(" | Counts: 1P=");
+    Serial.print(one_count);
+    Serial.print(" 5P=");
+    Serial.println(five_count);
+  }
 
   // Periodic status display (every DISPLAY_INTERVAL ms)
   if (now_debounce - last_display_time >= DISPLAY_INTERVAL) {
@@ -356,6 +423,7 @@ void loop(){
     if (five_count >= job_five.target){
       stop_motor(FIVE_MOTOR_PIN);
       job_five.active = false;
+      five_count_locked = true;  // Lock out further counts to prevent bouncing
       Serial.print("DONE FIVE "); Serial.println(five_count);
       // If sequence queued (one coins), start one job
       if (sequence_active && job_one.target > 0 && !job_one.active){
@@ -366,6 +434,7 @@ void loop(){
     } else if (now - job_five.start_ms > job_five.timeout_ms){
       stop_motor(FIVE_MOTOR_PIN);
       job_five.active = false;
+      five_count_locked = true;  // Lock out further counts
       Serial.print("ERR TIMEOUT FIVE dispensed:"); Serial.println(five_count);
     }
   }
@@ -374,11 +443,13 @@ void loop(){
     if (one_count >= job_one.target){
       stop_motor(ONE_MOTOR_PIN);
       job_one.active = false;
+      one_count_locked = true;  // Lock out further counts to prevent bouncing
       Serial.print("DONE ONE "); Serial.println(one_count);
       sequence_active = false;
     } else if (now - job_one.start_ms > job_one.timeout_ms){
       stop_motor(ONE_MOTOR_PIN);
       job_one.active = false;
+      one_count_locked = true;  // Lock out further counts
       Serial.print("ERR TIMEOUT ONE dispensed:"); Serial.println(one_count);
       sequence_active = false;
     }

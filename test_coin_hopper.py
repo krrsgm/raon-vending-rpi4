@@ -148,17 +148,17 @@ class CoinHopperRelayTest:
             return None
     
     def reset_count(self):
-        """Reset coin counters by stopping all jobs via STOP command.
+        """Reset coin counters by sending RESET command to Arduino.
         
         Returns:
             True if successful, False otherwise
         """
         try:
-            response = self.hopper.send_command("STOP")
+            response = self.hopper.send_command("RESET")
             with self._lock:
                 self.coin_count = 0
                 self.coin_history.clear()
-            print("[CoinHopperTest] Counter reset (STOP command)")
+            print("[CoinHopperTest] Counter reset (RESET command)")
             return True
         except Exception as e:
             print(f"[CoinHopperTest] Error resetting count: {e}")

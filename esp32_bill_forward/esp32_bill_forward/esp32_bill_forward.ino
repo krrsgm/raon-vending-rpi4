@@ -32,6 +32,11 @@ unsigned int five_count = 0;
 int last_one_state = HIGH;  // Track previous state for edge detection
 int last_five_state = HIGH;
 
+// Debounce timing (ms) - requires stable state before counting
+const unsigned long DEBOUNCE_MS = 20;
+unsigned long one_last_transition = 0;
+unsigned long five_last_transition = 0;
+
 struct DispenseJob {
   bool active;
   unsigned int target;
@@ -204,6 +209,7 @@ void setup(){
   
   // Diagnostics
   Serial.println("Simple Coin Hopper & Bill Acceptor ready");
+  Serial.println("Sensors: PIN 11 (1-peso) and PIN 12 (5-peso) - active HIGH with debounce");
 }
 
 void loop(){
@@ -252,15 +258,27 @@ void loop(){
     }
   }
 
-  // --- Sensor polling: count LOW edges (coin passes)
+  // --- Sensor polling with debouncing (active-HIGH: coin = HIGH pulse)
+  unsigned long now_debounce = millis();
   int one_state = digitalRead(ONE_SENSOR_PIN);
   int five_state = digitalRead(FIVE_SENSOR_PIN);
-  if (last_one_state == HIGH && one_state == LOW) {
-    one_count++;
+  
+  // 1-peso sensor: detect LOW->HIGH transition with debounce
+  if (last_one_state == LOW && one_state == HIGH) {
+    if (now_debounce - one_last_transition >= DEBOUNCE_MS) {
+      one_count++;
+      one_last_transition = now_debounce;
+    }
   }
-  if (last_five_state == HIGH && five_state == LOW) {
-    five_count++;
+  
+  // 5-peso sensor: detect LOW->HIGH transition with debounce
+  if (last_five_state == LOW && five_state == HIGH) {
+    if (now_debounce - five_last_transition >= DEBOUNCE_MS) {
+      five_count++;
+      five_last_transition = now_debounce;
+    }
   }
+  
   last_one_state = one_state;
   last_five_state = five_state;
 

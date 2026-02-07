@@ -261,8 +261,13 @@ class CartScreen(tk.Frame):
             self.payment_in_progress = True
             self.payment_required = total_amount
             self.payment_received = 0.0
-            # Start payment session and register callback for immediate updates
-            self.payment_handler.start_payment_session(total_amount, on_payment_update=self._on_payment_update)
+            # Start payment session and register callbacks for immediate updates
+            # Pass UI change-status callback so dispensing progress can be shown
+            try:
+                self.payment_handler.start_payment_session(total_amount, on_payment_update=self._on_payment_update, on_change_update=self.update_change_status)
+            except TypeError:
+                # Backwards compatibility: older PaymentHandler might not accept on_change_update
+                self.payment_handler.start_payment_session(total_amount, on_payment_update=self._on_payment_update)
             
             # Create payment status window with fixed size and position
             self.payment_window = tk.Toplevel(self)

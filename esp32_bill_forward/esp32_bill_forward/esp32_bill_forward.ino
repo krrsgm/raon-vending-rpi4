@@ -33,9 +33,13 @@ int last_one_state = HIGH;  // Track previous state for edge detection
 int last_five_state = HIGH;
 
 // Debounce timing (ms) - requires stable state before counting
-const unsigned long DEBOUNCE_MS = 20;
+const unsigned long DEBOUNCE_MS = 10;
 unsigned long one_last_transition = 0;
 unsigned long five_last_transition = 0;
+
+// Periodic status display
+unsigned long last_display_time = 0;
+const unsigned long DISPLAY_INTERVAL = 1000; // ms
 
 struct DispenseJob {
   bool active;
@@ -53,8 +57,47 @@ unsigned long sequence_timeout_ms = 30000;
 String inputBuffer = "";
 
 // --- Motor Control Functions ---
-void start_motor(int pin) { digitalWrite(pin, HIGH); }
-void stop_motor(int pin) { digitalWrite(pin, LOW); }
+// Test hopper wrappers for separate 1-peso and 5-peso test hoppers.
+// These provide visible debug output and centralize any special test behaviour.
+void test_coin_hopper1(bool start) {
+  if (start) {
+    digitalWrite(ONE_MOTOR_PIN, HIGH);
+    Serial.println("TEST_HOPPER1 START");
+  } else {
+    digitalWrite(ONE_MOTOR_PIN, LOW);
+    Serial.println("TEST_HOPPER1 STOP");
+  }
+}
+
+void test_coin_hopper5(bool start) {
+  if (start) {
+    digitalWrite(FIVE_MOTOR_PIN, HIGH);
+    Serial.println("TEST_HOPPER5 START");
+  } else {
+    digitalWrite(FIVE_MOTOR_PIN, LOW);
+    Serial.println("TEST_HOPPER5 STOP");
+  }
+}
+
+void start_motor(int pin) {
+  if (pin == ONE_MOTOR_PIN) {
+    test_coin_hopper1(true);
+  } else if (pin == FIVE_MOTOR_PIN) {
+    test_coin_hopper5(true);
+  } else {
+    digitalWrite(pin, HIGH);
+  }
+}
+
+void stop_motor(int pin) {
+  if (pin == ONE_MOTOR_PIN) {
+    test_coin_hopper1(false);
+  } else if (pin == FIVE_MOTOR_PIN) {
+    test_coin_hopper5(false);
+  } else {
+    digitalWrite(pin, LOW);
+  }
+}
 
 // --- Coin Hopper Functions (Simple) ---
 void start_dispense_denom(int denom, unsigned int count, unsigned long timeout_ms, Stream &out) {
@@ -258,29 +301,43 @@ void loop(){
     }
   }
 
-  // --- Sensor polling with debouncing (active-HIGH: coin = HIGH pulse)
+  // --- Sensor polling with debouncing
+  // Sensors wired as: NORMAL = HIGH, COIN passing = LOW pulse
   unsigned long now_debounce = millis();
   int one_state = digitalRead(ONE_SENSOR_PIN);
   int five_state = digitalRead(FIVE_SENSOR_PIN);
-  
-  // 1-peso sensor: detect LOW->HIGH transition with debounce
-  if (last_one_state == LOW && one_state == HIGH) {
+
+  // 1-peso sensor: detect HIGH->LOW transition (coin) with debounce
+  if (last_one_state == HIGH && one_state == LOW) {
     if (now_debounce - one_last_transition >= DEBOUNCE_MS) {
       one_count++;
       one_last_transition = now_debounce;
+      Serial.println("\u2713 1-PESO COIN DETECTED!");
     }
   }
-  
-  // 5-peso sensor: detect LOW->HIGH transition with debounce
-  if (last_five_state == LOW && five_state == HIGH) {
+
+  // 5-peso sensor: detect HIGH->LOW transition (coin) with debounce
+  if (last_five_state == HIGH && five_state == LOW) {
     if (now_debounce - five_last_transition >= DEBOUNCE_MS) {
       five_count++;
       five_last_transition = now_debounce;
+      Serial.println("\u2713 5-PESO COIN DETECTED!");
     }
   }
-  
+
   last_one_state = one_state;
   last_five_state = five_state;
+
+  // Periodic status display (every DISPLAY_INTERVAL ms)
+  if (now_debounce - last_display_time >= DISPLAY_INTERVAL) {
+    last_display_time = now_debounce;
+    Serial.println("\n--- STATUS ---");
+    Serial.print("1-PESO: "); Serial.print(one_count);
+    Serial.print(" coins | State: "); Serial.println(one_state == HIGH ? "HIGH" : "LOW");
+    Serial.print("5-PESO: "); Serial.print(five_count);
+    Serial.print(" coins | State: "); Serial.println(five_state == HIGH ? "HIGH" : "LOW");
+    Serial.println();
+  }
 
   // --- Serial Command Processing ---
   while (Serial.available()){

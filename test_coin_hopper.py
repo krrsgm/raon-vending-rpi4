@@ -243,6 +243,82 @@ class CoinHopperRelayTest:
         
         print("  Relay control test complete!")
         return True
+
+    def relay1_on(self):
+        """Turn on 1-peso motor only."""
+        try:
+            response = self.hopper.send_command("OPEN 1")
+            if response and "OK" in response:
+                self.relay_active = True
+                print("[CoinHopperTest] Relay1 turned ON (OPEN 1)")
+                return True
+        except Exception as e:
+            print(f"[CoinHopperTest] Error turning ON relay1: {e}")
+        return False
+
+    def relay1_off(self):
+        """Turn off 1-peso motor only."""
+        try:
+            response = self.hopper.send_command("CLOSE 1")
+            if response and "OK" in response:
+                self.relay_active = False
+                print("[CoinHopperTest] Relay1 turned OFF (CLOSE 1)")
+                return True
+        except Exception as e:
+            print(f"[CoinHopperTest] Error turning OFF relay1: {e}")
+        return False
+
+    def relay5_on(self):
+        """Turn on 5-peso motor only."""
+        try:
+            response = self.hopper.send_command("OPEN 5")
+            if response and "OK" in response:
+                self.relay_active = True
+                print("[CoinHopperTest] Relay5 turned ON (OPEN 5)")
+                return True
+        except Exception as e:
+            print(f"[CoinHopperTest] Error turning ON relay5: {e}")
+        return False
+
+    def relay5_off(self):
+        """Turn off 5-peso motor only."""
+        try:
+            response = self.hopper.send_command("CLOSE 5")
+            if response and "OK" in response:
+                self.relay_active = False
+                print("[CoinHopperTest] Relay5 turned OFF (CLOSE 5)")
+                return True
+        except Exception as e:
+            print(f"[CoinHopperTest] Error turning OFF relay5: {e}")
+        return False
+
+    def test_relay1_control(self):
+        """Test relay control for 1-peso hopper only."""
+        print("\n[CoinHopperTest] Testing 1-PESO relay control...")
+        if not self.relay1_on():
+            print("  Failed to turn relay1 ON")
+            return False
+        time.sleep(1)
+        if not self.relay1_off():
+            print("  Failed to turn relay1 OFF")
+            return False
+        time.sleep(1)
+        print("  1-PESO relay control test complete!")
+        return True
+
+    def test_relay5_control(self):
+        """Test relay control for 5-peso hopper only."""
+        print("\n[CoinHopperTest] Testing 5-PESO relay control...")
+        if not self.relay5_on():
+            print("  Failed to turn relay5 ON")
+            return False
+        time.sleep(1)
+        if not self.relay5_off():
+            print("  Failed to turn relay5 OFF")
+            return False
+        time.sleep(1)
+        print("  5-PESO relay control test complete!")
+        return True
     
     def test_sensor_reading(self):
         """Test sensor status reading.
@@ -315,14 +391,15 @@ def main():
         print("This test uses same Arduino commands as actual coin dispensing.")
         print("Commands used: OPEN <denom>, CLOSE <denom>, STATUS, STOP")
         print("\nOptions:")
-        print("  1 - Test relay control (ON/OFF)")
-        print("  2 - Test sensor reading")
-        print("  3 - Monitor coins for 60s (target 5 coins)")
-        print("  4 - Custom monitoring duration")
-        print("  5 - Get current status")
-        print("  6 - Reset coin count/stop job")
-        print("  7 - Relay OFF only (CLOSE 1 and 5)")
-        print("  8 - Relay ON only (OPEN 1 and 5)")
+        print("  1 - Test 1-PESO relay control (ON/OFF)")
+        print("  2 - Test 5-PESO relay control (ON/OFF)")
+        print("  3 - Test sensor reading")
+        print("  4 - Monitor coins for 60s (target 5 coins)")
+        print("  5 - Custom monitoring duration")
+        print("  6 - Get current status")
+        print("  7 - Reset coin count/stop job")
+        print("  8 - Relay OFF only (CLOSE 1 and 5)")
+        print("  9 - Relay ON only (OPEN 1 and 5)")
         print("  Q - Quit")
         print("="*60)
         
@@ -335,17 +412,17 @@ def main():
         
         while True:
             try:
-                choice = input("Select option (1-8, Q): ").strip().upper()
-                
+                choice = input("Select option (1-9, Q): ").strip().upper()
+
                 if choice == '1':
-                    tester.test_relay_control()
-                    
+                    tester.test_relay1_control()
+
                 elif choice == '2':
-                    tester.test_sensor_reading()
-                    
+                    tester.test_relay5_control()
+
                 elif choice == '3':
-                    tester.monitor_coins(duration=60, target_coins=5)
-                    
+                    tester.test_sensor_reading()
+
                 elif choice == '4':
                     try:
                         duration = int(input("Enter duration in seconds: "))
@@ -355,19 +432,22 @@ def main():
                         print("Invalid input")
                     
                 elif choice == '5':
+                    tester.monitor_coins(duration=60, target_coins=5)
+
+                elif choice == '6':
                     status = tester.get_status()
                     print(f"\nCurrent Status:")
                     print(f"  Coins detected: {status['coins_detected']}")
                     print(f"  Relay state: {status['relay_state']}")
                     print(f"  Recent coins: {status['recent_coins']}")
                     
-                elif choice == '6':
+                elif choice == '7':
                     tester.reset_count()
                     
-                elif choice == '7':
+                elif choice == '8':
                     tester.relay_off()
                     
-                elif choice == '8':
+                elif choice == '9':
                     tester.relay_on()
                     
                 elif choice == 'Q':

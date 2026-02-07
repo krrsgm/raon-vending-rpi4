@@ -122,7 +122,7 @@ class PaymentHandler:
         self._callback = None  # Optional callback for UI updates
         self._change_callback = None  # Optional callback for change status
 
-    def start_payment_session(self, required_amount=None, on_payment_update=None):
+    def start_payment_session(self, required_amount=None, on_payment_update=None, on_change_update=None):
         """Start a new payment session.
         
         Args:
@@ -130,6 +130,8 @@ class PaymentHandler:
             on_payment_update (callable, optional): Callback(amount) when coins received
         """
         self._callback = on_payment_update
+        # Optional callback for change-dispense status messages
+        self._change_callback = on_change_update
         # Debug: show that start_payment_session set the callback
         try:
             print(f"DEBUG: PaymentHandler.start_payment_session: callback set = {bool(self._callback)}")
@@ -186,9 +188,16 @@ class PaymentHandler:
         # Calculate change if needed
         if required_amount is not None and total_received > required_amount:
             change_needed = total_received - required_amount
-            if self.coin_hopper:
+            # Round to nearest whole peso and ensure non-negative integer
+            try:
+                change_int = int(round(change_needed))
+            except Exception:
+                change_int = int(change_needed)
+            if change_int <= 0:
+                change_int = 0
+            if change_int > 0 and self.coin_hopper:
                 success, dispensed, message = self.coin_hopper.dispense_change(
-                    change_needed,
+                    change_int,
                     callback=self._change_callback
                 )
                 if success:

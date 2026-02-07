@@ -768,7 +768,7 @@ class MainApp(tk.Tk):
         dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 15.0) if isinstance(self.config, dict) else 15.0
         
         print(f'[VEND] Found {len(matches)} slots for "{item_name}": {matches}')
-        print(f'[VEND] Using ESP32 host: {host}, pulse_ms: {pulse_ms}, timeout: {dispense_timeout}s')
+        print(f'[VEND] Using ESP32 host: {host}, pulse_ms: {pulse_ms}')
         
         # Round-robin distribute pulses
         for i in range(quantity):
@@ -796,14 +796,19 @@ class MainApp(tk.Tk):
                         print(f'[VEND] SUCCESS: Pulse sent via MUX4 controller for slot {slot_number}')
                     else:
                         # For slots 1-48, ESP32 controls everything
-                        result = pulse_slot(host, slot_number, pulse_ms)
+                        # Use 3-second timeout like the test motor does (vs default 2 seconds)
+                        result = pulse_slot(host, slot_number, pulse_ms, timeout=3.0)
                         print(f'[VEND] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')
                 except Exception as e:
                     print(f'[VEND] CRITICAL ERROR: Failed to send pulse for slot {slot_number}: {e}')
                     print(f'[VEND]   Slot: {slot_number}')
                     print(f'[VEND]   Pulse duration: {pulse_ms}ms')
+                    import traceback
+                    traceback.print_exc()
             except Exception as e:
                 print(f'[VEND] CRITICAL ERROR: Exception vending slot {slot_number}: {e}')
+                import traceback
+                traceback.print_exc()
 
     def update_item(self, original_item_name, updated_item_data):
         """Updates an existing item in the master list and saves to JSON."""

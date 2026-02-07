@@ -22,7 +22,8 @@ class CoinAcceptor:
         self.coin_pin = coin_pin
         self.counter_pin = counter_pin
         self.last_trigger_time = 0
-        self.debounce_time = 0.05  # 50ms debounce for Allan 123A-Pro
+        self.debounce_time = 0.01  # 10ms debounce base (seconds)
+        self.settle_time = 0.01    # 10ms settle/read-back verification
         self.running = False
         self.payment_lock = Lock()
         self.received_amount = 0.0
@@ -38,9 +39,10 @@ class CoinAcceptor:
                 GPIO.setup(self.counter_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
             
             # Add event detection for the coin signal
-            GPIO.add_event_detect(self.coin_pin, GPIO.FALLING, 
-                                callback=self._coin_detected, 
-                                bouncetime=50)
+            # Use a short bouncetime but handle a verification step in a background thread
+            GPIO.add_event_detect(self.coin_pin, GPIO.FALLING,
+                                callback=self._coin_detected,
+                                bouncetime=10)
             self.gpio_available = True
         except RuntimeError as e:
             # GPIO not available (running non-root, or hardware issue)
@@ -51,28 +53,33 @@ class CoinAcceptor:
 
     def _coin_detected(self, channel):
         """Called when a coin is detected by the Allan 123A-Pro"""
-        current_time = time.time()
-        
-        # Debounce check
-        if (current_time - self.last_trigger_time) < self.debounce_time:
+        event_time = time.time()
+        # Quick ignore if last trigger was very recent
+        if (event_time - self.last_trigger_time) < self.debounce_time:
             return
-            
-        self.last_trigger_time = current_time
-        # Small settle check: ensure the line remains LOW for a short window
-        # to avoid counting very short glitches as coins.
-        try:
-            time.sleep(0.02)  # 20ms settle
-            state = GPIO.input(self.coin_pin)
-            if state == GPIO.HIGH:
-                # transient bounce/noise — ignore
-                return
-        except Exception:
-            # If GPIO read fails for any reason, fall back to accepting the trigger
-            pass
 
-        with self.payment_lock:
-            # Add the current coin value when a valid coin is detected
-            self.received_amount += self.current_coin_value
+        # Spawn a background verifier to avoid long sleeps inside the IRQ handler
+        def _verify_and_count(evt_time):
+            try:
+                time.sleep(self.settle_time)
+                state = GPIO.input(self.coin_pin)
+                if state == GPIO.HIGH:
+                    # transient — ignore
+                    return
+            except Exception:
+                # If GPIO read fails, proceed to accept the event
+                pass
+
+            with self.payment_lock:
+                # Final debounce check: ensure no recent accepted trigger
+                if (evt_time - self.last_trigger_time) < self.debounce_time:
+                    return
+                self.last_trigger_time = evt_time
+                self.received_amount += self.current_coin_value
+
+        t = Thread(target=_verify_and_count, args=(event_time,))
+        t.daemon = True
+        t.start()
 
     def get_received_amount(self):
         """Get the total amount received"""

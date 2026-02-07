@@ -27,27 +27,18 @@ class CoinAcceptor:
         self.payment_lock = Lock()
         self.received_amount = 0.0
         self.current_coin_value = 1.0  # Default coin value, adjust after programming
-        self.gpio_available = False  # Track if GPIO initialization succeeded
         
         # Initialize GPIO
-        try:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(self.coin_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            
-            if self.counter_pin:
-                GPIO.setup(self.counter_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            
-            # Add event detection for the coin signal
-            GPIO.add_event_detect(self.coin_pin, GPIO.FALLING, 
-                                callback=self._coin_detected, 
-                                bouncetime=50)
-            self.gpio_available = True
-        except RuntimeError as e:
-            # GPIO not available (running non-root, or hardware issue)
-            # Allow the app to continue without coin detection
-            print(f"[WARNING] GPIO coin detector unavailable: {e}")
-            print("[INFO] Coin detection disabled. Run with `sudo` or add user to gpio group for hardware coin support.")
-            self.gpio_available = False
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.coin_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        
+        if self.counter_pin:
+            GPIO.setup(self.counter_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        
+        # Add event detection for the coin signal
+        GPIO.add_event_detect(self.coin_pin, GPIO.FALLING, 
+                            callback=self._coin_detected, 
+                            bouncetime=50)
 
     def _coin_detected(self, channel):
         """Called when a coin is detected by the Allan 123A-Pro"""

@@ -1,4 +1,9 @@
 import serial
+try:
+    from serial.tools import list_ports
+except Exception:
+    list_ports = None
+
 import threading
 import time
 from queue import Queue
@@ -17,24 +22,72 @@ class CoinHopper:
     - COIN_OPEN <denom> : Open hopper manually
     - COIN_CLOSE <denom> : Close hopper manually
     - COIN_STATUS : Check hopper status
+    - RELAY_ON : Turn on relays
+    - RELAY_OFF : Turn off relays
     """
     
-    def __init__(self, serial_port='/dev/ttyUSB0', baudrate=115200, timeout=2.0):
+    def __init__(self, serial_port='/dev/ttyUSB0', baudrate=115200, timeout=2.0, auto_detect=True):
         """Initialize coin hopper controller via serial.
         
         Args:
             serial_port: Serial port connected to arduino_bill_forward
             baudrate: Serial communication speed (default 115200)
             timeout: Serial read timeout in seconds
+            auto_detect: Automatically detect USB serial port if connection fails
         """
         self.serial_port = serial_port
         self.baudrate = baudrate
         self.timeout = timeout
+        self.auto_detect = auto_detect
         self.serial_conn = None
         self.is_running = False
         self.read_thread = None
         self.response_queue = Queue()
         self._lock = threading.Lock()
+    
+    def _choose_stopbits_for_port(self, port_name: str):
+        """Determine appropriate stopbits based on port name.
+        
+        Args:
+            port_name: Serial port name/path
+            
+        Returns:
+            serial.STOPBITS_ONE or serial.STOPBITS_TWO
+        """
+        if not port_name:
+            return serial.STOPBITS_TWO
+        if 'ttyACM' in port_name or 'ttyUSB' in port_name or 'COM' in port_name:
+            return serial.STOPBITS_ONE
+        return serial.STOPBITS_TWO
+    
+    def _auto_find_usb_serial(self):
+        """Automatically find USB serial port.
+        
+        Returns:
+            Port path if found, None otherwise
+        """
+        ports = []
+        try:
+            if list_ports:
+                for p in list_ports.comports():
+                    ports.append((p.device, p.description))
+            else:
+                import glob
+                for path in glob.glob('/dev/ttyUSB*') + glob.glob('/dev/ttyACM*'):
+                    ports.append((path, 'tty'))
+        except Exception:
+            return None
+
+        # Prioritize known Arduino/microcontroller chip signatures
+        for dev, desc in ports:
+            d = (desc or '').lower()
+            if 'arduino' in d or 'cp210' in d or 'ftdi' in d or 'ch340' in d or 'usb serial' in d:
+                return dev
+        
+        # If no recognized device, return first available USB port
+        if ports:
+            return ports[0][0]
+        return None
         
     def connect(self):
         """Connect to Arduino via serial port.
@@ -43,11 +96,12 @@ class CoinHopper:
             True if connection successful, False otherwise
         """
         try:
+            stopbits = self._choose_stopbits_for_port(self.serial_port)
             self.serial_conn = serial.Serial(
                 port=self.serial_port,
                 baudrate=self.baudrate,
                 bytesize=serial.EIGHTBITS,
-                stopbits=serial.STOPBITS_ONE,
+                stopbits=stopbits,
                 parity=serial.PARITY_NONE,
                 timeout=self.timeout
             )
@@ -55,7 +109,30 @@ class CoinHopper:
             print(f"[CoinHopper] Connected to {self.serial_port} @ {self.baudrate} baud")
             return True
         except Exception as e:
-            print(f"[CoinHopper] Failed to connect: {e}")
+            print(f"[CoinHopper] Failed to connect to {self.serial_port}: {e}")
+            
+            # Try auto-detection if enabled
+            if self.auto_detect:
+                print("[CoinHopper] Attempting auto-detection of USB serial port...")
+                autodetected = self._auto_find_usb_serial()
+                if autodetected:
+                    try:
+                        stopbits = self._choose_stopbits_for_port(autodetected)
+                        self.serial_conn = serial.Serial(
+                            port=autodetected,
+                            baudrate=self.baudrate,
+                            bytesize=serial.EIGHTBITS,
+                            stopbits=stopbits,
+                            parity=serial.PARITY_NONE,
+                            timeout=self.timeout
+                        )
+                        self.is_running = True
+                        self.serial_port = autodetected  # Update the port for future reference
+                        print(f"[CoinHopper] Auto-detected and connected to {autodetected}")
+                        return True
+                    except Exception as e2:
+                        print(f"[CoinHopper] Auto-detection connection failed: {e2}")
+            
             return False
 
     def send_command(self, cmd):

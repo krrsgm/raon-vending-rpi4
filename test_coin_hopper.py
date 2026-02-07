@@ -25,17 +25,19 @@ from coin_hopper import CoinHopper
 class CoinHopperRelayTest:
     """Test coin hopper relay control via Arduino serial connection."""
     
-    def __init__(self, serial_port='/dev/ttyUSB1', baudrate=115200):
+    def __init__(self, serial_port='/dev/ttyUSB1', baudrate=115200, auto_detect=True):
         """Initialize coin hopper relay test.
         
         Args:
-            serial_port: Serial port connected to Arduino
+            serial_port: Serial port connected to Arduino (default ttyUSB1)
             baudrate: Serial communication speed
+            auto_detect: Automatically detect USB serial port if provided port fails
         """
         self.hopper = CoinHopper(
             serial_port=serial_port,
             baudrate=baudrate,
-            timeout=2.0
+            timeout=2.0,
+            auto_detect=auto_detect
         )
         
         # State tracking
@@ -48,6 +50,7 @@ class CoinHopperRelayTest:
         print("[CoinHopperTest] Initialized")
         print(f"  Serial port: {serial_port}")
         print(f"  Baudrate: {baudrate}")
+        print(f"  Auto-detect: {auto_detect}")
     
     def connect(self):
         """Connect to Arduino via coin hopper serial.
@@ -289,10 +292,11 @@ def main():
     tester = None
     
     try:
-        # Initialize tester with Arduino serial connection
+        # Initialize tester with Arduino serial connection (auto-detect enabled)
         tester = CoinHopperRelayTest(
             serial_port='/dev/ttyUSB1',
-            baudrate=115200
+            baudrate=115200,
+            auto_detect=True  # Automatically detect USB/ACM ports
         )
         
         print("\n" + "="*60)

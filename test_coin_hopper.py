@@ -1,158 +1,254 @@
 """
-Test script for coin hopper with relay control.
+Test script for coin hopper with relay control via Arduino.
 
-This test monitors coin detection and controls a relay:
+This test monitors coin detection through Arduino serial connection and controls relays:
 - Relay stays ON while detecting coins
 - When 5 coins pass through, turn OFF the relay
 - Reset after successful detection
 
-Pin assignments:
+Arduino pin assignments:
 - Pin 11: 1₱ coin hopper sensor
-- Pin 12: 5₱ coin hopper sensor
+- Pin 12: 5₱ coin hopper sensor  
 - Pin 9: Relay control for 1₱ hopper
 - Pin 10: Relay control for 5₱ hopper
+
+Communication: USB serial to Arduino (coin hopper controller)
 """
 
-import RPi.GPIO as GPIO
+import serial
 import time
 import threading
 from collections import deque
 from coin_hopper import CoinHopper
 
-class CoinHopperRelay:
-    """Controls relay based on coin hopper detection."""
+
+class CoinHopperRelayTest:
+    """Test coin hopper relay control via Arduino serial connection."""
     
-    def __init__(self, coin_sensor_1p=11, coin_sensor_5p=12, relay_pin_1p=9, relay_pin_5p=10,
-                 serial_port='/dev/ttyUSB1', baudrate=115200):
-        """Initialize coin hopper relay controller.
+    def __init__(self, serial_port='/dev/ttyUSB1', baudrate=115200):
+        """Initialize coin hopper relay test.
         
         Args:
-            coin_sensor_1p: Pin for 1₱ coin sensor (default 11)
-            coin_sensor_5p: Pin for 5₱ coin sensor (default 12)
-            relay_pin_1p: Pin for 1₱ relay control (default 9)
-            relay_pin_5p: Pin for 5₱ relay control (default 10)
-            serial_port: Serial port for coin hopper Arduino
-            baudrate: Serial baudrate
+            serial_port: Serial port connected to Arduino
+            baudrate: Serial communication speed
         """
-        self.coin_sensor_1p = coin_sensor_1p
-        self.coin_sensor_5p = coin_sensor_5p
-        self.relay_pin_1p = relay_pin_1p
-        self.relay_pin_5p = relay_pin_5p
-        self.serial_port = serial_port
-        self.baudrate = baudrate
+        self.hopper = CoinHopper(
+            serial_port=serial_port,
+            baudrate=baudrate,
+            timeout=2.0
+        )
         
         # State tracking
         self.coin_count = 0
-        self.relay_active = True
-        self.is_running = False
-        self.monitoring_thread = None
+        self.relay_active = False
         self.coin_history = deque(maxlen=10)  # Last 10 coin detections
         self._lock = threading.Lock()
+        self.monitoring = False
         
-        # Coin hopper instance
-        self.hopper = None
-        
-        # Configure GPIO
-        GPIO.setmode(GPIO.BOARD)  # Use BOARD numbering (physical pin numbers)
-        
-        # Setup relay pins (OUTPUT)
-        GPIO.setup(self.relay_pin_1p, GPIO.OUT, initial=GPIO.HIGH)  # Relay ON (HIGH)
-        GPIO.setup(self.relay_pin_5p, GPIO.OUT, initial=GPIO.HIGH)  # Relay ON (HIGH)
-        
-        # Setup sensor pins (INPUT)
-        GPIO.setup(self.coin_sensor_1p, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.setup(self.coin_sensor_5p, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        
-        # Setup coin detection callbacks
-        GPIO.add_event_detect(self.coin_sensor_1p, GPIO.FALLING, 
-                            callback=self._on_1p_coin, bouncetime=100)
-        GPIO.add_event_detect(self.coin_sensor_5p, GPIO.FALLING, 
-                            callback=self._on_5p_coin, bouncetime=100)
-        
-        print("[CoinHopperRelay] Initialized")
-        print(f"  1₱ relay pin: {self.relay_pin_1p}")
-        print(f"  5₱ relay pin: {self.relay_pin_5p}")
-        print(f"  1₱ sensor pin: {self.coin_sensor_1p}")
-        print(f"  5₱ sensor pin: {self.coin_sensor_5p}")
+        print("[CoinHopperTest] Initialized")
+        print(f"  Serial port: {serial_port}")
+        print(f"  Baudrate: {baudrate}")
     
-    def _on_1p_coin(self, channel):
-        """Callback when 1₱ coin detected."""
-        self._handle_coin_detection('1P')
-    
-    def _on_5p_coin(self, channel):
-        """Callback when 5₱ coin detected."""
-        self._handle_coin_detection('5P')
-    
-    def _handle_coin_detection(self, denomination):
-        """Handle coin detection and update relay state.
+    def connect(self):
+        """Connect to Arduino via coin hopper serial.
         
-        Args:
-            denomination: '1P' or '5P'
+        Returns:
+            True if successful, False otherwise
         """
-        with self._lock:
-            self.coin_count += 1
-            self.coin_history.append((denomination, time.time()))
-            
-            print(f"[CoinHopper] Coin detected: {denomination} (Total: {self.coin_count})")
-            
-            # Check if we've reached 5 coins
-            if self.coin_count >= 5:
-                self._turn_off_relay()
-                return
-            
-            # Keep relay ON while detecting coins
-            if not self.relay_active:
-                self._turn_on_relay()
+        if self.hopper.connect():
+            print("[CoinHopperTest] Connected to Arduino")
+            return True
+        else:
+            print("[CoinHopperTest] Failed to connect to Arduino")
+            return False
     
-    def _turn_on_relay(self):
-        """Turn on both relays."""
-        if self.relay_active:
-            return
-        
-        try:
-            GPIO.output(self.relay_pin_1p, GPIO.HIGH)
-            GPIO.output(self.relay_pin_5p, GPIO.HIGH)
-            self.relay_active = True
-            print("[CoinHopperRelay] Relays turned ON")
-        except Exception as e:
-            print(f"[CoinHopperRelay] Error turning ON relays: {e}")
-    
-    def _turn_off_relay(self):
-        """Turn off both relays."""
-        if not self.relay_active:
-            return
-        
-        try:
-            GPIO.output(self.relay_pin_1p, GPIO.LOW)
-            GPIO.output(self.relay_pin_5p, GPIO.LOW)
-            self.relay_active = False
-            print("[CoinHopperRelay] Relays turned OFF - 5 coins detected!")
-        except Exception as e:
-            print(f"[CoinHopperRelay] Error turning OFF relays: {e}")
-    
-    def connect_hopper(self):
-        """Connect to coin hopper via serial.
+    def relay_on(self):
+        """Turn on both relays via Arduino command.
         
         Returns:
             True if successful, False otherwise
         """
         try:
-            self.hopper = CoinHopper(
-                serial_port=self.serial_port,
-                baudrate=self.baudrate
-            )
-            if self.hopper.connect():
-                print("[CoinHopperRelay] Connected to coin hopper")
+            response = self.hopper.send_command("RELAY_ON")
+            if response and ("OK" in response or "ON" in response):
+                self.relay_active = True
+                print("[CoinHopperTest] Relay turned ON")
                 return True
             else:
-                print("[CoinHopperRelay] Failed to connect to coin hopper")
+                print(f"[CoinHopperTest] Relay ON failed: {response}")
                 return False
         except Exception as e:
-            print(f"[CoinHopperRelay] Error connecting to hopper: {e}")
+            print(f"[CoinHopperTest] Error turning ON relay: {e}")
+            return False
+    
+    def relay_off(self):
+        """Turn off both relays via Arduino command.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            response = self.hopper.send_command("RELAY_OFF")
+            if response and ("OK" in response or "OFF" in response):
+                self.relay_active = False
+                print("[CoinHopperTest] Relay turned OFF - 5 coins detected!")
+                return True
+            else:
+                print(f"[CoinHopperTest] Relay OFF failed: {response}")
+                return False
+        except Exception as e:
+            print(f"[CoinHopperTest] Error turning OFF relay: {e}")
+            return False
+    
+    def get_sensor_status(self):
+        """Get sensor status from Arduino.
+        
+        Returns:
+            Status string or None on error
+        """
+        try:
+            response = self.hopper.send_command("SENSOR_STATUS")
+            return response
+        except Exception as e:
+            print(f"[CoinHopperTest] Error getting sensor status: {e}")
+            return None
+    
+    def get_coin_count(self):
+        """Get current coin count from Arduino.
+        
+        Returns:
+            Coin count or None on error
+        """
+        try:
+            response = self.hopper.send_command("COIN_COUNT")
+            if response:
+                # Try to extract count from response (format: "COUNT: 5")
+                import re
+                match = re.search(r'(\d+)', response)
+                if match:
+                    return int(match.group(1))
+            return None
+        except Exception as e:
+            print(f"[CoinHopperTest] Error getting coin count: {e}")
+            return None
+    
+    def reset_count(self):
+        """Reset coin counter on Arduino.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            response = self.hopper.send_command("RESET_COUNT")
+            if response and "OK" in response:
+                with self._lock:
+                    self.coin_count = 0
+                    self.coin_history.clear()
+                print("[CoinHopperTest] Counter reset")
+                return True
+            return False
+        except Exception as e:
+            print(f"[CoinHopperTest] Error resetting count: {e}")
+            return False
+    
+    def monitor_coins(self, duration=60, target_coins=5):
+        """Monitor coin detection for specified duration.
+        
+        Args:
+            duration: Monitoring duration in seconds
+            target_coins: Number of coins to detect before turning off relay
+        """
+        print(f"\n[CoinHopperTest] Starting {duration}s monitoring (target: {target_coins} coins)...")
+        print("Coins detected; relay will turn off when target is reached\n")
+        
+        # Clear and initialize
+        self.reset_count()
+        self.relay_on()
+        
+        start_time = time.time()
+        self.monitoring = True
+        
+        try:
+            while self.monitoring and (time.time() - start_time) < duration:
+                # Check coin count from Arduino
+                count = self.get_coin_count()
+                
+                if count is not None:
+                    with self._lock:
+                        if count != self.coin_count:
+                            # New coin detected
+                            self.coin_count = count
+                            self.coin_history.append((count, time.time()))
+                            print(f"Coin detected! Total: {count}/{target_coins}")
+                            
+                            # Check if we reached target
+                            if count >= target_coins:
+                                print(f"\n*** TARGET REACHED: {count} coins detected ***")
+                                self.relay_off()
+                                break
+                
+                # Get and display sensor status periodically
+                if int(time.time() - start_time) % 5 == 0:
+                    status = self.get_sensor_status()
+                    if status:
+                        print(f"[Status] {status}")
+                
+                time.sleep(0.5)
+        
+        except KeyboardInterrupt:
+            print("\nMonitoring interrupted by user")
+        finally:
+            self.monitoring = False
+    
+    def test_relay_control(self):
+        """Test relay on/off control.
+        
+        Returns:
+            True if both relay states work, False otherwise
+        """
+        print("\n[CoinHopperTest] Testing relay control...")
+        
+        # Test relay ON
+        print("  Testing relay ON...")
+        if not self.relay_on():
+            print("  Failed to turn relay ON")
+            return False
+        time.sleep(1)
+        
+        # Test relay OFF
+        print("  Testing relay OFF...")
+        if not self.relay_off():
+            print("  Failed to turn relay OFF")
+            return False
+        time.sleep(1)
+        
+        # Restore to ON state
+        print("  Restoring relay to ON state...")
+        if not self.relay_on():
+            print("  Failed to restore relay ON")
+            return False
+        
+        print("  Relay control test complete!")
+        return True
+    
+    def test_sensor_reading(self):
+        """Test sensor status reading.
+        
+        Returns:
+            True if sensor can be read, False otherwise
+        """
+        print("\n[CoinHopperTest] Testing sensor reading...")
+        
+        status = self.get_sensor_status()
+        if status:
+            print(f"  Sensor status: {status}")
+            return True
+        else:
+            print("  Failed to read sensor status")
             return False
     
     def get_status(self):
-        """Get current status.
+        """Get current test status.
         
         Returns:
             Dict with status information
@@ -162,144 +258,101 @@ class CoinHopperRelay:
                 'coins_detected': self.coin_count,
                 'relay_active': self.relay_active,
                 'relay_state': 'ON' if self.relay_active else 'OFF',
-                'coin_history': list(self.coin_history)
+                'recent_coins': list(self.coin_history)
             }
             return status
     
-    def reset_counter(self):
-        """Reset coin counter after dispensing."""
-        with self._lock:
-            print(f"[CoinHopperRelay] Resetting counter (was: {self.coin_count})")
-            self.coin_count = 0
-            self.coin_history.clear()
-            # Turn relay back ON for next cycle
-            if not self.relay_active:
-                self._turn_on_relay()
-    
-    def run_test_series(self, duration=60):
-        """Run continuous monitoring test.
-        
-        Args:
-            duration: Test duration in seconds
-        """
-        print(f"\n[CoinHopperRelay] Starting {duration}s test...")
-        print("Insert coins one at a time (5 target)...")
-        start_time = time.time()
-        
-        try:
-            while time.time() - start_time < duration:
-                status = self.get_status()
-                
-                # Print status every 2 seconds
-                if int(time.time() - start_time) % 2 == 0:
-                    print(f"Status: {status['coins_detected']} coins, "
-                          f"Relay: {status['relay_state']}")
-                
-                time.sleep(0.5)
-                
-        except KeyboardInterrupt:
-            print("\nTest interrupted by user")
-    
-    def manual_dispense_test(self, denomination=1, count=5):
-        """Test dispensing coins through hopper.
-        
-        Args:
-            denomination: 1 or 5
-            count: Number of coins
-        """
-        if not self.hopper:
-            print("[CoinHopperRelay] Hopper not connected")
-            return
-        
-        print(f"\n[CoinHopperRelay] Dispensing {count} {denomination}₱ coins...")
-        success, dispensed, msg = self.hopper.dispense_coins(denomination, count)
-        print(f"Result: {msg}")
-        
-        if success and dispensed >= count:
-            print("[CoinHopperRelay] Coins dispensed successfully")
-        else:
-            print(f"[CoinHopperRelay] Dispensing error: {msg}")
-    
     def cleanup(self):
-        """Clean up GPIO and connections."""
+        """Clean up and disconnect."""
         try:
-            print("\n[CoinHopperRelay] Cleaning up...")
+            print("\n[CoinHopperTest] Cleaning up...")
             
-            # Turn off relays
+            self.monitoring = False
+            
+            # Turn off relay
             try:
-                GPIO.output(self.relay_pin_1p, GPIO.LOW)
-                GPIO.output(self.relay_pin_5p, GPIO.LOW)
+                self.relay_off()
             except:
                 pass
-            time.sleep(0.1)
             
-            # Disconnect hopper
+            # Disconnect from Arduino
             if self.hopper:
                 self.hopper.disconnect()
             
-            # Cleanup GPIO
-            GPIO.cleanup()
-            print("[CoinHopperRelay] Cleanup complete")
+            print("[CoinHopperTest] Cleanup complete")
         except Exception as e:
-            print(f"[CoinHopperRelay] Error during cleanup: {e}")
+            print(f"[CoinHopperTest] Error during cleanup: {e}")
 
 
 def main():
     """Main test function."""
-    relay_controller = None
+    tester = None
     
     try:
-        # Initialize relay controller
-        relay_controller = CoinHopperRelay(
-            coin_sensor_1p=11,
-            coin_sensor_5p=12,
-            relay_pin_1p=9,
-            relay_pin_5p=10,
+        # Initialize tester with Arduino serial connection
+        tester = CoinHopperRelayTest(
             serial_port='/dev/ttyUSB1',
             baudrate=115200
         )
         
         print("\n" + "="*60)
-        print("COIN HOPPER RELAY TEST")
+        print("COIN HOPPER RELAY TEST (Arduino Control)")
         print("="*60)
         print("Options:")
-        print("  1 - Monitor coin detection (60s)")
-        print("  2 - Manual dispense test (5 coins of 1₱)")
-        print("  3 - Manual dispense test (1 coin of 5₱)")
-        print("  4 - Get current status")
-        print("  5 - Reset counter")
+        print("  1 - Test relay control (ON/OFF)")
+        print("  2 - Test sensor reading")
+        print("  3 - Monitor coins for 60s (target 5 coins)")
+        print("  4 - Custom monitoring duration")
+        print("  5 - Get current status")
+        print("  6 - Reset coin count")
+        print("  7 - Relay OFF only")
+        print("  8 - Relay ON only")
         print("  Q - Quit")
         print("="*60)
         
+        # Connect to Arduino
+        if not tester.connect():
+            print("\nCannot proceed without Arduino connection.")
+            return
+        
+        print("\nArduino connected successfully!\n")
+        
         while True:
             try:
-                choice = input("\nSelect option (1-5, Q): ").strip().upper()
+                choice = input("Select option (1-8, Q): ").strip().upper()
                 
                 if choice == '1':
-                    relay_controller.run_test_series(duration=60)
+                    tester.test_relay_control()
                     
                 elif choice == '2':
-                    # Try to connect and dispense
-                    if relay_controller.connect_hopper():
-                        relay_controller.manual_dispense_test(denomination=1, count=5)
-                    else:
-                        print("Could not connect to hopper (may not be connected)")
+                    tester.test_sensor_reading()
                     
                 elif choice == '3':
-                    if relay_controller.connect_hopper():
-                        relay_controller.manual_dispense_test(denomination=5, count=1)
-                    else:
-                        print("Could not connect to hopper (may not be connected)")
+                    tester.monitor_coins(duration=60, target_coins=5)
                     
                 elif choice == '4':
-                    status = relay_controller.get_status()
+                    try:
+                        duration = int(input("Enter duration in seconds: "))
+                        target = int(input("Enter target coin count: "))
+                        tester.monitor_coins(duration=duration, target_coins=target)
+                    except ValueError:
+                        print("Invalid input")
+                    
+                elif choice == '5':
+                    status = tester.get_status()
                     print(f"\nCurrent Status:")
                     print(f"  Coins detected: {status['coins_detected']}")
                     print(f"  Relay state: {status['relay_state']}")
-                    print(f"  Recent coins: {status['coin_history']}")
+                    print(f"  Recent coins: {status['recent_coins']}")
                     
-                elif choice == '5':
-                    relay_controller.reset_counter()
+                elif choice == '6':
+                    tester.reset_count()
+                    
+                elif choice == '7':
+                    tester.relay_off()
+                    
+                elif choice == '8':
+                    tester.relay_on()
                     
                 elif choice == 'Q':
                     break
@@ -308,7 +361,6 @@ def main():
                     print("Invalid option")
                     
             except EOFError:
-                # Handle EOF for non-interactive mode
                 break
             except KeyboardInterrupt:
                 print("\nInterrupted")
@@ -319,8 +371,8 @@ def main():
     except Exception as e:
         print(f"\nError: {e}")
     finally:
-        if relay_controller:
-            relay_controller.cleanup()
+        if tester:
+            tester.cleanup()
 
 
 if __name__ == "__main__":

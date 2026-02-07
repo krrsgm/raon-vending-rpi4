@@ -22,7 +22,7 @@ class CoinAcceptor:
         self.coin_pin = coin_pin
         self.counter_pin = counter_pin
         self.last_trigger_time = 0
-        self.debounce_time = 0.05  # 50ms debounce for Allan 123A-Pro (tested tolerance)
+        self.debounce_time = 0.05  # 50ms debounce for Allan 123A-Pro
         self.running = False
         self.payment_lock = Lock()
         self.received_amount = 0.0
@@ -40,7 +40,7 @@ class CoinAcceptor:
             # Add event detection for the coin signal
             GPIO.add_event_detect(self.coin_pin, GPIO.FALLING, 
                                 callback=self._coin_detected, 
-                                bouncetime=20)
+                                bouncetime=50)
             self.gpio_available = True
         except RuntimeError as e:
             # GPIO not available (running non-root, or hardware issue)
@@ -53,13 +53,14 @@ class CoinAcceptor:
         """Called when a coin is detected by the Allan 123A-Pro"""
         current_time = time.time()
         
-        # Software debounce: ignore if too soon after last trigger
+        # Debounce check
         if (current_time - self.last_trigger_time) < self.debounce_time:
             return
-        
-        # Update timestamp and count the coin
+            
         self.last_trigger_time = current_time
+        
         with self.payment_lock:
+            # Add the current coin value when a coin is detected
             self.received_amount += self.current_coin_value
 
     def get_received_amount(self):

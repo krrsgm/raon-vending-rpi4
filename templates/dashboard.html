@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAON - Inventory Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .header h1 { font-size: 28px; margin-bottom: 5px; }
+        
+        .container {
+            max-width: 1400px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        
+        .machines-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+            gap: 20px;
+        }
+        
+        .machine-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .machine-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #667eea;
+        }
+        
+        .machine-header h2 { font-size: 20px; color: #333; }
+        .status-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            background: #27ae60;
+            color: white;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .machine-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .stat-box {
+            background: #f9f9f9;
+            padding: 12px;
+            border-radius: 4px;
+            border-left: 3px solid #667eea;
+        }
+        
+        .stat-label { font-size: 12px; color: #999; }
+        .stat-value { font-size: 20px; font-weight: bold; color: #333; margin-top: 5px; }
+        
+        .items-table {
+            width: 100%;
+            font-size: 13px;
+            margin-top: 15px;
+        }
+        
+        .items-table thead {
+            background: #f0f0f0;
+        }
+        
+        .items-table th {
+            padding: 8px;
+            text-align: left;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .items-table td {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .low-stock {
+            background: #fee;
+            color: #c00;
+            font-weight: bold;
+        }
+        
+        .stock-ok {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        
+        .btn {
+            padding: 6px 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .btn:hover { background: #764ba2; }
+        .btn-secondary { background: #95a5a6; }
+        
+        .kiosk-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: #27ae60;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .kiosk-link:hover { background: #229954; }
+        
+        .low-stock-alert {
+            background: #ffe8e8;
+            border-left: 4px solid #e74c3c;
+            padding: 12px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        
+        .alert-title { font-weight: bold; color: #c0392b; margin-bottom: 5px; }
+        .alert-items { color: #d35400; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 RAON Inventory Dashboard</h1>
+        <p>Real-time monitoring across all vending machines</p>
+    </div>
+    
+    <div class="container">
+        <div class="machines-grid">
+            {% for data in machines_data %}
+            <div class="machine-card">
+                <div class="machine-header">
+                    <h2>{{ data.machine.name }}</h2>
+                    <span class="status-badge">
+                        {% if data.machine.is_active %}
+                        🟢 Active
+                        {% else %}
+                        🔴 Offline
+                        {% endif %}
+                    </span>
+                </div>
+                
+                <!-- Low Stock Alerts -->
+                {% if data.low_stock %}
+                <div class="low-stock-alert">
+                    <div class="alert-title">⚠️ Low Stock Alert</div>
+                    <div class="alert-items">
+                        {% for item in data.low_stock %}
+                        {{ item.name }}: {{ item.quantity }} left<br>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                <div class="machine-stats">
+                    <div class="stat-box">
+                        <div class="stat-label">Total Items</div>
+                        <div class="stat-value">{{ data.items|length }}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Sales Today</div>
+                        <div class="stat-value">{{ currency }}{{ data.total_sales_today|round(2) }}</div>
+                    </div>
+                </div>
+                
+                <!-- Items Table -->
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Price</th>
+                            <th>Stock</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in data.items %}
+                        <tr>
+                            <td>{{ item.name }}</td>
+                            <td>{{ currency }}{{ item.price }}</td>
+                            <td class="{% if item.quantity <= item.low_stock_threshold %}low-stock{% else %}stock-ok{% endif %}">
+                                {{ item.quantity }}
+                                {% if item.quantity <= item.low_stock_threshold %} ⚠️{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                
+                <div class="actions">
+                    <a href="/?machine_id={{ data.machine.machine_id }}" class="kiosk-link">Open Kiosk UI</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+    <!-- Auto-refresh every 30 seconds -->
+    <script>
+        setTimeout(() => location.reload(), 30000);
+    </script>
+</body>
+</html>

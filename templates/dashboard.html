@@ -23,8 +23,6 @@
         .header h1 { font-size: 28px; }
         .header-right { display: flex; gap: 15px; align-items: center; }
         .refresh-time { font-size: 12px; opacity: 0.9; }
-        .home-btn { padding: 8px 16px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 4px; cursor: pointer; }
-        .home-btn:hover { background: rgba(255,255,255,0.3); }
         
         .container {
             max-width: 1400px;
@@ -150,19 +148,6 @@
         }
         
         .log-line:hover { background: #fff; }
-        
-        .home-link {
-            display: inline-block;
-            margin-top: 20px;
-            padding: 10px 20px;
-            background: #667eea;
-            color: white;
-            text-decoration: none;
-            border-radius: 4px;
-            font-size: 12px;
-        }
-        
-        .home-link:hover { background: #764ba2; }
     </style>
 </head>
 <body>
@@ -170,7 +155,6 @@
         <h1>📊 RAON Dashboard</h1>
         <div class="header-right">
             <div class="refresh-time">Last update: <span id="lastUpdate">now</span></div>
-            <a href="/" class="home-btn">← Home</a>
         </div>
     </div>
     
@@ -212,8 +196,6 @@
                 <div class="log-line">Loading logs...</div>
             </div>
         </div>
-        
-        <a href="/" class="home-link">← Back to Home</a>
     </div>
     
     <script>

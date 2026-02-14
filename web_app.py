@@ -121,133 +121,13 @@ def init_payment_handler(config):
 
 @app.route('/')
 def home():
-    """Landing page - choose between Kiosk or Dashboard."""
-    return render_template('index.html')
+    """Redirect to dashboard."""
+    return redirect(url_for('inventory_dashboard'))
 
 
-@app.route('/kiosk')
-def kiosk_home():
-    """Main kiosk UI - item selection."""
-    machine_id = request.args.get('machine_id', 'RAON-001')
-    machine = Machine.query.filter_by(machine_id=machine_id).first()
-    
-    if not machine:
-        return "Machine not found", 404
-    
-    items = Item.query.filter_by(machine_id=machine.id).all()
-    currency_symbol = '₱'
-    
-    return render_template('kiosk.html', machine=machine, items=items, currency=currency_symbol)
 
 
-@app.route('/api/cart', methods=['POST'])
-def api_cart():
-    """Start payment session for cart items."""
-    try:
-        data = request.get_json()
-        machine_id = data.get('machine_id')
-        cart_items = data.get('items', [])  # [{name, quantity}]
-        
-        machine = Machine.query.filter_by(machine_id=machine_id).first()
-        if not machine:
-            return jsonify({'error': 'Machine not found'}), 404
-        
-        # Calculate total
-        total = 0.0
-        for cart_item in cart_items:
-            item = Item.query.filter_by(machine_id=machine.id, name=cart_item['name']).first()
-            if item:
-                total += item.price * cart_item['quantity']
-        
-        # Start payment session
-        with payment_lock:
-            current_payment_session['in_progress'] = True
-            current_payment_session['required_amount'] = total
-            current_payment_session['items'] = cart_items
-            current_payment_session['received_amount'] = 0.0
-            
-            if payment_handler:
-                payment_handler.start_payment_session(required_amount=total)
-        
-        return jsonify({'session_id': 'pay-1', 'total': total}), 200
-    except Exception as e:
-        logger.error(f"Error starting payment: {e}")
-        return jsonify({'error': str(e)}), 500
 
-
-@app.route('/api/payment/status', methods=['GET'])
-def api_payment_status():
-    """Get current payment status."""
-    try:
-        received = 0.0
-        if payment_handler:
-            received = payment_handler.get_current_amount()
-        
-        remaining = current_payment_session['required_amount'] - received
-        
-        return jsonify({
-            'in_progress': current_payment_session['in_progress'],
-            'required': current_payment_session['required_amount'],
-            'received': received,
-            'remaining': max(0, remaining)
-        }), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/cart/confirm', methods=['POST'])
-def api_cart_confirm():
-    """Confirm payment and vend items."""
-    try:
-        data = request.get_json()
-        machine_id = data.get('machine_id')
-        
-        machine = Machine.query.filter_by(machine_id=machine_id).first()
-        if not machine:
-            return jsonify({'error': 'Machine not found'}), 404
-        
-        # Stop payment and get amount
-        with payment_lock:
-            if payment_handler:
-                received, change, msg = payment_handler.stop_payment_session(
-                    required_amount=current_payment_session['required_amount']
-                )
-            else:
-                received = current_payment_session['received_amount']
-                change = 0.0
-                msg = "No payment handler"
-            
-            # Vend items
-            config = load_config()
-            esp32_host = machine.esp32_host
-            vend_results = []
-            
-            for cart_item in current_payment_session['items']:
-                item = Item.query.filter_by(machine_id=machine.id, name=cart_item['name']).first()
-                if item:
-                    slots = [int(s.strip()) for s in item.slots.split(',') if s.strip()]
-                    for _ in range(cart_item['quantity']):
-                        if slots:
-                            slot = slots[0]  # Simple: use first slot
-                            try:
-                                if pulse_slot:
-                                    result = pulse_slot(esp32_host, slot, 800, timeout=3.0)
-                                    vend_results.append({'slot': slot, 'result': result})
-                                    item.quantity -= 1
-                            except Exception as e:
-                                logger.error(f"Error vending slot {slot}: {e}")
-                                vend_results.append({'slot': slot, 'error': str(e)})
-            
-            # Log sale
-            coin_amt = 0.0
-            bill_amt = received - coin_amt if payment_handler else 0.0
-            
-            for cart_item in current_payment_session['items']:
-                sale = Sale(
-                    machine_id=machine.id,
-                    item_name=cart_item['name'],
-                    quantity=cart_item['quantity'],
-                    amount_received=received / len(current_payment_session['items']),
                     coin_amount=coin_amt / len(current_payment_session['items']),
                     bill_amount=bill_amt / len(current_payment_session['items']),
                     change_dispensed=change / len(current_payment_session['items'])
@@ -393,8 +273,7 @@ def api_realtime_status():
         logger.error(f"Realtime status error: {e}")
         return jsonify({'error': str(e)}), 500
 
-
-
+@app.route('/api/machines')
 def api_machines():
     """API: List all machines with status."""
     machines = Machine.query.filter_by(is_active=True).all()

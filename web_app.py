@@ -125,29 +125,9 @@ def home():
     return redirect(url_for('inventory_dashboard'))
 
 
-
-
-
-                    coin_amount=coin_amt / len(current_payment_session['items']),
-                    bill_amount=bill_amt / len(current_payment_session['items']),
-                    change_dispensed=change / len(current_payment_session['items'])
-                )
-                db.session.add(sale)
-            
-            db.session.commit()
-            
-            # Reset session
-            current_payment_session['in_progress'] = False
-            current_payment_session['items'] = []
-        
-        return jsonify({
-            'success': True,
-            'received': received,
-            'change': change,
-            'vend_results': vend_results
-        }), 200
-    except Exception as e:
-        logger.error(f"Error confirming payment: {e}")
+# ============================================================================
+# ROUTES - DASHBOARD & MONITORING
+# ============================================================================
         return jsonify({'error': str(e)}), 500
 
 

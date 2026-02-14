@@ -24,10 +24,12 @@ try:
     from esp32_client import pulse_slot
     from payment_handler import PaymentHandler
     from fix_paths import get_absolute_path
+    from daily_sales_logger import get_logger
 except ImportError as e:
     print(f"Warning: Could not import vending modules: {e}")
     pulse_slot = None
     PaymentHandler = None
+    get_logger = None
 
 # Flask setup
 app = Flask(__name__)
@@ -118,6 +120,12 @@ def init_payment_handler(config):
 # ============================================================================
 
 @app.route('/')
+def home():
+    """Landing page - choose between Kiosk or Dashboard."""
+    return render_template('index.html')
+
+
+@app.route('/kiosk')
 def kiosk_home():
     """Main kiosk UI - item selection."""
     machine_id = request.args.get('machine_id', 'RAON-001')
@@ -295,7 +303,98 @@ def inventory_dashboard():
     return render_template('dashboard.html', machines_data=dashboard_data, currency='₱')
 
 
-@app.route('/api/machines')
+@app.route('/api/sales/today')
+def api_sales_today():
+    """API: Get today's sales summary from logs."""
+    try:
+        logger_inst = get_logger() if get_logger else None
+        if not logger_inst:
+            return jsonify({'error': 'Logger not available'}), 500
+        
+        summary = logger_inst.get_today_summary()
+        items_sold = logger_inst.get_items_sold_summary()
+        
+        return jsonify({
+            'date': summary['date'],
+            'total_transactions': summary['total_transactions'],
+            'total_sales': summary['total_sales'],
+            'total_coins': summary['total_coins'],
+            'total_bills': summary['total_bills'],
+            'total_change': summary['total_change'],
+            'items_sold': items_sold
+        }), 200
+    except Exception as e:
+        logger.error(f"Sales today error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sales/logs')
+def api_sales_logs():
+    """API: Get sales logs for a specific date (default today)."""
+    try:
+        logger_inst = get_logger() if get_logger else None
+        if not logger_inst:
+            return jsonify({'error': 'Logger not available'}), 500
+        
+        from datetime import datetime as dt
+        date_str = request.args.get('date', dt.now().strftime("%Y-%m-%d"))
+        logs_dir = logger_inst.logs_dir
+        log_file = os.path.join(logs_dir, f"sales_{date_str}.log")
+        
+        if not os.path.exists(log_file):
+            return jsonify({'logs': [], 'date': date_str}), 200
+        
+        logs = []
+        try:
+            with open(log_file, 'r', encoding='utf-8') as f:
+                logs = f.readlines()
+        except Exception as e:
+            logger.error(f"Error reading log file: {e}")
+        
+        return jsonify({
+            'logs': logs,
+            'date': date_str,
+            'count': len(logs)
+        }), 200
+    except Exception as e:
+        logger.error(f"Sales logs error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/status/realtime')
+def api_realtime_status():
+    """API: Get real-time machine status (stock, sales, connectivity)."""
+    try:
+        machines = Machine.query.filter_by(is_active=True).all()
+        status_data = []
+        
+        logger_inst = get_logger() if get_logger else None
+        today_summary = logger_inst.get_today_summary() if logger_inst else {}
+        today_items = logger_inst.get_items_sold_summary() if logger_inst else {}
+        
+        for m in machines:
+            items = Item.query.filter_by(machine_id=m.id).all()
+            low_stock = [i for i in items if i.quantity <= i.low_stock_threshold]
+            
+            status_data.append({
+                'machine_id': m.machine_id,
+                'name': m.name,
+                'is_active': m.is_active,
+                'total_items': len(items),
+                'low_stock_count': len(low_stock),
+                'low_stock_items': [i.name for i in low_stock],
+                'today_transactions': today_summary.get('total_transactions', 0),
+                'today_sales': today_summary.get('total_sales', 0.0),
+                'items_sold_today': today_items
+            })
+        
+        return jsonify(status_data), 200
+    except Exception as e:
+        logger.error(f"Realtime status error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+
 def api_machines():
     """API: List all machines with status."""
     machines = Machine.query.filter_by(is_active=True).all()

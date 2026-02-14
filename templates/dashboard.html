@@ -15,16 +15,41 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             padding: 20px;
-            text-align: center;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         
-        .header h1 { font-size: 28px; margin-bottom: 5px; }
+        .header h1 { font-size: 28px; }
+        .header-right { display: flex; gap: 15px; align-items: center; }
+        .refresh-time { font-size: 12px; opacity: 0.9; }
+        .home-btn { padding: 8px 16px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .home-btn:hover { background: rgba(255,255,255,0.3); }
         
         .container {
             max-width: 1400px;
             margin: 20px auto;
             padding: 0 20px;
         }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-label { font-size: 12px; color: #999; font-weight: bold; }
+        .stat-value { font-size: 32px; font-weight: bold; color: #333; margin: 10px 0; }
+        .stat-icon { font-size: 32px; margin-bottom: 10px; }
         
         .machines-grid {
             display: grid;
@@ -62,177 +87,227 @@
         .machine-stats {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 15px;
+            gap: 10px;
             margin-bottom: 15px;
         }
         
         .stat-box {
             background: #f9f9f9;
-            padding: 12px;
+            padding: 10px;
             border-radius: 4px;
             border-left: 3px solid #667eea;
         }
         
-        .stat-label { font-size: 12px; color: #999; }
-        .stat-value { font-size: 20px; font-weight: bold; color: #333; margin-top: 5px; }
+        .stat-label-small { font-size: 11px; color: #999; }
+        .stat-value-small { font-size: 16px; font-weight: bold; color: #333; margin-top: 3px; }
         
-        .items-table {
-            width: 100%;
-            font-size: 13px;
-            margin-top: 15px;
-        }
-        
-        .items-table thead {
-            background: #f0f0f0;
-        }
-        
-        .items-table th {
-            padding: 8px;
-            text-align: left;
-            font-weight: bold;
-            color: #333;
-        }
-        
-        .items-table td {
-            padding: 8px;
-            border-bottom: 1px solid #eee;
-        }
-        
-        .low-stock {
-            background: #fee;
-            color: #c00;
-            font-weight: bold;
-        }
-        
-        .stock-ok {
-            color: #27ae60;
-            font-weight: bold;
-        }
-        
-        .actions {
-            display: flex;
-            gap: 5px;
-            margin-top: 10px;
-            font-size: 12px;
-        }
-        
-        .btn {
-            padding: 6px 12px;
-            background: #667eea;
-            color: white;
-            border: none;
+        .low-stock-alert {
+            background: #ffe8e8;
+            border-left: 4px solid #e74c3c;
+            padding: 10px;
+            margin-bottom: 10px;
             border-radius: 4px;
-            cursor: pointer;
             font-size: 12px;
         }
         
-        .btn:hover { background: #764ba2; }
-        .btn-secondary { background: #95a5a6; }
+        .alert-items { color: #d35400; }
         
-        .kiosk-link {
+        .items-sold {
+            background: #f0f8ff;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .items-sold-title { font-weight: bold; color: #333; margin-bottom: 5px; }
+        .items-sold-list { color: #667eea; }
+        
+        .logs-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        
+        .logs-section h3 { margin-bottom: 15px; color: #333; }
+        
+        .logs-container {
+            max-height: 400px;
+            overflow-y: auto;
+            background: #fafafa;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 11px;
+        }
+        
+        .log-line {
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .log-line:hover { background: #fff; }
+        
+        .home-link {
             display: inline-block;
-            margin-top: 10px;
-            padding: 8px 16px;
-            background: #27ae60;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #667eea;
             color: white;
             text-decoration: none;
             border-radius: 4px;
             font-size: 12px;
         }
         
-        .kiosk-link:hover { background: #229954; }
-        
-        .low-stock-alert {
-            background: #ffe8e8;
-            border-left: 4px solid #e74c3c;
-            padding: 12px;
-            margin-bottom: 15px;
-            border-radius: 4px;
-            font-size: 13px;
-        }
-        
-        .alert-title { font-weight: bold; color: #c0392b; margin-bottom: 5px; }
-        .alert-items { color: #d35400; }
+        .home-link:hover { background: #764ba2; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>📊 RAON Inventory Dashboard</h1>
-        <p>Real-time monitoring across all vending machines</p>
-    </div>
-    
-    <div class="container">
-        <div class="machines-grid">
-            {% for data in machines_data %}
-            <div class="machine-card">
-                <div class="machine-header">
-                    <h2>{{ data.machine.name }}</h2>
-                    <span class="status-badge">
-                        {% if data.machine.is_active %}
-                        🟢 Active
-                        {% else %}
-                        🔴 Offline
-                        {% endif %}
-                    </span>
-                </div>
-                
-                <!-- Low Stock Alerts -->
-                {% if data.low_stock %}
-                <div class="low-stock-alert">
-                    <div class="alert-title">⚠️ Low Stock Alert</div>
-                    <div class="alert-items">
-                        {% for item in data.low_stock %}
-                        {{ item.name }}: {{ item.quantity }} left<br>
-                        {% endfor %}
-                    </div>
-                </div>
-                {% endif %}
-                
-                <div class="machine-stats">
-                    <div class="stat-box">
-                        <div class="stat-label">Total Items</div>
-                        <div class="stat-value">{{ data.items|length }}</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-label">Sales Today</div>
-                        <div class="stat-value">{{ currency }}{{ data.total_sales_today|round(2) }}</div>
-                    </div>
-                </div>
-                
-                <!-- Items Table -->
-                <table class="items-table">
-                    <thead>
-                        <tr>
-                            <th>Item</th>
-                            <th>Price</th>
-                            <th>Stock</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in data.items %}
-                        <tr>
-                            <td>{{ item.name }}</td>
-                            <td>{{ currency }}{{ item.price }}</td>
-                            <td class="{% if item.quantity <= item.low_stock_threshold %}low-stock{% else %}stock-ok{% endif %}">
-                                {{ item.quantity }}
-                                {% if item.quantity <= item.low_stock_threshold %} ⚠️{% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                
-                <div class="actions">
-                    <a href="/?machine_id={{ data.machine.machine_id }}" class="kiosk-link">Open Kiosk UI</a>
-                </div>
-            </div>
-            {% endfor %}
+        <h1>📊 RAON Dashboard</h1>
+        <div class="header-right">
+            <div class="refresh-time">Last update: <span id="lastUpdate">now</span></div>
+            <a href="/" class="home-btn">← Home</a>
         </div>
     </div>
     
-    <!-- Auto-refresh every 30 seconds -->
+    <div class="container">
+        <!-- Real-time Stats -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-icon">💰</div>
+                <div class="stat-label">Today's Sales</div>
+                <div class="stat-value" id="todaySales">₱0.00</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🛒</div>
+                <div class="stat-label">Transactions</div>
+                <div class="stat-value" id="transactions">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">📦</div>
+                <div class="stat-label">Items Sold</div>
+                <div class="stat-value" id="itemsSold">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">⚠️</div>
+                <div class="stat-label">Low Stock</div>
+                <div class="stat-value" id="lowStock">0</div>
+            </div>
+        </div>
+        
+        <!-- Machine Cards -->
+        <h2 style="margin: 30px 0 15px 0;">Machines</h2>
+        <div class="machines-grid" id="machinesGrid">
+            <div class="machine-card">Loading...</div>
+        </div>
+        
+        <!-- Sales Logs -->
+        <div class="logs-section">
+            <h3>📝 Recent Sales Logs</h3>
+            <div class="logs-container" id="logsContainer">
+                <div class="log-line">Loading logs...</div>
+            </div>
+        </div>
+        
+        <a href="/" class="home-link">← Back to Home</a>
+    </div>
+    
     <script>
-        setTimeout(() => location.reload(), 30000);
+        // Fetch real-time status
+        async function updateStatus() {
+            try {
+                // Fetch status
+                const statusRes = await fetch('/api/status/realtime');
+                const statusData = await statusRes.json();
+                
+                // Fetch sales logs
+                const logsRes = await fetch('/api/sales/today');
+                const logsData = await logsRes.json();
+                
+                // Update stats
+                document.getElementById('todaySales').textContent = '₱' + logsData.total_sales.toFixed(2);
+                document.getElementById('transactions').textContent = logsData.total_transactions;
+                document.getElementById('itemsSold').textContent = Object.values(logsData.items_sold || {}).reduce((a, b) => a + b, 0);
+                
+                let lowStockCount = 0;
+                statusData.forEach(m => lowStockCount += m.low_stock_count);
+                document.getElementById('lowStock').textContent = lowStockCount;
+                
+                // Update machines grid
+                const grid = document.getElementById('machinesGrid');
+                grid.innerHTML = '';
+                
+                statusData.forEach(machine => {
+                    const lowStockItems = machine.low_stock_items || [];
+                    const itemsList = Object.entries(machine.items_sold_today || {})
+                        .map(([name, qty]) => `${name}: ${qty}`)
+                        .join(', ') || 'None';
+                    
+                    const card = document.createElement('div');
+                    card.className = 'machine-card';
+                    card.innerHTML = `
+                        <div class="machine-header">
+                            <h2>${machine.name}</h2>
+                            <span class="status-badge">${machine.is_active ? '🟢 Active' : '🔴 Offline'}</span>
+                        </div>
+                        
+                        ${lowStockItems.length > 0 ? `
+                            <div class="low-stock-alert">
+                                <div style="font-weight: bold; color: #c0392b;">⚠️ Low Stock Alert:</div>
+                                <div class="alert-items">${lowStockItems.join(', ')}</div>
+                            </div>
+                        ` : ''}
+                        
+                        <div class="machine-stats">
+                            <div class="stat-box">
+                                <div class="stat-label-small">Total Items</div>
+                                <div class="stat-value-small">${machine.total_items}</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-label-small">Today's Sales</div>
+                                <div class="stat-value-small">₱${machine.today_sales.toFixed(2)}</div>
+                            </div>
+                        </div>
+                        
+                        <div class="items-sold">
+                            <div class="items-sold-title">Today's Items Sold:</div>
+                            <div class="items-sold-list">${itemsList}</div>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+                
+                // Update logs
+                const logsRes2 = await fetch('/api/sales/logs');
+                const logsData2 = await logsRes2.json();
+                if (logsData2.logs && logsData2.logs.length > 0) {
+                    const logsContainer = document.getElementById('logsContainer');
+                    logsContainer.innerHTML = logsData2.logs
+                        .sort((a, b) => new Date(b) - new Date(a))  // Most recent first
+                        .slice(0, 20)  // Last 20 transactions
+                        .map(log => `<div class="log-line">${log}</div>`)
+                        .join('');
+                } else {
+                    document.getElementById('logsContainer').innerHTML = '<div class="log-line">No sales yet today</div>';
+                }
+                
+                // Update timestamp
+                const now = new Date();
+                document.getElementById('lastUpdate').textContent = now.toLocaleTimeString();
+            } catch (error) {
+                console.error('Error updating status:', error);
+            }
+        }
+        
+        // Initial load
+        updateStatus();
+        
+        // Auto-refresh every 5 seconds
+        setInterval(updateStatus, 5000);
     </script>
 </body>
 </html>

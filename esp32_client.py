@@ -25,12 +25,14 @@ logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 # Persistent TCP connections cache: host -> socket
 _tcp_sockets = {}
 
-def _close_tcp(host, port=DEFAULT_PORT):
+def _close_tcp(host, port=None):
     """Close and remove cached TCP socket for host:port key.
 
-    The cache uses keys of the form "host:port"; ensure callers
-    pass both host and port (or rely on default port).
+    Accepts `port=None` and resolves to `DEFAULT_PORT` at runtime so
+    the function can be defined before `DEFAULT_PORT` is declared.
     """
+    if port is None:
+        port = DEFAULT_PORT
     key = f"{host}:{port}"
     s = _tcp_sockets.pop(key, None)
     if s:

@@ -15,6 +15,13 @@ import threading
 from threading import Thread, Lock
 from dht22_handler import DHT22Sensor
 
+# Import sensor data logger
+try:
+    from sensor_data_logger import get_sensor_logger
+    SENSOR_LOGGER_AVAILABLE = True
+except ImportError:
+    SENSOR_LOGGER_AVAILABLE = False
+
 
 class TECController:
     """
@@ -67,6 +74,15 @@ class TECController:
         # Callbacks for UI updates
         self._on_status_update = None  # Called with (enabled, current_temp, target_temp)
         self._on_dht_update = None  # Called with (sensor_number, temperature, humidity)
+        
+        # Initialize sensor data logger
+        self.sensor_logger = None
+        self.sensor_log_counter = 0
+        if SENSOR_LOGGER_AVAILABLE:
+            try:
+                self.sensor_logger = get_sensor_logger()
+            except Exception as e:
+                print(f"[TECController] Failed to initialize sensor logger: {e}")
         
         sensor_list = ", ".join([f"GPIO{pin}" for pin in sensor_pins])
     def _control_loop(self):
@@ -133,7 +149,31 @@ class TECController:
                 except Exception:
                     pass
                     
-                    # Control logic: Hysteresis-based on/off control
+                # Log sensor readings (every 30 cycles = ~60 seconds)
+                self.sensor_log_counter += 1
+                if self.sensor_log_counter >= 30 and self.sensor_logger:
+                    try:
+                        # Get the most recent readings
+                        sensor1_temp = self.sensor_temps.get(self.sensor_pins[0]) if len(self.sensor_pins) > 0 else None
+                        sensor1_humidity = self.sensor_humidities.get(self.sensor_pins[0]) if len(self.sensor_pins) > 0 else None
+                        sensor2_temp = self.sensor_temps.get(self.sensor_pins[1]) if len(self.sensor_pins) > 1 else None
+                        sensor2_humidity = self.sensor_humidities.get(self.sensor_pins[1]) if len(self.sensor_pins) > 1 else None
+                        
+                        # Log to sensor data logger
+                        self.sensor_logger.log_sensor_reading(
+                            sensor1_temp=sensor1_temp,
+                            sensor1_humidity=sensor1_humidity,
+                            sensor2_temp=sensor2_temp,
+                            sensor2_humidity=sensor2_humidity,
+                            relay_status=self.is_enabled,
+                            target_temp=self.target_temp
+                        )
+                        self.sensor_log_counter = 0
+                    except Exception as e:
+                        print(f"[TECController] Sensor logging error: {e}")
+                
+                # Control logic: Hysteresis-based on/off control
+                if temps:
                     with self._lock:
                         if self.is_enabled:
                             # TEC is on - turn off if temp falls below threshold

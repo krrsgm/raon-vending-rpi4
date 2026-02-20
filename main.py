@@ -173,15 +173,30 @@ class MainApp(tk.Tk):
             ]
             
             relay_pin = tec_config.get('gpio_pin', 26)
-            target_temp = tec_config.get('target_temp', 10.0)
-            hysteresis = tec_config.get('hysteresis', 1.0)
             average_sensors = tec_config.get('average_sensors', True)
-            
+
+            # Prefer explicit temperature range if provided, otherwise fall back
+            # to legacy target_temp + hysteresis behavior for backward compatibility.
+            target_min = tec_config.get('target_temp_min')
+            target_max = tec_config.get('target_temp_max')
+            if target_min is None or target_max is None:
+                # fallback to legacy single target + hysteresis
+                target_temp = tec_config.get('target_temp', None)
+                hysteresis = tec_config.get('hysteresis', None)
+            else:
+                target_temp = None
+                hysteresis = None
+
+            humidity_threshold = tec_config.get('humidity_threshold', None)
+
             self.tec_controller = TECController(
                 sensor_pins=sensor_pins,
                 relay_pin=relay_pin,
                 target_temp=target_temp,
                 temp_hysteresis=hysteresis,
+                target_temp_min=target_min,
+                target_temp_max=target_max,
+                humidity_threshold=humidity_threshold,
                 average_sensors=average_sensors
             )
             

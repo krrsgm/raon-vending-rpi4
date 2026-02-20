@@ -32,7 +32,14 @@ class TECController:
     Can monitor single sensor or average multiple sensors.
     """
     
-    def __init__(self, sensor_pins=[27, 22], relay_pin=26, target_temp=10.0, temp_hysteresis=1.0, average_sensors=True):
+    def __init__(self, sensor_pins=[27, 22], relay_pin=26,
+                 # Backwards-compatible single-target API
+                 target_temp=None, temp_hysteresis=None,
+                 # Preferred range-based API
+                 target_temp_min=None, target_temp_max=None,
+                 # Optional humidity threshold (percent) to force TEC on when exceeded
+                 humidity_threshold=None,
+                 average_sensors=True):
         """
         Initialize TEC controller.
         
@@ -44,13 +51,31 @@ class TECController:
             average_sensors (bool): If True, average multiple sensor readings; if False, use highest temp
         """
         self.relay_pin = relay_pin
-        self.target_temp = target_temp
-        self.temp_hysteresis = temp_hysteresis
         self.average_sensors = average_sensors
-        
-        # Temperature thresholds
-        self.temp_on = target_temp + temp_hysteresis  # Turn on if temp exceeds this
-        self.temp_off = target_temp - temp_hysteresis  # Turn off if temp falls below this
+        self.humidity_threshold = humidity_threshold
+
+        # Resolve target temperature range.
+        # Preferred: explicit min/max. Fall back to legacy target_temp + hysteresis.
+        if target_temp_min is not None and target_temp_max is not None:
+            self.target_temp_min = float(target_temp_min)
+            self.target_temp_max = float(target_temp_max)
+        elif target_temp is not None and temp_hysteresis is not None:
+            try:
+                tt = float(target_temp)
+                th = float(temp_hysteresis)
+            except Exception:
+                tt = 10.0
+                th = 1.0
+            self.target_temp_min = tt - th
+            self.target_temp_max = tt + th
+        else:
+            # sensible defaults (legacy behavior)
+            self.target_temp_min = 9.0
+            self.target_temp_max = 11.0
+
+        # Temperature thresholds: turn on above max, turn off below min
+        self.temp_on = self.target_temp_max
+        self.temp_off = self.target_temp_min
         
         # Initialize sensors
         self.sensors = [DHT22Sensor(pin=pin) for pin in sensor_pins]
@@ -172,19 +197,33 @@ class TECController:
                     except Exception as e:
                         print(f"[TECController] Sensor logging error: {e}")
                 
-                # Control logic: Hysteresis-based on/off control
+                # Control logic: Range-based with optional humidity forcing
                 if temps:
+                    need_on = False
+
+                    # Temperature-based decision
+                    if control_temp > self.temp_on:
+                        need_on = True
+
+                    # Humidity-based decision (force on when humidity above threshold)
+                    if self.humidity_threshold is not None and humidity_avg is not None:
+                        try:
+                            if humidity_avg > float(self.humidity_threshold):
+                                need_on = True
+                        except Exception:
+                            pass
+
                     with self._lock:
-                        if self.is_enabled:
-                            # TEC is on - turn off if temp falls below threshold
+                        if need_on and not self.is_enabled:
+                            self._tec_on()
+                            print(f"[TECController] TEC ON: Temp {control_temp:.1f}°C, Humidity {humidity_avg}")
+                        elif not need_on and self.is_enabled:
+                            # turn off only when temperature has fallen below the lower bound
                             if control_temp < self.temp_off:
-                                self._tec_off()
-                                print(f"[TECController] TEC OFF: Temp {control_temp:.1f}°C ≤ {self.temp_off}°C")
-                        else:
-                            # TEC is off - turn on if temp exceeds threshold
-                            if control_temp > self.temp_on:
-                                self._tec_on()
-                                print(f"[TECController] TEC ON: Temp {control_temp:.1f}°C ≥ {self.temp_on}°C")
+                                # Additionally ensure humidity is below threshold (if configured)
+                                if self.humidity_threshold is None or humidity_avg is None or humidity_avg <= float(self.humidity_threshold):
+                                    self._tec_off()
+                                    print(f"[TECController] TEC OFF: Temp {control_temp:.1f}°C ≤ {self.temp_off}°C")
                 
                 # Update interval (2 second minimum for DHT22)
                 time.sleep(2)

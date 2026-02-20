@@ -1,4 +1,5 @@
 import tkinter as tk
+import time
 from kiosk_app import KioskFrame
 from selection_screen import SelectionScreen
 import json
@@ -793,7 +794,7 @@ class MainApp(tk.Tk):
                     else:
                         # For slots 1-48, ESP32 controls everything
                         # Mirror test_motor: verify ESP32 reachable via STATUS before pulsing
-                        from esp32_client import send_command
+                        from esp32_client import send_command, pulse_slot
                         try:
                             is_ok = False
                             # quick STATUS check

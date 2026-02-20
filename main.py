@@ -714,8 +714,28 @@ class MainApp(tk.Tk):
         # find matching indices (1-based slot numbers)
         matches = []
         for idx, slot in enumerate(assigned):
-            if slot and isinstance(slot, dict) and slot.get('name') == item_name:
-                matches.append(idx+1)
+            if not slot:
+                continue
+
+            # Legacy single-slot format: {'name': 'Item Name', ...}
+            if isinstance(slot, dict) and slot.get('name'):
+                if slot.get('name') == item_name:
+                    matches.append(idx+1)
+                    continue
+
+            # New 'terms' format: slot contains a list under 'terms' for multiple
+            # display terms. Use the currently selected `assigned_term` index
+            # (default 0) to pick the active term for comparison.
+            if isinstance(slot, dict) and 'terms' in slot:
+                terms = slot.get('terms', [])
+                term_idx = getattr(self, 'assigned_term', 0) or 0
+                if isinstance(terms, list) and len(terms) > term_idx:
+                    term_entry = terms[term_idx]
+                    if isinstance(term_entry, dict):
+                        term_name = term_entry.get('name')
+                        if term_name and term_name == item_name:
+                            matches.append(idx+1)
+                            continue
         if not matches:
             print(f'[VEND] ERROR: No physical slots assigned for item "{item_name}"')
             print(f'[VEND] Available slots: {[s.get("name") if isinstance(s, dict) else None for s in assigned]}')

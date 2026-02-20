@@ -25,8 +25,14 @@ logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 # Persistent TCP connections cache: host -> socket
 _tcp_sockets = {}
 
-def _close_tcp(host):
-    s = _tcp_sockets.pop(host, None)
+def _close_tcp(host, port=DEFAULT_PORT):
+    """Close and remove cached TCP socket for host:port key.
+
+    The cache uses keys of the form "host:port"; ensure callers
+    pass both host and port (or rely on default port).
+    """
+    key = f"{host}:{port}"
+    s = _tcp_sockets.pop(key, None)
     if s:
         try:
             s.close()
@@ -240,7 +246,7 @@ def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0, retries=3, use_persi
                             last_exc = TimeoutError(f'TCP read timeout after {timeout}s')
                             # close and retry (reconnect next attempt)
                             logging.info("No TCP response, closing persistent socket and retrying")
-                            _close_tcp(host)  # Close socket to clean up resource
+                            _close_tcp(host, port)  # Close socket to clean up resource
                             time.sleep(0.05)
                             continue
                         line = resp_buf.split(b'\n', 1)[0]
@@ -248,7 +254,7 @@ def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0, retries=3, use_persi
                     except Exception as e:
                         last_exc = e
                         logging.warning(f"Persistent TCP operation failed: {e}")
-                        _close_tcp(host)  # Close socket to clean up resource
+                        _close_tcp(host, port)  # Close socket to clean up resource
                         time.sleep(0.05)
                         continue
 

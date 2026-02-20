@@ -924,7 +924,15 @@ class AssignItemsScreen(tk.Frame):
 
     def test_motor(self, idx):
         """Test the motor for the given slot by pulsing it."""
+        import logging
+        
         slot_num = idx + 1  # Slots are 1-indexed
+        
+        # Suppress verbose logging from esp32_client during motor test
+        esp32_logger = logging.getLogger('root')
+        original_level = esp32_logger.level
+        esp32_logger.setLevel(logging.CRITICAL)  # Only show CRITICAL errors
+        
         try:
             # Get ESP32 host from controller config
             config = getattr(self.controller, 'config', {})
@@ -957,18 +965,18 @@ class AssignItemsScreen(tk.Frame):
             
             # Pulse the motor for 800ms with longer timeout for serial
             print(f"[TEST MOTOR] Pulsing slot {slot_num}...")
-            # If slot is in MUX4 range and a MUX4 controller is present, use Raspberry Pi
-            mux4_ctrl = getattr(self.controller, 'mux4_controller', None)
-            if 49 <= slot_num <= 64 and mux4_ctrl:
-                try:
-                    mux4_ctrl.pulse_channel(slot_num, 800)
-                    result = 'OK (RPi MUX4)'
-                    print(f"[TEST MOTOR] SUCCESS (RPi MUX4): Slot {slot_num} pulsed via Raspberry Pi")
-                except Exception as e:
-                    result = f'ERR (RPi MUX4): {e}'
-                    print(f"[TEST MOTOR] FAILED (RPi MUX4) for slot {slot_num}: {e}")
-            else:
-                result = pulse_slot(esp32_host, slot_num, 800, timeout=3.0)
+            # Ensure machine supports only slots 1-48
+            if slot_num < 1 or slot_num > 48:
+                messagebox.showerror(
+                    "Motor Test - Unsupported Slot",
+                    f"Slot {slot_num} is out of range. This machine supports slots 1-48 only.",
+                    parent=self
+                )
+                print(f"[TEST MOTOR] ERROR: Slot {slot_num} out of supported range (1-48)")
+                return
+
+            # For supported slots (1-48) use ESP32
+            result = pulse_slot(esp32_host, slot_num, 800, timeout=3.0)
             
             # Validate response - should contain "OK"
             if result and "OK" in result.upper():
@@ -992,13 +1000,6 @@ class AssignItemsScreen(tk.Frame):
                 f"ESP32 did not respond in time for slot {slot_num}\n\nHost: {esp32_host}\nError: {str(e)}\n\nPlease check connection and try again.",
                 parent=self
             )
-                
-        except TimeoutError as e:
-            messagebox.showerror(
-                "Motor Test - Connection Timeout", 
-                f"ESP32 did not respond in time for slot {slot_num}\n\nHost: {esp32_host}\nError: {str(e)}\n\nPlease check connection and try again.",
-                parent=self
-            )
             print(f"[TEST MOTOR] TIMEOUT on slot {slot_num}: {str(e)}")
         except ConnectionRefusedError as e:
             messagebox.showerror(
@@ -1015,6 +1016,10 @@ class AssignItemsScreen(tk.Frame):
                 parent=self
             )
             print(f"[TEST MOTOR] ERROR on slot {slot_num}: {error_msg}")
+        
+        finally:
+            # Restore original logging level
+            esp32_logger.setLevel(original_level)
 
     def clear_slot(self, idx):
         # Clear only the currently selected term for this slot

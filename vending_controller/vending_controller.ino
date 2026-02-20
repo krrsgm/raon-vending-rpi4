@@ -34,9 +34,9 @@
 // ============================================================================
 
 const unsigned long BAUD_RATE = 115200;
-const int NUM_OUTPUTS = 64;          // 4 multiplexers × 16 channels
+const int NUM_OUTPUTS = 48;          // 3 multiplexers × 16 channels
 const int MOTORS_PER_MUX = 16;       // channels per multiplexer
-const int NUM_MUXES = 4;             // number of multiplexers
+const int NUM_MUXES = 3;             // number of multiplexers
 
 // RXTX Serial pins for communication with Raspberry Pi
 const int SERIAL2_RX_PIN = 3;        // ESP32 receives from Pi TX (GPIO 14)
@@ -71,9 +71,8 @@ const int MUX3_S2 = 4;
 const int MUX3_S3 = 16;
 const int MUX3_SIG = 21;
 
-// Multiplexer 4: Slots 49-64
-// Fully controlled by the Raspberry Pi (selectors S0-S3 and SIG).
-// ESP32 does not drive any pins for MUX4; RPi handles slots 49-64 entirely.
+// Note: This firmware is for a 48-output machine (3 × CD74HC4067 multiplexers).
+// Multiplexer 4 (slots 49-64) is not used in this configuration.
 
 // ============================================================================
 // COIN ACCEPTOR PIN CONFIGURATION (ESP32)
@@ -168,8 +167,7 @@ void setup() {
   pinMode(MUX3_S3, OUTPUT);
   pinMode(MUX3_SIG, OUTPUT);
 
-  // Multiplexer 4: selectors and SIG are controlled by Raspberry Pi
-  // (No ESP32 pinMode calls for MUX4)
+  // Multiplexer 4 not present — no ESP32 pin configuration required
 
   // Initialize coin acceptor pin
   pinMode(COIN_PIN, INPUT_PULLUP);
@@ -311,10 +309,8 @@ void setOutput(int idx, bool on) {
       mux3.channel(channel);
       digitalWrite(MUX3_SIG, on ? HIGH : LOW);
       break;
-    case 3:
-      // MUX4 (slots 49-64) is handled entirely by the Raspberry Pi.
-      // ESP32 will not select channels or drive SIG for this multiplexer.
-      // Keep internal state updated but do not drive any pins here.
+    default:
+      // Out of range for this firmware (supports 0..47 indices)
       break;
   }
 }

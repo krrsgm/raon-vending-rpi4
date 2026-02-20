@@ -30,35 +30,6 @@ except Exception as e:
     DISPENSE_MONITOR_AVAILABLE = False
     print(f"Item Dispense Monitor not available: {e}")
 
-# Raspberry Pi 4 compatibility detection
-IS_RASPBERRY_PI = False
-try:
-    with open('/proc/device-tree/model', 'r') as f:
-        model = f.read()
-        IS_RASPBERRY_PI = 'Raspberry Pi' in model
-        print(f"Platform detected: {model.strip()}")
-except (FileNotFoundError, IOError):
-    IS_RASPBERRY_PI = False
-    print(f"Platform detected: {platform.system()}")
-
-print(f"Running on: {'Raspberry Pi' if IS_RASPBERRY_PI else platform.system()}")
-
-try:
-    from esp32_client import pulse_slot
-except Exception as e:
-    # If helper missing or import fails, provide informative error
-    print(f"WARNING: Failed to import pulse_slot from esp32_client: {e}")
-    def pulse_slot(host, slot, ms=800):
-        raise RuntimeError(f"ESP32 client not available. Cannot pulse slot {slot}. Import error: {e}")
-
-# MUX4 Controller for Slots 49-64
-try:
-    from mux4_controller import MUX4Controller
-    MUX4_AVAILABLE = True
-except Exception as e:
-    MUX4_AVAILABLE = False
-    print(f"MUX4 Controller not available: {e}")
-
 
 class MainApp(tk.Tk):
     def __init__(self, *args, **kwargs):
@@ -66,7 +37,6 @@ class MainApp(tk.Tk):
         self.cart = []
         self.tec_controller = None  # TEC Peltier module controller
         self.dispense_monitor = None  # Item dispense IR sensor monitor
-        self.mux4_controller = None  # MUX4 SIG pin controller for slots 49-64
 
         # Start in fullscreen mode for kiosk display
         self.is_fullscreen = True
@@ -105,8 +75,6 @@ class MainApp(tk.Tk):
         # Initialize Item Dispense Monitor if enabled in config
         self._init_dispense_monitor()
         
-        # Initialize MUX4 Controller for slots 49-64
-        self._init_mux4_controller()
         
         # Apply fullscreen and rotation according to config
         # Apply fullscreen and rotation according to config
@@ -282,38 +250,7 @@ class MainApp(tk.Tk):
             print(f"[MainApp] Failed to initialize Dispense Monitor: {e}")
             self.dispense_monitor = None
     
-    def _init_mux4_controller(self):
-        """Initialize MUX4 SIG controller for slots 49-64."""
-        if not MUX4_AVAILABLE:
-            return
-        
-        try:
-            hardware_config = self.config.get('hardware', {})
-            mux4_config = hardware_config.get('mux4', {})
-            
-            if not mux4_config.get('enabled', True):
-                print("[MainApp] MUX4 controller disabled in config")
-                return
-            
-            # Get all MUX4 pins from config with fallback to defaults
-            s0_pin = mux4_config.get('s0_pin', 16)
-            s1_pin = mux4_config.get('s1_pin', 5)
-            s2_pin = mux4_config.get('s2_pin', 18)
-            s3_pin = mux4_config.get('s3_pin', 19)
-            sig_pin = mux4_config.get('sig_pin', 23)
-            
-            self.mux4_controller = MUX4Controller(
-                s0_pin=s0_pin,
-                s1_pin=s1_pin,
-                s2_pin=s2_pin,
-                s3_pin=s3_pin,
-                sig_pin=sig_pin
-            )
-            print(f"[MainApp] MUX4 controller initialized: S0={s0_pin},S1={s1_pin},S2={s2_pin},S3={s3_pin},SIG={sig_pin}")
-        
-        except Exception as e:
-            print(f"[MainApp] Failed to initialize MUX4 Controller: {e}")
-            self.mux4_controller = None
+    # MUX4 support removed — device supports only slots 1..48
     
     
     def _on_tec_status_update(self, enabled, active, target_temp, current_temp):

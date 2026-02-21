@@ -35,12 +35,22 @@ volatile bool waitingForBill = false;
 volatile bool billProcessed = false;
 const unsigned long pulseDebounceMs = 60; // debounce interval in ms (INCREASED from 20ms to filter noise)
 
-// --- Coin Hopper Pin Configuration (ESP32 GPIO pins) ---
+// --- Coin Hopper Pin Configuration ---
+// Default pins are for ESP32. For Arduino Uno/Nano, an AVR macro will switch to
+// safer Uno-compatible pins (motor outputs on 9/10, sensors on 11/12).
+#if defined(ARDUINO_AVR_UNO) || defined(ARDUINO_AVR_NANO)
+const int ONE_MOTOR_PIN = 9;   // 1-peso motor control (Uno digital pin 9)
+const int FIVE_MOTOR_PIN = 10; // 5-peso motor control (Uno digital pin 10)
+
+const int ONE_SENSOR_PIN = 11; // 1-peso sensor input (Uno digital pin 11)
+const int FIVE_SENSOR_PIN = 12; // 5-peso sensor input (Uno digital pin 12)
+#else
 const int ONE_MOTOR_PIN = 12;   // 1-peso motor control (ESP32 GPIO 12)
 const int FIVE_MOTOR_PIN = 13;  // 5-peso motor control (ESP32 GPIO 13)
 
 const int ONE_SENSOR_PIN = 14;  // 1-peso sensor input (ESP32 GPIO 14)
 const int FIVE_SENSOR_PIN = 15; // 5-peso sensor input (ESP32 GPIO 15)
+#endif
 
 const unsigned long BAUD_RATE = 115200;
 
@@ -174,41 +184,38 @@ void processLine(String line, Stream &out) {
       out.println("OK DISPENSE_DENOM STARTED");
     }
   } else if (cmd == "OPEN"){
-<<<<<<< HEAD
-    if (partCount >= 2){ int denom = parts[1].toInt(); if (denom == 1){ stop_motor(ONE_MOTOR_PIN); out.println("OK OPEN ONE"); } else if (denom == 5){ stop_motor(FIVE_MOTOR_PIN); out.println("OK OPEN FIVE"); } else out.println("ERR bad denom"); }
+    if (partCount >= 2) {
+      int denom = parts[1].toInt();
+      if (denom == 1) {
+        start_motor(ONE_MOTOR_PIN);
+        out.println("OK OPEN ONE");
+      } else if (denom == 5) {
+        start_motor(FIVE_MOTOR_PIN);
+        out.println("OK OPEN FIVE");
+      } else {
+        out.println("ERR bad denom");
+      }
+    }
   } else if (cmd == "CLOSE"){
-    if (partCount >= 2){ int denom = parts[1].toInt(); if (denom == 1){ start_motor(ONE_MOTOR_PIN); out.println("OK CLOSE ONE"); } else if (denom == 5){ start_motor(FIVE_MOTOR_PIN); out.println("OK CLOSE FIVE"); } else out.println("ERR bad denom"); }
-=======
-    if (partCount >= 2){ int denom = parts[1].toInt(); if (denom == 1){ start_motor(ONE_MOTOR_PIN); out.println("OK OPEN ONE"); } else if (denom == 5){ start_motor(FIVE_MOTOR_PIN); out.println("OK OPEN FIVE"); } else out.println("ERR bad denom"); }
-  } else if (cmd == "CLOSE"){
-    if (partCount >= 2){ int denom = parts[1].toInt(); if (denom == 1){ stop_motor(ONE_MOTOR_PIN); out.println("OK CLOSE ONE"); } else if (denom == 5){ stop_motor(FIVE_MOTOR_PIN); out.println("OK CLOSE FIVE"); } else out.println("ERR bad denom"); }
->>>>>>> d01131f2016f0784ca3792acf3ad2a32d55d3e91
+    if (partCount >= 2) {
+      int denom = parts[1].toInt();
+      if (denom == 1) {
+        stop_motor(ONE_MOTOR_PIN);
+        out.println("OK CLOSE ONE");
+      } else if (denom == 5) {
+        stop_motor(FIVE_MOTOR_PIN);
+        out.println("OK CLOSE FIVE");
+      } else {
+        out.println("ERR bad denom");
+      }
+    }
   } else if (cmd == "STATUS"){
-      if (partCount >= 2){
-        int denom = parts[1].toInt();
-        if (denom == 1){
-          start_motor(ONE_MOTOR_PIN);
-          out.println("OK OPEN ONE");
-        } else if (denom == 5){
-          start_motor(FIVE_MOTOR_PIN);
-          out.println("OK OPEN FIVE");
-        } else {
-          out.println("ERR bad denom");
-        }
-      }
-    } else if (cmd == "CLOSE"){
-      if (partCount >= 2){
-        int denom = parts[1].toInt();
-        if (denom == 1){
-          stop_motor(ONE_MOTOR_PIN);
-          out.println("OK CLOSE ONE");
-        } else if (denom == 5){
-          stop_motor(FIVE_MOTOR_PIN);
-          out.println("OK CLOSE FIVE");
-        } else {
-          out.println("ERR bad denom");
-        }
-      }
+    report_status(out);
+  } else if (cmd == "STOP"){
+    stop_all_jobs("user", out);
+  } else {
+    out.println("ERR unknown command");
+  }
 
 // --- Bill Acceptor Functions ---
 void countPulse() {

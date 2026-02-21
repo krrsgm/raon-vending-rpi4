@@ -629,9 +629,9 @@ class CartScreen(tk.Frame):
                     result = self.stock_tracker.record_sale(
                         item_name=item_name,
                         quantity=qty,
-                        coin_amount=0.0,
-                        bill_amount=0.0,
-                        change_dispensed=0.0
+                        coin_amount=coin_amount,
+                        bill_amount=bill_amount,
+                        change_dispensed=change_dispensed
                     )
                     
                     if not result['success']:

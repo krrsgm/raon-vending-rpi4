@@ -75,6 +75,7 @@ class Sale(db.Model):
     """Represents a sale transaction."""
     id = db.Column(db.Integer, primary_key=True)
     machine_id = db.Column(db.Integer, db.ForeignKey('machine.id'), nullable=False)
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=True)
     item_name = db.Column(db.String(100), nullable=False)
     quantity = db.Column(db.Integer, default=1)
     amount_received = db.Column(db.Float, nullable=False)
@@ -549,6 +550,7 @@ def api_record_sale():
         # Create sale record
         sale = Sale(
             machine_id=machine.id,
+            item_id=item.id,
             item_name=item_name,
             quantity=quantity,
             amount_received=amount_received,
@@ -764,10 +766,18 @@ def get_sales_logs():
         
         logs = []
         for sale in sales:
-            item = Item.query.get(sale.item_id)
-            if item:
+            # Use item_name directly, or fallback to database lookup if item_id exists
+            item_name = sale.item_name
+            if not item_name and sale.item_id:
+                item = Item.query.get(sale.item_id)
+                if item:
+                    item_name = item.name
+            
+            if item_name:
                 amount = sale.coin_amount + sale.bill_amount
-                logs.append(f"[{sale.timestamp.strftime('%H:%M:%S')}] {item.name} - ₱{amount:.2f}")
+                qty = sale.quantity if sale.quantity > 1 else ''
+                qty_text = f" x{qty}" if qty else ''
+                logs.append(f"[{sale.timestamp.strftime('%H:%M:%S')}] {item_name}{qty_text} - ₱{amount:.2f}")
         
         return jsonify({"logs": logs}), 200
     except Exception as e:

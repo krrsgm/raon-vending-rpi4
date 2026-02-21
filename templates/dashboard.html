@@ -603,6 +603,7 @@
             }
         }
         
+        function drawSensorChart(canvasId, timestamps, temp1Data, temp2Data, humidity1Data, humidity2Data, label) {
             const ctx = document.getElementById(canvasId).getContext('2d');
             
             // Destroy existing chart if any

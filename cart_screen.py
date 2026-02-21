@@ -445,11 +445,20 @@ class CartScreen(tk.Frame):
         if self.payment_in_progress:
             received = self.payment_handler.get_current_amount()
             
-            # Get individual amounts
-            coin_amount = self.payment_handler.coin_acceptor.get_received_amount()
+            # Get individual amounts with proper None checks
+            coin_amount = 0.0
+            if self.payment_handler.coin_acceptor:
+                try:
+                    coin_amount = self.payment_handler.coin_acceptor.get_received_amount()
+                except Exception as e:
+                    print(f"[CartScreen] Error getting coin amount: {e}")
+            
             bill_amount = 0.0
             if self.payment_handler.bill_acceptor:
-                bill_amount = self.payment_handler.bill_acceptor.get_received_amount()
+                try:
+                    bill_amount = self.payment_handler.bill_acceptor.get_received_amount()
+                except Exception as e:
+                    print(f"[CartScreen] Error getting bill amount: {e}")
             
             if received != self.payment_received:  # Only update if amount changed
                 self.payment_received = received
@@ -481,13 +490,18 @@ class CartScreen(tk.Frame):
         if not self.payment_in_progress:
             return
 
+        coin_amount = 0.0
         try:
-            coin_amount = self.payment_handler.coin_acceptor.get_received_amount()
+            if self.payment_handler.coin_acceptor:
+                coin_amount = self.payment_handler.coin_acceptor.get_received_amount()
         except Exception as e:
             print(f"[PAYMENT] Error getting coin amount: {e}")
             coin_amount = 0.0
+        
+        bill_amount = 0.0
         try:
-            bill_amount = self.payment_handler.bill_acceptor.get_received_amount() if self.payment_handler.bill_acceptor else 0.0
+            if self.payment_handler.bill_acceptor:
+                bill_amount = self.payment_handler.bill_acceptor.get_received_amount()
         except Exception as e:
             print(f"[PAYMENT] Error getting bill amount: {e}")
             bill_amount = 0.0

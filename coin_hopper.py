@@ -237,10 +237,14 @@ class CoinHopper:
                 dispensed = int(match.group(1)) if match else 0
                 return (False, dispensed, f"Dispensing failed: {response}")
             else:
-                return (True, amount, f"Arduino response: {response}")
+                # Unknown response - log it and return failure
+                print(f"[CoinHopper] Unknown DISPENSE_AMOUNT response: {response}")
+                return (False, 0, f"Unknown response from coin hopper: {response}")
                 
         except Exception as e:
-            return (False, 0, f"Error dispensing change: {str(e)}")
+            error_msg = f"Error dispensing change: {str(e)}"
+            print(f"[CoinHopper] {error_msg}")
+            return (False, 0, error_msg)
 
     def dispense_coins(self, denomination, count, timeout_ms=30000, callback=None):
         """Dispense specific denomination and count.
@@ -282,10 +286,14 @@ class CoinHopper:
                 dispensed = int(match.group(1)) if match else 0
                 return (False, dispensed, f"Dispensing failed: {response}")
             else:
-                return (True, count, f"Arduino response: {response}")
+                # Unknown response - log it and return failure
+                print(f"[CoinHopper] Unknown DISPENSE_DENOM response: {response}")
+                return (False, 0, f"Unknown response from coin hopper: {response}")
                 
         except Exception as e:
-            return (False, 0, f"Error dispensing coins: {str(e)}")
+            error_msg = f"Error dispensing coins: {str(e)}"
+            print(f"[CoinHopper] {error_msg}")
+            return (False, 0, error_msg)
 
     def get_status(self):
         """Get current hopper status.

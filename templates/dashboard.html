@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAON - Inventory Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 { font-size: 28px; }
+        .header-right { display: flex; gap: 15px; align-items: center; }
+        .refresh-time { font-size: 12px; opacity: 0.9; }
+        
+        .container {
+            max-width: 1400px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-label { font-size: 12px; color: #999; font-weight: bold; }
+        .stat-value { font-size: 32px; font-weight: bold; color: #333; margin: 10px 0; }
+        .stat-icon { font-size: 32px; margin-bottom: 10px; }
+        
+        .machines-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+            gap: 20px;
+        }
+        
+        .machine-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .machine-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #667eea;
+        }
+        
+        .machine-header h2 { font-size: 20px; color: #333; }
+        .status-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            background: #27ae60;
+            color: white;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .machine-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .stat-box {
+            background: #f9f9f9;
+            padding: 10px;
+            border-radius: 4px;
+            border-left: 3px solid #667eea;
+        }
+        
+        .stat-label-small { font-size: 11px; color: #999; }
+        .stat-value-small { font-size: 16px; font-weight: bold; color: #333; margin-top: 3px; }
+        
+        .low-stock-alert {
+            background: #ffe8e8;
+            border-left: 4px solid #e74c3c;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .alert-items { color: #d35400; }
+        
+        .items-sold {
+            background: #f0f8ff;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .items-sold-title { font-weight: bold; color: #333; margin-bottom: 5px; }
+        .items-sold-list { color: #667eea; }
+        
+        .logs-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        
+        .logs-section h3 { margin-bottom: 15px; color: #333; }
+        
+        .logs-container {
+            max-height: 400px;
+            overflow-y: auto;
+            background: #fafafa;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 11px;
+        }
+        
+        .log-line {
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .log-line:hover { background: #fff; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 RAON Dashboard</h1>
+        <div class="header-right">
+            <div class="refresh-time">Last update: <span id="lastUpdate">now</span></div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <!-- Real-time Stats -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-icon">💰</div>
+                <div class="stat-label">Today's Sales</div>
+                <div class="stat-value" id="todaySales">₱0.00</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🛒</div>
+                <div class="stat-label">Transactions</div>
+                <div class="stat-value" id="transactions">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">📦</div>
+                <div class="stat-label">Items Sold</div>
+                <div class="stat-value" id="itemsSold">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">⚠️</div>
+                <div class="stat-label">Low Stock</div>
+                <div class="stat-value" id="lowStock">0</div>
+            </div>
+        </div>
+        
+        <!-- Machine Cards -->
+        <h2 style="margin: 30px 0 15px 0;">Machines</h2>
+        <div class="machines-grid" id="machinesGrid">
+            <div class="machine-card">Loading...</div>
+        </div>
+        
+        <!-- Sales Logs -->
+        <div class="logs-section">
+            <h3>📝 Recent Sales Logs</h3>
+            <div class="logs-container" id="logsContainer">
+                <div class="log-line">Loading logs...</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Fetch real-time status
+        async function updateStatus() {
+            try {
+                // Fetch status
+                const statusRes = await fetch('/api/status/realtime');
+                const statusData = await statusRes.json();
+                
+                // Fetch sales logs
+                const logsRes = await fetch('/api/sales/today');
+                const logsData = await logsRes.json();
+                
+                // Update stats
+                document.getElementById('todaySales').textContent = '₱' + logsData.total_sales.toFixed(2);
+                document.getElementById('transactions').textContent = logsData.total_transactions;
+                document.getElementById('itemsSold').textContent = Object.values(logsData.items_sold || {}).reduce((a, b) => a + b, 0);
+                
+                let lowStockCount = 0;
+                statusData.forEach(m => lowStockCount += m.low_stock_count);
+                document.getElementById('lowStock').textContent = lowStockCount;
+                
+                // Update machines grid
+                const grid = document.getElementById('machinesGrid');
+                grid.innerHTML = '';
+                
+                statusData.forEach(machine => {
+                    const lowStockItems = machine.low_stock_items || [];
+                    const itemsList = Object.entries(machine.items_sold_today || {})
+                        .map(([name, qty]) => `${name}: ${qty}`)
+                        .join(', ') || 'None';
+                    
+                    const card = document.createElement('div');
+                    card.className = 'machine-card';
+                    card.innerHTML = `
+                        <div class="machine-header">
+                            <h2>${machine.name}</h2>
+                            <span class="status-badge">${machine.is_active ? '🟢 Active' : '🔴 Offline'}</span>
+                        </div>
+                        
+                        ${lowStockItems.length > 0 ? `
+                            <div class="low-stock-alert">
+                                <div style="font-weight: bold; color: #c0392b;">⚠️ Low Stock Alert:</div>
+                                <div class="alert-items">${lowStockItems.join(', ')}</div>
+                            </div>
+                        ` : ''}
+                        
+                        <div class="machine-stats">
+                            <div class="stat-box">
+                                <div class="stat-label-small">Total Items</div>
+                                <div class="stat-value-small">${machine.total_items}</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-label-small">Today's Sales</div>
+                                <div class="stat-value-small">₱${machine.today_sales.toFixed(2)}</div>
+                            </div>
+                        </div>
+                        
+                        <div class="items-sold">
+                            <div class="items-sold-title">Today's Items Sold:</div>
+                            <div class="items-sold-list">${itemsList}</div>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+                
+                // Update logs
+                const logsRes2 = await fetch('/api/sales/logs');
+                const logsData2 = await logsRes2.json();
+                if (logsData2.logs && logsData2.logs.length > 0) {
+                    const logsContainer = document.getElementById('logsContainer');
+                    logsContainer.innerHTML = logsData2.logs
+                        .sort((a, b) => new Date(b) - new Date(a))  // Most recent first
+                        .slice(0, 20)  // Last 20 transactions
+                        .map(log => `<div class="log-line">${log}</div>`)
+                        .join('');
+                } else {
+                    document.getElementById('logsContainer').innerHTML = '<div class="log-line">No sales yet today</div>';
+                }
+                
+                // Update timestamp
+                const now = new Date();
+                document.getElementById('lastUpdate').textContent = now.toLocaleTimeString();
+            } catch (error) {
+                console.error('Error updating status:', error);
+            }
+        }
+        
+        // Initial load
+        updateStatus();
+        
+        // Auto-refresh every 5 seconds
+        setInterval(updateStatus, 5000);
+    </script>
+</body>
+</html>

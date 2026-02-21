@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAON Vending Machine</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 { font-size: 28px; margin-bottom: 5px; }
+        .header p { font-size: 14px; opacity: 0.9; }
+        
+        .container {
+            display: flex;
+            flex: 1;
+            gap: 20px;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        
+        .items-section { flex: 2; }
+        .cart-section { flex: 1; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        
+        .items-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 15px;
+        }
+        
+        .item-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border: 2px solid transparent;
+        }
+        
+        .item-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-color: #667eea;
+        }
+        
+        .item-card img {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        
+        .item-card h3 { font-size: 16px; margin-bottom: 5px; color: #333; }
+        .item-card .price { font-size: 18px; font-weight: bold; color: #667eea; }
+        .item-card .stock { font-size: 12px; color: #999; margin-top: 5px; }
+        .item-card.out-of-stock { opacity: 0.5; cursor: not-allowed; }
+        
+        .cart-header h2 { font-size: 20px; margin-bottom: 15px; color: #333; }
+        
+        .cart-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+        
+        .cart-item-name { flex: 1; }
+        .cart-item-qty {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+        
+        .qty-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .qty-btn:hover { background: #764ba2; }
+        
+        .cart-item-remove {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+        
+        .cart-summary {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 2px solid #667eea;
+        }
+        
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .summary-row.total {
+            font-size: 18px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .checkout-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: all 0.3s ease;
+        }
+        
+        .checkout-btn:hover { transform: scale(1.02); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+        .checkout-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .payment-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .payment-modal.show { display: flex; }
+        
+        .payment-content {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            max-width: 500px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        
+        .payment-content h2 { font-size: 24px; margin-bottom: 20px; color: #333; }
+        
+        .amount-display {
+            font-size: 48px;
+            font-weight: bold;
+            color: #667eea;
+            margin: 20px 0;
+        }
+        
+        .progress-bar {
+            background: #eee;
+            height: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .waiting-text {
+            font-size: 14px;
+            color: #666;
+            margin-top: 20px;
+        }
+        
+        .complete-message {
+            font-size: 18px;
+            color: #27ae60;
+            margin-top: 20px;
+        }
+        
+        .error-message {
+            font-size: 16px;
+            color: #e74c3c;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 RAON Vending Machine</h1>
+        <p>{{ machine.name }} - Select items and pay</p>
+    </div>
+    
+    <div class="container">
+        <div class="items-section">
+            <div class="items-grid" id="itemsGrid">
+                {% for item in items %}
+                <div class="item-card {% if item.quantity <= 0 %}out-of-stock{% endif %}" 
+                     onclick="{% if item.quantity > 0 %}addToCart('{{ item.name }}', {{ item.price }}){% endif %}"
+                     data-item-name="{{ item.name }}"
+                     data-item-price="{{ item.price }}">
+                    {% if item.image_url %}
+                    <img src="{{ item.image_url }}" alt="{{ item.name }}">
+                    {% else %}
+                    <div style="width: 100%; height: 120px; background: #ddd; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #999;">No Image</div>
+                    {% endif %}
+                    <h3>{{ item.name }}</h3>
+                    <div class="price">{{ currency }}{{ item.price }}</div>
+                    <div class="stock">
+                        {% if item.quantity > 0 %}
+                            Stock: {{ item.quantity }}
+                        {% else %}
+                            Out of Stock
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <div class="cart-section">
+            <div class="cart-header">
+                <h2>🛒 Cart</h2>
+            </div>
+            
+            <div id="cartItems" style="min-height: 200px;">
+                <div style="color: #999; font-size: 14px;">Cart is empty</div>
+            </div>
+            
+            <div class="cart-summary">
+                <div class="summary-row">
+                    <span>Subtotal:</span>
+                    <span id="subtotal">₱0.00</span>
+                </div>
+                <div class="summary-row total">
+                    <span>Total:</span>
+                    <span id="total">₱0.00</span>
+                </div>
+            </div>
+            
+            <button class="checkout-btn" id="checkoutBtn" onclick="startPayment()" disabled>
+                Proceed to Payment
+            </button>
+        </div>
+    </div>
+    
+    <!-- Payment Modal -->
+    <div class="payment-modal" id="paymentModal">
+        <div class="payment-content">
+            <h2 id="paymentTitle">Processing Payment</h2>
+            
+            <div id="paymentRequired" style="display: block;">
+                <div style="font-size: 14px; margin-bottom: 10px;">Amount Required:</div>
+                <div class="amount-display" id="amountRequired">₱0.00</div>
+                <div style="font-size: 14px; margin-bottom: 10px;">Received:</div>
+                <div class="amount-display" id="amountReceived">₱0.00</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="waiting-text">Please insert payment...</div>
+            </div>
+            
+            <div id="paymentComplete" style="display: none;">
+                <div style="font-size: 24px; margin: 20px 0;">✓</div>
+                <div class="complete-message">Payment confirmed!</div>
+                <div style="font-size: 14px; color: #666; margin-top: 10px;">Dispensing your items...</div>
+            </div>
+            
+            <div id="paymentError" style="display: none;">
+                <div class="error-message" id="errorMessage">Payment failed</div>
+                <button class="checkout-btn" onclick="closePayment()" style="margin-top: 20px;">Return to Items</button>
+            </div>
+            
+            <button class="checkout-btn" id="cancelBtn" onclick="closePayment()" style="background: #95a5a6; margin-top: 10px;">Cancel Payment</button>
+        </div>
+    </div>
+    
+    <script>
+        const machineId = "{{ machine.machine_id }}";
+        let cart = {};
+        let paymentInProgress = false;
+        
+        function addToCart(itemName, price) {
+            if (!cart[itemName]) {
+                cart[itemName] = { price: price, quantity: 0 };
+            }
+            cart[itemName].quantity++;
+            updateCartDisplay();
+        }
+        
+        function removeFromCart(itemName) {
+            delete cart[itemName];
+            updateCartDisplay();
+        }
+        
+        function updateQty(itemName, delta) {
+            cart[itemName].quantity += delta;
+            if (cart[itemName].quantity <= 0) {
+                removeFromCart(itemName);
+            } else {
+                updateCartDisplay();
+            }
+        }
+        
+        function updateCartDisplay() {
+            const items = Object.keys(cart);
+            const cartItemsDiv = document.getElementById('cartItems');
+            let total = 0;
+            
+            if (items.length === 0) {
+                cartItemsDiv.innerHTML = '<div style="color: #999; font-size: 14px;">Cart is empty</div>';
+                document.getElementById('checkoutBtn').disabled = true;
+            } else {
+                let html = '';
+                items.forEach(name => {
+                    const item = cart[name];
+                    const itemTotal = item.price * item.quantity;
+                    total += itemTotal;
+                    html += `
+                        <div class="cart-item">
+                            <div class="cart-item-name">${name} x${item.quantity}</div>
+                            <div style="color: #667eea; font-weight: bold;">₱${itemTotal.toFixed(2)}</div>
+                            <div class="cart-item-qty">
+                                <button class="qty-btn" onclick="updateQty('${name}', -1)">-</button>
+                                <button class="qty-btn" onclick="updateQty('${name}', 1)">+</button>
+                                <button class="cart-item-remove" onclick="removeFromCart('${name}')">Remove</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                cartItemsDiv.innerHTML = html;
+                document.getElementById('checkoutBtn').disabled = false;
+            }
+            
+            document.getElementById('subtotal').textContent = '₱' + total.toFixed(2);
+            document.getElementById('total').textContent = '₱' + total.toFixed(2);
+        }
+        
+        function startPayment() {
+            if (paymentInProgress) return;
+            paymentInProgress = true;
+            
+            const items = Object.keys(cart).map(name => ({
+                name: name,
+                quantity: cart[name].quantity
+            }));
+            
+            fetch('/api/cart', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ machine_id: machineId, items: items })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) throw new Error(data.error);
+                openPaymentModal(data.total);
+                pollPaymentStatus(data.total);
+            })
+            .catch(err => {
+                alert('Error: ' + err.message);
+                paymentInProgress = false;
+                closePayment();
+            });
+        }
+        
+        function openPaymentModal(total) {
+            document.getElementById('paymentModal').classList.add('show');
+            document.getElementById('amountRequired').textContent = '₱' + total.toFixed(2);
+        }
+        
+        function pollPaymentStatus(required) {
+            const interval = setInterval(() => {
+                fetch('/api/payment/status')
+                    .then(r => r.json())
+                    .then(data => {
+                        document.getElementById('amountReceived').textContent = '₱' + data.received.toFixed(2);
+                        
+                        const percentage = Math.min(100, (data.received / required) * 100);
+                        document.getElementById('progressFill').style.width = percentage + '%';
+                        
+                        if (data.received >= required) {
+                            clearInterval(interval);
+                            completePayment();
+                        }
+                    });
+            }, 500);
+        }
+        
+        function completePayment() {
+            document.getElementById('paymentRequired').style.display = 'none';
+            document.getElementById('paymentComplete').style.display = 'block';
+            
+            fetch('/api/cart/confirm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ machine_id: machineId })
+            })
+            .then(r => r.json())
+            .then(data => {
+                setTimeout(() => closePayment(), 3000);
+            });
+        }
+        
+        function closePayment() {
+            document.getElementById('paymentModal').classList.remove('show');
+            document.getElementById('paymentRequired').style.display = 'block';
+            document.getElementById('paymentComplete').style.display = 'none';
+            document.getElementById('paymentError').style.display = 'none';
+            cart = {};
+            updateCartDisplay();
+            paymentInProgress = false;
+        }
+    </script>
+</body>
+</html>

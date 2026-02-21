@@ -879,12 +879,14 @@ def create_app_with_db():
         # Ensure default machine exists
         machine_id = config.get('machine_id', 'RAON-001')
         machine_name = config.get('machine_name', 'RAON Vending Machine')
+        esp32_host = config.get('esp32_host', '192.168.4.1')
         
         machine = Machine.query.filter_by(machine_id=machine_id).first()
         if not machine:
             machine = Machine(
                 machine_id=machine_id,
                 name=machine_name,
+                esp32_host=esp32_host,
                 is_active=True
             )
             db.session.add(machine)

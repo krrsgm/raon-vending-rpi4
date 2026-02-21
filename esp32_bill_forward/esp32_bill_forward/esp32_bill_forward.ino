@@ -166,9 +166,15 @@ void processLine(String line, Stream &out) {
       out.println("OK DISPENSE_DENOM STARTED");
     }
   } else if (cmd == "OPEN"){
+<<<<<<< HEAD
     if (partCount >= 2){ int denom = parts[1].toInt(); if (denom == 1){ stop_motor(ONE_MOTOR_PIN); out.println("OK OPEN ONE"); } else if (denom == 5){ stop_motor(FIVE_MOTOR_PIN); out.println("OK OPEN FIVE"); } else out.println("ERR bad denom"); }
   } else if (cmd == "CLOSE"){
     if (partCount >= 2){ int denom = parts[1].toInt(); if (denom == 1){ start_motor(ONE_MOTOR_PIN); out.println("OK CLOSE ONE"); } else if (denom == 5){ start_motor(FIVE_MOTOR_PIN); out.println("OK CLOSE FIVE"); } else out.println("ERR bad denom"); }
+=======
+    if (partCount >= 2){ int denom = parts[1].toInt(); if (denom == 1){ start_motor(ONE_MOTOR_PIN); out.println("OK OPEN ONE"); } else if (denom == 5){ start_motor(FIVE_MOTOR_PIN); out.println("OK OPEN FIVE"); } else out.println("ERR bad denom"); }
+  } else if (cmd == "CLOSE"){
+    if (partCount >= 2){ int denom = parts[1].toInt(); if (denom == 1){ stop_motor(ONE_MOTOR_PIN); out.println("OK CLOSE ONE"); } else if (denom == 5){ stop_motor(FIVE_MOTOR_PIN); out.println("OK CLOSE FIVE"); } else out.println("ERR bad denom"); }
+>>>>>>> d01131f2016f0784ca3792acf3ad2a32d55d3e91
   } else if (cmd == "STATUS"){
     report_status(out);
   } else if (cmd == "STOP"){

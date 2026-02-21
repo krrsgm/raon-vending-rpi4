@@ -163,19 +163,51 @@ class KioskFrame(tk.Frame):
             self.controller.show_item(self._clicked_item_data)
     def create_item_card(self, parent, item_data):
         """Creates a single item card widget with dimensions: 1in width x 2.5in height."""
+        # Determine stock status and color-coding
+        quantity = item_data.get('quantity', 0)
+        default_threshold = 3  # Default low stock threshold
+        
+        # Determine stock status color
+        if quantity <= 0:
+            stock_status = 'out_of_stock'
+            border_color = '#e74c3c'  # Red
+            stock_indicator = '❌ OUT'
+        elif quantity <= default_threshold:
+            stock_status = 'low_stock'
+            border_color = '#f39c12'  # Orange/Yellow
+            stock_indicator = f'⚠️ {quantity}'
+        else:
+            stock_status = 'in_stock'
+            border_color = '#27ae60'  # Green
+            stock_indicator = f'✓ {quantity}'
+        
         card = tk.Frame(
             parent,
             bg=self.colors['card_bg'],
-            highlightbackground=self.colors['border'],
-            highlightthickness=1,
+            highlightbackground=border_color,  # Color-coded border
+            highlightthickness=3,  # Thicker border for visibility
             bd=0,
             width=self.card_width,
             height=self.card_height
         )
         card.pack_propagate(False)  # Fix the size to 1in x 2.5in
 
+        # Stock Status Badge (top-right corner)
+        badge_frame = tk.Frame(card, bg=border_color, height=20)
+        badge_frame.pack(side='top', fill='x')
+        badge_frame.pack_propagate(False)
+        
+        badge_label = tk.Label(
+            badge_frame,
+            text=f'  {stock_indicator}  ',
+            font=self.fonts['control_bold'],
+            bg=border_color,
+            fg='white'
+        )
+        badge_label.pack(expand=True)
+
         # Image Placeholder - 60% of card height with minimal padding
-        image_height = int(self.card_height * 0.6)
+        image_height = int(self.card_height * 0.55)  # Reduced to accommodate badge
         image_frame = tk.Frame(card, bg=self.colors['card_bg'], height=image_height)
         image_frame.pack(fill='x', padx=2, pady=2)
         image_frame.pack_propagate(False) # Prevents child widgets from resizing it
@@ -333,6 +365,19 @@ class KioskFrame(tk.Frame):
 
         add_btn = tk.Button(controls, text='Add', bg='white', fg='#2222a8', relief='flat', font=self.fonts['control_bold'], padx=4, pady=2, command=on_add)
         add_btn.pack(side='left')
+        
+        # Add low-stock warning if quantity is low
+        if 0 < quantity <= default_threshold:
+            warning_frame = tk.Frame(bottom_frame, bg='#fff3cd')
+            warning_frame.pack(side='right', padx=5)
+            warning_label = tk.Label(
+                warning_frame,
+                text=f'Only {quantity} left!',
+                font=self.fonts['control_small'],
+                bg='#fff3cd',
+                fg='#856404'
+            )
+            warning_label.pack(padx=3, pady=1)
 
         # Bind click/drag behavior for cards that are purchasable
         if item_data.get('quantity',0) > 0:

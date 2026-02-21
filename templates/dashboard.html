@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RAON - Inventory Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -148,6 +149,143 @@
         }
         
         .log-line:hover { background: #fff; }
+        
+        .chart-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        
+        .chart-section h3 { margin-bottom: 15px; color: #333; }
+        
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 20px;
+        }
+        
+        .sensor-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .sensor-stat-box {
+            background: #f9f9f9;
+            padding: 12px;
+            border-radius: 4px;
+            border-left: 3px solid #667eea;
+            text-align: center;
+        }
+        
+        .sensor-stat-label { font-size: 11px; color: #999; font-weight: bold; }
+        .sensor-stat-value { font-size: 18px; font-weight: bold; color: #333; margin-top: 5px; }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #eee;
+        }
+        
+        .tab-button {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        
+        .tab-button.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: bold;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .previous-day-logs {
+            background: #fafafa;
+            padding: 10px;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .alert-item {
+            background: white;
+            border-left: 4px solid #e74c3c;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .alert-item.critical {
+            background: #ffe8e8;
+            border-left-color: #c0392b;
+        }
+        
+        .alert-item.warning {
+            background: #fff8f0;
+            border-left-color: #f39c12;
+        }
+        
+        .alert-info {
+            flex: 1;
+        }
+        
+        .alert-title {
+            font-weight: bold;
+            color: #c0392b;
+            margin-bottom: 3px;
+        }
+        
+        .alert-message {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .alert-time {
+            font-size: 11px;
+            color: #999;
+            margin-top: 3px;
+        }
+        
+        .alert-actions {
+            display: flex;
+            gap: 8px;
+            margin-left: 10px;
+        }
+        
+        .acknowledge-btn {
+            padding: 6px 12px;
+            background: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        
+        .acknowledge-btn:hover {
+            background: #229954;
+        }
     </style>
 </head>
 <body>
@@ -178,8 +316,18 @@
             </div>
             <div class="stat-card">
                 <div class="stat-icon">⚠️</div>
-                <div class="stat-label">Low Stock</div>
+                <div class="stat-label">Low Stock Alerts</div>
                 <div class="stat-value" id="lowStock">0</div>
+            </div>
+        </div>
+        
+        <!-- Low Stock Alerts Section -->
+        <div id="alertsSection" style="display:none; margin-bottom: 30px;">
+            <div class="logs-section" style="background: #fff5f5; border-left: 5px solid #e74c3c;">
+                <h3 style="color: #c0392b;">🚨 Active Alerts</h3>
+                <div id="alertsContainer" style="max-height: 300px; overflow-y: auto;">
+                    <div style="padding: 10px; color: #666;">No active alerts</div>
+                </div>
             </div>
         </div>
         
@@ -192,13 +340,371 @@
         <!-- Sales Logs -->
         <div class="logs-section">
             <h3>📝 Recent Sales Logs</h3>
-            <div class="logs-container" id="logsContainer">
-                <div class="log-line">Loading logs...</div>
+            <div class="tabs">
+                <button class="tab-button active" onclick="switchTab(event, 'today-logs')">Today</button>
+                <button class="tab-button" onclick="switchTab(event, 'previous-logs')">Previous Day</button>
+            </div>
+            
+            <div id="today-logs" class="tab-content active">
+                <div class="logs-container" id="logsContainer">
+                    <div class="log-line">Loading logs...</div>
+                </div>
+            </div>
+            
+            <div id="previous-logs" class="tab-content">
+                <div class="previous-day-logs" id="previousLogsContainer">
+                    <div class="log-line">Loading previous day logs...</div>
+                </div>
+                <div style="margin-top: 10px; font-size: 12px; color: #999;">
+                    <span id="previousDateLabel"></span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sensor Readings Chart -->
+        <div class="chart-section">
+            <h3>📊 Sensor Readings - Temperature & Humidity</h3>
+            <div class="tabs">
+                <button class="tab-button active" onclick="switchChart(event, 'today-chart')">Today</button>
+                <button class="tab-button" onclick="switchChart(event, 'previous-chart')">Previous Day</button>
+            </div>
+            
+            <div id="today-chart" class="tab-content active">
+                <div class="chart-container">
+                    <canvas id="sensorChart"></canvas>
+                </div>
+                <div class="sensor-stats-grid" id="todayStatsGrid">
+                    <div class="sensor-stat-box">
+                        <div class="sensor-stat-label">Avg Temp 1</div>
+                        <div class="sensor-stat-value" id="avgTemp1">--°C</div>
+                    </div>
+                    <div class="sensor-stat-box">
+                        <div class="sensor-stat-label">Avg Temp 2</div>
+                        <div class="sensor-stat-value" id="avgTemp2">--°C</div>
+                    </div>
+                    <div class="sensor-stat-box">
+                        <div class="sensor-stat-label">Avg Humidity 1</div>
+                        <div class="sensor-stat-value" id="avgHumidity1">--%</div>
+                    </div>
+                    <div class="sensor-stat-box">
+                        <div class="sensor-stat-label">Avg Humidity 2</div>
+                        <div class="sensor-stat-value" id="avgHumidity2">--%</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="previous-chart" class="tab-content">
+                <div class="chart-container">
+                    <canvas id="sensorChartPrevious"></canvas>
+                </div>
+                <div class="sensor-stats-grid" id="previousStatsGrid">
+                    <div class="sensor-stat-box">
+                        <div class="sensor-stat-label">Avg Temp 1</div>
+                        <div class="sensor-stat-value" id="avgTemp1Prev">--°C</div>
+                    </div>
+                    <div class="sensor-stat-box">
+                        <div class="sensor-stat-label">Avg Temp 2</div>
+                        <div class="sensor-stat-value" id="avgTemp2Prev">--°C</div>
+                    </div>
+                    <div class="sensor-stat-box">
+                        <div class="sensor-stat-label">Avg Humidity 1</div>
+                        <div class="sensor-stat-value" id="avgHumidity1Prev">--%</div>
+                    </div>
+                    <div class="sensor-stat-box">
+                        <div class="sensor-stat-label">Avg Humidity 2</div>
+                        <div class="sensor-stat-value" id="avgHumidity2Prev">--%</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
     
     <script>
+        let sensorChartInstance = null;
+        let sensorChartPreviousInstance = null;
+        
+        // Tab switching functions
+        function switchTab(event, tabName) {
+            event.preventDefault();
+            
+            // Hide all tabs
+            const contents = document.querySelectorAll('.logs-section .tab-content');
+            contents.forEach(content => content.classList.remove('active'));
+            
+            // Remove active class from all buttons
+            const buttons = event.target.parentElement.querySelectorAll('.tab-button');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            
+            // Show selected tab
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+            
+            // Load previous logs if needed
+            if (tabName === 'previous-logs') {
+                loadPreviousDayLogs();
+            }
+        }
+        
+        function switchChart(event, chartName) {
+            event.preventDefault();
+            
+            // Hide all chart tabs
+            const contents = document.querySelectorAll('.chart-section .tab-content');
+            contents.forEach(content => content.classList.remove('active'));
+            
+            // Remove active class from all buttons
+            const buttons = event.target.parentElement.querySelectorAll('.tab-button');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            
+            // Show selected chart tab
+            document.getElementById(chartName).classList.add('active');
+            event.target.classList.add('active');
+            
+            // Load sensor data if switching to previous day
+            if (chartName === 'previous-chart') {
+                loadSensorReadingsPreviousDay();
+            }
+        }
+        
+        // Load previous day logs
+        async function loadPreviousDayLogs() {
+            try {
+                const res = await fetch('/api/sales/previous-day');
+                const data = await res.json();
+                
+                const container = document.getElementById('previousLogsContainer');
+                if (data.logs && data.logs.length > 0) {
+                    container.innerHTML = data.logs
+                        .slice(0, 20)
+                        .map(log => `<div class="log-line">${log}</div>`)
+                        .join('');
+                } else {
+                    container.innerHTML = '<div class="log-line">No sales recorded on ' + data.date + '</div>';
+                }
+                
+                document.getElementById('previousDateLabel').textContent = 'Date: ' + data.date;
+            } catch (error) {
+                console.error('Error loading previous day logs:', error);
+                document.getElementById('previousLogsContainer').innerHTML = '<div class="log-line">Error loading previous day logs</div>';
+            }
+        }
+        
+        // Load sensor readings for today
+        async function loadSensorReadings() {
+            try {
+                const res = await fetch('/api/sensor-readings');
+                const data = await res.json();
+                
+                if (!data.readings || data.readings.length === 0) {
+                    console.log('No sensor readings available for today');
+                    return;
+                }
+                
+                // Extract data for chart
+                const timestamps = data.readings.map(r => r.timestamp.substring(11, 16)); // HH:MM format
+                const temp1Data = data.readings.map(r => r.temp1 || null);
+                const temp2Data = data.readings.map(r => r.temp2 || null);
+                const humidity1Data = data.readings.map(r => r.humidity1 || null);
+                const humidity2Data = data.readings.map(r => r.humidity2 || null);
+                
+                // Update stats
+                document.getElementById('avgTemp1').textContent = data.stats.avg_temp1.toFixed(1) + '°C';
+                document.getElementById('avgTemp2').textContent = data.stats.avg_temp2.toFixed(1) + '°C';
+                document.getElementById('avgHumidity1').textContent = data.stats.avg_humidity1.toFixed(1) + '%';
+                document.getElementById('avgHumidity2').textContent = data.stats.avg_humidity2.toFixed(1) + '%';
+                
+                // Create chart
+                drawSensorChart('sensorChart', timestamps, temp1Data, temp2Data, humidity1Data, humidity2Data, 'Today');
+            } catch (error) {
+                console.error('Error loading sensor readings:', error);
+            }
+        }
+        
+        // Load sensor readings for previous day
+        async function loadSensorReadingsPreviousDay() {
+            try {
+                const res = await fetch('/api/sensor-readings/previous-day');
+                const data = await res.json();
+                
+                if (!data.readings || data.readings.length === 0) {
+                    console.log('No sensor readings available for previous day');
+                    return;
+                }
+                
+                // Extract data for chart
+                const timestamps = data.readings.map(r => r.timestamp.substring(11, 16)); // HH:MM format
+                const temp1Data = data.readings.map(r => r.temp1 || null);
+                const temp2Data = data.readings.map(r => r.temp2 || null);
+                const humidity1Data = data.readings.map(r => r.humidity1 || null);
+                const humidity2Data = data.readings.map(r => r.humidity2 || null);
+                
+                // Update stats
+                document.getElementById('avgTemp1Prev').textContent = data.stats.avg_temp1.toFixed(1) + '°C';
+                document.getElementById('avgTemp2Prev').textContent = data.stats.avg_temp2.toFixed(1) + '°C';
+                document.getElementById('avgHumidity1Prev').textContent = data.stats.avg_humidity1.toFixed(1) + '%';
+                document.getElementById('avgHumidity2Prev').textContent = data.stats.avg_humidity2.toFixed(1) + '%';
+                
+                // Create chart
+                drawSensorChart('sensorChartPrevious', timestamps, temp1Data, temp2Data, humidity1Data, humidity2Data, 'Previous Day (' + data.date + ')');
+            } catch (error) {
+                console.error('Error loading previous day sensor readings:', error);
+            }
+        }
+        
+        // Load low stock alerts
+        async function loadLowStockAlerts() {
+            try {
+                const res = await fetch('/api/low-stock-alerts');
+                const data = await res.json();
+                
+                const container = document.getElementById('alertsContainer');
+                const section = document.getElementById('alertsSection');
+                const lowStockBadge = document.getElementById('lowStock');
+                
+                if (data.alerts && data.alerts.length > 0) {
+                    section.style.display = 'block';
+                    lowStockBadge.textContent = data.alerts.length;
+                    
+                    container.innerHTML = data.alerts.map(alert => `
+                        <div class="alert-item ${alert.severity}">
+                            <div class="alert-info">
+                                <div class="alert-title">${alert.severity === 'critical' ? '❌ OUT OF STOCK' : '⚠️ LOW STOCK'}: ${alert.item_name}</div>
+                                <div class="alert-message">Quantity: ${alert.current_quantity} (Threshold: ${alert.threshold})</div>
+                                <div class="alert-time">Detected: ${new Date(alert.timestamp).toLocaleString()}</div>
+                            </div>
+                            <div class="alert-actions">
+                                <button class="acknowledge-btn" onclick="acknowledgeAlert(${alert.id})">Acknowledge</button>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    section.style.display = 'none';
+                    lowStockBadge.textContent = '0';
+                }
+            } catch (error) {
+                console.error('Error loading low stock alerts:', error);
+            }
+        }
+        
+        // Acknowledge a low stock alert
+        async function acknowledgeAlert(alertId) {
+            try {
+                const res = await fetch(`/api/low-stock-alerts/${alertId}/acknowledge`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    // Reload alerts
+                    loadLowStockAlerts();
+                }
+            } catch (error) {
+                console.error('Error acknowledging alert:', error);
+            }
+        }
+        
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            
+            // Destroy existing chart if any
+            if (canvasId === 'sensorChart' && sensorChartInstance) {
+                sensorChartInstance.destroy();
+            } else if (canvasId === 'sensorChartPrevious' && sensorChartPreviousInstance) {
+                sensorChartPreviousInstance.destroy();
+            }
+            
+            const chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: timestamps,
+                    datasets: [
+                        {
+                            label: 'Temperature Sensor 1 (°C)',
+                            data: temp1Data,
+                            borderColor: '#e74c3c',
+                            backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#e74c3c'
+                        },
+                        {
+                            label: 'Temperature Sensor 2 (°C)',
+                            data: temp2Data,
+                            borderColor: '#f39c12',
+                            backgroundColor: 'rgba(243, 156, 18, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#f39c12'
+                        },
+                        {
+                            label: 'Humidity Sensor 1 (%)',
+                            data: humidity1Data,
+                            borderColor: '#3498db',
+                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#3498db'
+                        },
+                        {
+                            label: 'Humidity Sensor 2 (%)',
+                            data: humidity2Data,
+                            borderColor: '#1abc9c',
+                            backgroundColor: 'rgba(26, 188, 156, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#1abc9c'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                boxWidth: 12,
+                                padding: 15,
+                                font: { size: 12 }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Sensor Readings - ' + label
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Value'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time (HH:MM)'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            if (canvasId === 'sensorChart') {
+                sensorChartInstance = chart;
+            } else if (canvasId === 'sensorChartPrevious') {
+                sensorChartPreviousInstance = chart;
+            }
+        }
         // Fetch real-time status
         async function updateStatus() {
             try {
@@ -276,6 +782,12 @@
                 } else {
                     document.getElementById('logsContainer').innerHTML = '<div class="log-line">No sales yet today</div>';
                 }
+                
+                // Load sensor readings
+                loadSensorReadings();
+                
+                // Load low stock alerts
+                loadLowStockAlerts();
                 
                 // Update timestamp
                 const now = new Date();

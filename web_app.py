@@ -84,6 +84,19 @@ class Sale(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class LowStockAlert(db.Model):
+    """Represents a low stock warning alert."""
+    id = db.Column(db.Integer, primary_key=True)
+    machine_id = db.Column(db.Integer, db.ForeignKey('machine.id'), nullable=False)
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
+    item_name = db.Column(db.String(100), nullable=False)
+    current_quantity = db.Column(db.Integer, nullable=False)
+    threshold = db.Column(db.Integer, nullable=False)
+    alert_type = db.Column(db.String(50), default='low_stock')  # 'low_stock', 'out_of_stock'
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    acknowledged = db.Column(db.Boolean, default=False)
+
+
 # ============================================================================
 # GLOBAL STATE & PAYMENT HANDLER
 # ============================================================================
@@ -128,7 +141,6 @@ def home():
 # ============================================================================
 # ROUTES - DASHBOARD & MONITORING
 # ============================================================================
-        return jsonify({'error': str(e)}), 500
 
 
 # ============================================================================
@@ -218,6 +230,205 @@ def api_sales_logs():
         }), 200
     except Exception as e:
         logger.error(f"Sales logs error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sales/previous-day')
+def api_sales_previous_day():
+    """API: Get sales logs from the previous day."""
+    try:
+        logger_inst = get_logger() if get_logger else None
+        if not logger_inst:
+            return jsonify({'error': 'Logger not available'}), 500
+        
+        from datetime import datetime as dt
+        yesterday = (dt.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        logs_dir = logger_inst.logs_dir
+        log_file = os.path.join(logs_dir, f"sales_{yesterday}.log")
+        
+        if not os.path.exists(log_file):
+            return jsonify({'logs': [], 'date': yesterday, 'summary': {
+                'total_transactions': 0,
+                'total_sales': 0.0,
+                'total_coins': 0.0,
+                'total_bills': 0.0,
+                'items_sold': {}
+            }}), 200
+        
+        logs = []
+        try:
+            with open(log_file, 'r', encoding='utf-8') as f:
+                logs = f.readlines()
+        except Exception as e:
+            logger.error(f"Error reading log file: {e}")
+        
+        # Try to get summary for previous day
+        summary = {
+            'total_transactions': len(logs),
+            'total_sales': 0.0,
+            'total_coins': 0.0,
+            'total_bills': 0.0,
+            'items_sold': {}
+        }
+        
+        return jsonify({
+            'logs': logs,
+            'date': yesterday,
+            'count': len(logs),
+            'summary': summary
+        }), 200
+    except Exception as e:
+        logger.error(f"Previous day sales error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sensor-readings')
+def api_sensor_readings():
+    """API: Get sensor readings for a specific date (default today)."""
+    try:
+        from datetime import datetime as dt
+        date_str = request.args.get('date', dt.now().strftime("%Y-%m-%d"))
+        
+        # Try to find sensor data logger
+        sensor_log_dir = 'logs'  # Default logs directory
+        sensor_log_file = os.path.join(sensor_log_dir, f"sensor_data_{date_str}.csv")
+        
+        if not os.path.exists(sensor_log_file):
+            return jsonify({
+                'readings': [],
+                'date': date_str,
+                'stats': {
+                    'avg_temp1': 0,
+                    'avg_temp2': 0,
+                    'avg_humidity1': 0,
+                    'avg_humidity2': 0
+                }
+            }), 200
+        
+        readings = []
+        temps1, temps2, humidity1, humidity2 = [], [], [], []
+        
+        try:
+            import csv
+            with open(sensor_log_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    reading = {
+                        'timestamp': row.get('DateTime', row.get('Timestamp', '')),
+                        'temp1': float(row.get('Sensor1_Temp_C', 0)) if row.get('Sensor1_Temp_C') else None,
+                        'humidity1': float(row.get('Sensor1_Humidity_Pct', 0)) if row.get('Sensor1_Humidity_Pct') else None,
+                        'temp2': float(row.get('Sensor2_Temp_C', 0)) if row.get('Sensor2_Temp_C') else None,
+                        'humidity2': float(row.get('Sensor2_Humidity_Pct', 0)) if row.get('Sensor2_Humidity_Pct') else None,
+                        'ir1': row.get('IR_Sensor1_Detection', ''),
+                        'ir2': row.get('IR_Sensor2_Detection', ''),
+                        'relay': row.get('Relay_Status', ''),
+                        'target_temp': float(row.get('Target_Temp_C', 0)) if row.get('Target_Temp_C') else None
+                    }
+                    readings.append(reading)
+                    
+                    # Collect stats
+                    if reading['temp1'] is not None:
+                        temps1.append(reading['temp1'])
+                    if reading['temp2'] is not None:
+                        temps2.append(reading['temp2'])
+                    if reading['humidity1'] is not None:
+                        humidity1.append(reading['humidity1'])
+                    if reading['humidity2'] is not None:
+                        humidity2.append(reading['humidity2'])
+        except Exception as e:
+            logger.error(f"Error reading sensor log file: {e}")
+        
+        # Calculate averages
+        stats = {
+            'avg_temp1': sum(temps1) / len(temps1) if temps1 else 0,
+            'avg_temp2': sum(temps2) / len(temps2) if temps2 else 0,
+            'avg_humidity1': sum(humidity1) / len(humidity1) if humidity1 else 0,
+            'avg_humidity2': sum(humidity2) / len(humidity2) if humidity2 else 0,
+            'readings_count': len(readings)
+        }
+        
+        return jsonify({
+            'readings': readings,
+            'date': date_str,
+            'stats': stats
+        }), 200
+    except Exception as e:
+        logger.error(f"Sensor readings error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sensor-readings/previous-day')
+def api_sensor_readings_previous_day():
+    """API: Get sensor readings from the previous day."""
+    try:
+        from datetime import datetime as dt
+        yesterday = (dt.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        
+        # Try to find sensor data logger
+        sensor_log_dir = 'logs'  # Default logs directory
+        sensor_log_file = os.path.join(sensor_log_dir, f"sensor_data_{yesterday}.csv")
+        
+        if not os.path.exists(sensor_log_file):
+            return jsonify({
+                'readings': [],
+                'date': yesterday,
+                'stats': {
+                    'avg_temp1': 0,
+                    'avg_temp2': 0,
+                    'avg_humidity1': 0,
+                    'avg_humidity2': 0
+                }
+            }), 200
+        
+        readings = []
+        temps1, temps2, humidity1, humidity2 = [], [], [], []
+        
+        try:
+            import csv
+            with open(sensor_log_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    reading = {
+                        'timestamp': row.get('DateTime', row.get('Timestamp', '')),
+                        'temp1': float(row.get('Sensor1_Temp_C', 0)) if row.get('Sensor1_Temp_C') else None,
+                        'humidity1': float(row.get('Sensor1_Humidity_Pct', 0)) if row.get('Sensor1_Humidity_Pct') else None,
+                        'temp2': float(row.get('Sensor2_Temp_C', 0)) if row.get('Sensor2_Temp_C') else None,
+                        'humidity2': float(row.get('Sensor2_Humidity_Pct', 0)) if row.get('Sensor2_Humidity_Pct') else None,
+                        'ir1': row.get('IR_Sensor1_Detection', ''),
+                        'ir2': row.get('IR_Sensor2_Detection', ''),
+                        'relay': row.get('Relay_Status', ''),
+                        'target_temp': float(row.get('Target_Temp_C', 0)) if row.get('Target_Temp_C') else None
+                    }
+                    readings.append(reading)
+                    
+                    # Collect stats
+                    if reading['temp1'] is not None:
+                        temps1.append(reading['temp1'])
+                    if reading['temp2'] is not None:
+                        temps2.append(reading['temp2'])
+                    if reading['humidity1'] is not None:
+                        humidity1.append(reading['humidity1'])
+                    if reading['humidity2'] is not None:
+                        humidity2.append(reading['humidity2'])
+        except Exception as e:
+            logger.error(f"Error reading sensor log file: {e}")
+        
+        # Calculate averages
+        stats = {
+            'avg_temp1': sum(temps1) / len(temps1) if temps1 else 0,
+            'avg_temp2': sum(temps2) / len(temps2) if temps2 else 0,
+            'avg_humidity1': sum(humidity1) / len(humidity1) if humidity1 else 0,
+            'avg_humidity2': sum(humidity2) / len(humidity2) if humidity2 else 0,
+            'readings_count': len(readings)
+        }
+        
+        return jsonify({
+            'readings': readings,
+            'date': yesterday,
+            'stats': stats
+        }), 200
+    except Exception as e:
+        logger.error(f"Previous day sensor readings error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -311,6 +522,154 @@ def api_restock_item(machine_id, item_name):
         
         return jsonify({'success': True, 'new_quantity': item.quantity}), 200
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sales/record', methods=['POST'])
+def api_record_sale():
+    """API: Record a sale, decrement stock, and check for low stock."""
+    try:
+        data = request.get_json()
+        machine_id = data.get('machine_id', 'RAON-001')
+        item_name = data.get('item_name')
+        quantity = data.get('quantity', 1)
+        amount_received = data.get('amount_received', 0.0)
+        coin_amount = data.get('coin_amount', 0.0)
+        bill_amount = data.get('bill_amount', 0.0)
+        change_dispensed = data.get('change_dispensed', 0.0)
+        
+        machine = Machine.query.filter_by(machine_id=machine_id).first()
+        if not machine:
+            return jsonify({'error': 'Machine not found'}), 404
+        
+        item = Item.query.filter_by(machine_id=machine.id, name=item_name).first()
+        if not item:
+            return jsonify({'error': 'Item not found'}), 404
+        
+        # Create sale record
+        sale = Sale(
+            machine_id=machine.id,
+            item_name=item_name,
+            quantity=quantity,
+            amount_received=amount_received,
+            coin_amount=coin_amount,
+            bill_amount=bill_amount,
+            change_dispensed=change_dispensed,
+            timestamp=datetime.utcnow()
+        )
+        db.session.add(sale)
+        
+        # Decrement stock
+        item.quantity = max(0, item.quantity - quantity)
+        machine.last_seen = datetime.utcnow()
+        db.session.commit()
+        
+        # Check for low stock and create alert if needed
+        alert_created = False
+        alert_type = 'low_stock'
+        
+        if item.quantity == 0:
+            alert_type = 'out_of_stock'
+        
+        if item.quantity <= item.low_stock_threshold:
+            # Check if alert already exists for this item today
+            existing_alert = LowStockAlert.query.filter_by(
+                machine_id=machine.id,
+                item_id=item.id,
+                alert_type=alert_type,
+                acknowledged=False
+            ).filter(
+                LowStockAlert.timestamp > datetime.utcnow() - timedelta(hours=24)
+            ).first()
+            
+            if not existing_alert:
+                alert = LowStockAlert(
+                    machine_id=machine.id,
+                    item_id=item.id,
+                    item_name=item_name,
+                    current_quantity=item.quantity,
+                    threshold=item.low_stock_threshold,
+                    alert_type=alert_type,
+                    timestamp=datetime.utcnow(),
+                    acknowledged=False
+                )
+                db.session.add(alert)
+                db.session.commit()
+                alert_created = True
+        
+        return jsonify({
+            'success': True,
+            'sale_id': sale.id,
+            'item_name': item_name,
+            'new_quantity': item.quantity,
+            'low_stock_alert': {
+                'created': alert_created,
+                'type': alert_type if alert_created else None,
+                'message': f'⚠️ {item_name} is now LOW STOCK! Only {item.quantity} left!' if item.quantity > 0 and alert_created else f'❌ {item_name} is OUT OF STOCK!' if alert_created else None
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"Record sale error: {e}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/low-stock-alerts')
+def api_low_stock_alerts():
+    """API: Get all unacknowledged low stock alerts."""
+    try:
+        machine_id = request.args.get('machine_id', 'RAON-001')
+        
+        machine = Machine.query.filter_by(machine_id=machine_id).first()
+        if not machine:
+            return jsonify({'alerts': []}), 200
+        
+        # Get unacknowledged alerts from last 7 days
+        alerts = LowStockAlert.query.filter_by(
+            machine_id=machine.id,
+            acknowledged=False
+        ).filter(
+            LowStockAlert.timestamp > datetime.utcnow() - timedelta(days=7)
+        ).order_by(LowStockAlert.timestamp.desc()).all()
+        
+        alert_list = []
+        for alert in alerts:
+            alert_list.append({
+                'id': alert.id,
+                'item_name': alert.item_name,
+                'current_quantity': alert.current_quantity,
+                'threshold': alert.threshold,
+                'alert_type': alert.alert_type,
+                'timestamp': alert.timestamp.isoformat(),
+                'severity': 'critical' if alert.alert_type == 'out_of_stock' else 'warning'
+            })
+        
+        return jsonify({
+            'alerts': alert_list,
+            'total_active_alerts': len(alert_list)
+        }), 200
+    except Exception as e:
+        logger.error(f"Low stock alerts error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/low-stock-alerts/<int:alert_id>/acknowledge', methods=['POST'])
+def api_acknowledge_alert(alert_id):
+    """API: Mark a low stock alert as acknowledged."""
+    try:
+        alert = LowStockAlert.query.filter_by(id=alert_id).first()
+        if not alert:
+            return jsonify({'error': 'Alert not found'}), 404
+        
+        alert.acknowledged = True
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Alert for {alert.item_name} acknowledged'
+        }), 200
+    except Exception as e:
+        logger.error(f"Acknowledge alert error: {e}")
         return jsonify({'error': str(e)}), 500
 
 

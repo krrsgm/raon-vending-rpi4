@@ -15,6 +15,14 @@ import platform
 import os
 import sys
 
+# Stock Tracker for inventory management
+try:
+    from stock_tracker import get_tracker
+    STOCK_TRACKER_AVAILABLE = True
+except ImportError:
+    STOCK_TRACKER_AVAILABLE = False
+    print("[MainApp] WARNING: stock_tracker not available")
+
 # TEC Controller for Peltier module
 try:
     from tec_controller import TECController
@@ -75,6 +83,11 @@ class MainApp(tk.Tk):
         
         # Initialize Item Dispense Monitor if enabled in config
         self._init_dispense_monitor()
+        
+        # Initialize Stock Tracker for inventory management
+        self.stock_tracker = None
+        if STOCK_TRACKER_AVAILABLE:
+            self._init_stock_tracker()
         
         
         # Apply fullscreen and rotation according to config
@@ -265,6 +278,23 @@ class MainApp(tk.Tk):
         except Exception as e:
             print(f"[MainApp] Failed to initialize Dispense Monitor: {e}")
             self.dispense_monitor = None
+    
+    def _init_stock_tracker(self):
+        """Initialize Stock Tracker for inventory management."""
+        try:
+            web_app_host = self.config.get('web_app_host', 'localhost')
+            web_app_port = self.config.get('web_app_port', 5000)
+            machine_id = self.config.get('machine_id', 'RAON-001')
+            
+            self.stock_tracker = get_tracker(
+                host=web_app_host,
+                port=web_app_port,
+                machine_id=machine_id
+            )
+            print(f"[MainApp] Stock Tracker initialized: {machine_id} -> {web_app_host}:{web_app_port}")
+        except Exception as e:
+            print(f"[MainApp] Failed to initialize Stock Tracker: {e}")
+            self.stock_tracker = None
     
     # MUX4 support removed — device supports only slots 1..48
     

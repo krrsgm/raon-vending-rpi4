@@ -5,6 +5,12 @@ from payment_handler import PaymentHandler
 from system_status_panel import SystemStatusPanel
 from daily_sales_logger import get_logger
 import threading
+try:
+    from stock_tracker import get_tracker
+    STOCK_TRACKER_AVAILABLE = True
+except ImportError:
+    STOCK_TRACKER_AVAILABLE = False
+    print("[CartScreen] WARNING: stock_tracker not available")
 
 
 class CartScreen(tk.Frame):
@@ -46,6 +52,22 @@ class CartScreen(tk.Frame):
         self.change_label = None  # Will be created in the payment window
         self.coin_received = 0.0  # Track coins separately
         self.bill_received = 0.0  # Track bills separately
+        
+        # Initialize stock tracker for inventory management
+        self.stock_tracker = None
+        if STOCK_TRACKER_AVAILABLE:
+            try:
+                web_app_host = controller.config.get('web_app_host', 'localhost') if isinstance(controller.config, dict) else 'localhost'
+                web_app_port = controller.config.get('web_app_port', 5000) if isinstance(controller.config, dict) else 5000
+                machine_id = controller.config.get('machine_id', 'RAON-001') if isinstance(controller.config, dict) else 'RAON-001'
+                self.stock_tracker = get_tracker(
+                    host=web_app_host,
+                    port=web_app_port,
+                    machine_id=machine_id
+                )
+                print(f"[CartScreen] Stock tracker initialized: {machine_id} -> {web_app_host}:{web_app_port}")
+            except Exception as e:
+                print(f"[CartScreen] Failed to initialize stock tracker: {e}")
         
         # --- Colors and Fonts ---
         self.colors = {
@@ -596,6 +618,33 @@ class CartScreen(tk.Frame):
             )
         except Exception as e:
             print(f"[CartScreen] Error logging transaction: {e}")
+        
+        # Record sales in stock tracker for inventory management and alerts
+        if self.stock_tracker:
+            try:
+                for item in self.controller.cart:
+                    item_name = item.get('name', 'Unknown')
+                    qty = item.get('quantity', 1)
+                    
+                    result = self.stock_tracker.record_sale(
+                        item_name=item_name,
+                        quantity=qty,
+                        coin_amount=0.0,
+                        bill_amount=0.0,
+                        change_dispensed=0.0
+                    )
+                    
+                    if not result['success']:
+                        print(f"[CartScreen] Failed to record sale for {item_name}: {result['message']}")
+                    elif result['alert']:
+                        # Show low stock alert to user
+                        alert_msg = result['alert'].get('message', 'Stock low')
+                        print(f"[CartScreen] STOCK ALERT: {alert_msg}")
+                        messagebox.showwarning('⚠️ Stock Alert', alert_msg)
+                    else:
+                        print(f"[CartScreen] Sale recorded for {item_name} (qty: {qty})")
+            except Exception as e:
+                print(f"[CartScreen] Error recording sales in stock tracker: {e}")
         
         # Clean up and return to main screen
         self.payment_window.destroy()

@@ -134,8 +134,9 @@ void processLine(String line, Stream &out) {
   String parts[10];  // Fixed-size array for command parts (max 10 parts)
   int partCount = 0;
   int start = 0;
-  for (int i=0;i<=line.length();i++){
-    if (i==line.length() || isspace(line.charAt(i))){
+  int len = (int) line.length();
+  for (int i = 0; i <= len; i++){
+    if (i == len || isspace(line.charAt(i))){
       if (i-start>0 && partCount < 10) {
         parts[partCount] = line.substring(start,i);
         partCount++;

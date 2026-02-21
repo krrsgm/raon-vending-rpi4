@@ -66,8 +66,16 @@ unsigned long sequence_timeout_ms = 30000;
 String inputBuffer = "";
 
 // --- Motor Control Functions ---
-void start_motor(int pin) { digitalWrite(pin, HIGH); }
-void stop_motor(int pin) { digitalWrite(pin, LOW); }
+// Configure the relay/motor active level:
+// - If your relay driver is active-high (energized when pin is HIGH),
+//   set RELAY_ACTIVE_LEVEL to HIGH.
+// - If your relay driver is active-low (energized when pin is LOW),
+//   set RELAY_ACTIVE_LEVEL to LOW.
+const int RELAY_ACTIVE_LEVEL = HIGH;
+const int RELAY_INACTIVE_LEVEL = (RELAY_ACTIVE_LEVEL == HIGH) ? LOW : HIGH;
+
+void start_motor(int pin) { digitalWrite(pin, RELAY_ACTIVE_LEVEL); }
+void stop_motor(int pin) { digitalWrite(pin, RELAY_INACTIVE_LEVEL); }
 
 // --- Coin Hopper Functions ---
 void start_dispense_denon(int denom, unsigned int count, unsigned long timeout_ms);

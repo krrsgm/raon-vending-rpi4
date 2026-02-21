@@ -875,6 +875,22 @@ def create_app_with_db():
     with app.app_context():
         db.create_all()
         config = load_config()
+        
+        # Ensure default machine exists
+        machine_id = config.get('machine_id', 'RAON-001')
+        machine_name = config.get('machine_name', 'RAON Vending Machine')
+        
+        machine = Machine.query.filter_by(machine_id=machine_id).first()
+        if not machine:
+            machine = Machine(
+                machine_id=machine_id,
+                name=machine_name,
+                is_active=True
+            )
+            db.session.add(machine)
+            db.session.commit()
+            logger.info(f"Created default machine: {machine_id}")
+        
         init_payment_handler(config)
         logger.info("Web app initialized")
     return app

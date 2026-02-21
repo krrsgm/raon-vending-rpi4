@@ -99,14 +99,14 @@ class CoinAcceptor:
             return
 
         # Determine coin value based on pulse width (Allan 123A-Pro calibration)
-        # Typical pulse widths: 1peso=20ms, 5peso=40ms, 10peso=60ms
+        # INVERTED: 1peso=60ms, 5peso=40ms, 10peso=20ms (reversed from typical)
         coin_value = 1.0  # default
-        if width >= 0.055:  # 55ms+ = 10 peso
-            coin_value = 10.0  # 10 peso coin
-        elif width >= 0.030:  # 30-55ms = 5 peso
-            coin_value = 5.0   # 5 peso coin
-        else:  # < 30ms = 1 peso
+        if width >= 0.045:  # 45ms+ = 1 peso (longest pulse)
             coin_value = 1.0   # 1 peso coin
+        elif width >= 0.030:  # 30-45ms = 5 peso (medium pulse)
+            coin_value = 5.0   # 5 peso coin
+        else:  # < 30ms = 10 peso (shortest pulse)
+            coin_value = 10.0  # 10 peso coin
 
         # Final debounce and registration under lock
         with self.payment_lock:

@@ -78,8 +78,6 @@ void start_motor(int pin) { digitalWrite(pin, RELAY_ACTIVE_LEVEL); }
 void stop_motor(int pin) { digitalWrite(pin, RELAY_INACTIVE_LEVEL); }
 
 // --- Coin Hopper Functions ---
-void start_dispense_denon(int denom, unsigned int count, unsigned long timeout_ms);
-
 void start_dispense_denon(int denom, unsigned int count, unsigned long timeout_ms, Stream &out) {
   if (denom == 5) {
     five_count = 0;

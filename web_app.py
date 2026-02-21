@@ -8,6 +8,7 @@ Provides:
 
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import func
 from datetime import datetime, timedelta
 import json
 import os
@@ -161,7 +162,7 @@ def inventory_dashboard():
         recent_sales = Sale.query.filter_by(machine_id=machine.id)\
             .order_by(Sale.timestamp.desc()).limit(10).all()
         
-        total_sales_today = db.session.query(db.func.sum(Sale.amount_received))\
+        total_sales_today = db.session.query(func.sum(Sale.coin_amount + Sale.bill_amount))\
             .filter_by(machine_id=machine.id)\
             .filter(Sale.timestamp > datetime.utcnow() - timedelta(hours=24)).scalar() or 0.0
         

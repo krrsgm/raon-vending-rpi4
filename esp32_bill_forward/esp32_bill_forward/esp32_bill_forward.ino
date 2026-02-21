@@ -100,8 +100,7 @@ void start_dispense_denon(int denom, unsigned int count, unsigned long timeout_m
   }
 }
 
-// Ensure file-level braces are balanced
-}
+// (removed stray balancing brace)
 
 // Backwards-compatible wrapper which uses USB Serial
 void start_dispense_denon(int denom, unsigned int count, unsigned long timeout_ms) {

@@ -38,19 +38,11 @@ const unsigned long pulseDebounceMs = 60; // debounce interval in ms (INCREASED 
 // --- Coin Hopper Pin Configuration ---
 // Default pins are for ESP32. For Arduino Uno/Nano, an AVR macro will switch to
 // safer Uno-compatible pins (motor outputs on 9/10, sensors on 11/12).
-#if defined(ARDUINO_AVR_UNO) || defined(ARDUINO_AVR_NANO)
 const int ONE_MOTOR_PIN = 9;   // 1-peso motor control (Uno digital pin 9)
 const int FIVE_MOTOR_PIN = 10; // 5-peso motor control (Uno digital pin 10)
 
 const int ONE_SENSOR_PIN = 11; // 1-peso sensor input (Uno digital pin 11)
 const int FIVE_SENSOR_PIN = 12; // 5-peso sensor input (Uno digital pin 12)
-#else
-const int ONE_MOTOR_PIN = 12;   // 1-peso motor control (ESP32 GPIO 12)
-const int FIVE_MOTOR_PIN = 13;  // 5-peso motor control (ESP32 GPIO 13)
-
-const int ONE_SENSOR_PIN = 14;  // 1-peso sensor input (ESP32 GPIO 14)
-const int FIVE_SENSOR_PIN = 15; // 5-peso sensor input (ESP32 GPIO 15)
-#endif
 
 const unsigned long BAUD_RATE = 115200;
 
@@ -76,13 +68,11 @@ unsigned long sequence_timeout_ms = 30000;
 String inputBuffer = "";
 
 // --- Motor Control Functions ---
-// Configure the relay/motor active level:
-// - If your relay driver is active-high (energized when pin is HIGH),
-//   set RELAY_ACTIVE_LEVEL to HIGH.
-// - If your relay driver is active-low (energized when pin is LOW),
-//   set RELAY_ACTIVE_LEVEL to LOW.
-const int RELAY_ACTIVE_LEVEL = HIGH;
-const int RELAY_INACTIVE_LEVEL = (RELAY_ACTIVE_LEVEL == HIGH) ? LOW : HIGH;
+// Configure the relay/motor active level.
+// This project uses normally-open relays (active when pin is LOW), so
+// set the active level to LOW and inactive to HIGH.
+const int RELAY_ACTIVE_LEVEL = LOW;      // energized / motor ON for normally-open wiring
+const int RELAY_INACTIVE_LEVEL = HIGH;  // de-energized / motor OFF
 
 void start_motor(int pin) { digitalWrite(pin, RELAY_ACTIVE_LEVEL); }
 void stop_motor(int pin) { digitalWrite(pin, RELAY_INACTIVE_LEVEL); }
@@ -243,8 +233,9 @@ void setup(){
   // Initialize coin hopper pins
   pinMode(ONE_MOTOR_PIN, OUTPUT);
   pinMode(FIVE_MOTOR_PIN, OUTPUT);
-  digitalWrite(ONE_MOTOR_PIN, LOW);
-  digitalWrite(FIVE_MOTOR_PIN, LOW);
+  // Initialize motors to INACTIVE (de-energized) for normally-open relays
+  digitalWrite(ONE_MOTOR_PIN, RELAY_INACTIVE_LEVEL);
+  digitalWrite(FIVE_MOTOR_PIN, RELAY_INACTIVE_LEVEL);
   pinMode(ONE_SENSOR_PIN, INPUT);
   pinMode(FIVE_SENSOR_PIN, INPUT);
   

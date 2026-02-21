@@ -319,7 +319,7 @@ class CoinHopper:
         if denomination not in (1, 5):
             return False
         
-        response = self.send_command(f"COIN_CLOSE {denomination}")
+        response = self.send_command(f"COIN_OPEN {denomination}")
         return response and "OK" in response
 
     def close_hopper(self, denomination):
@@ -334,7 +334,7 @@ class CoinHopper:
         if denomination not in (1, 5):
             return False
         
-        response = self.send_command(f"COIN_OPEN {denomination}")
+        response = self.send_command(f"COIN_CLOSE {denomination}")
         return response and "OK" in response
 
     def disconnect(self):

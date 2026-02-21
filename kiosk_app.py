@@ -354,9 +354,13 @@ class KioskFrame(tk.Frame):
 
         def on_add(qvar=qty_var, data=item_data):
             q = int(qvar.get()) if qvar.get() else 1
-            # guard: don't add if out of stock
-            if data.get('quantity',0) <= 0:
+            available = data.get('quantity',0)
+            # guard: check if requested quantity exceeds available stock
+            if available <= 0:
                 tk.messagebox.showwarning('Out of stock', f"{data.get('name','Item')} is out of stock")
+                return
+            if q > available:
+                tk.messagebox.showwarning('Insufficient stock', f"Only {available} available, but you requested {q}")
                 return
             try:
                 self.controller.add_to_cart(data, q)

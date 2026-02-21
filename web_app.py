@@ -674,6 +674,108 @@ def api_acknowledge_alert(alert_id):
 
 
 # ============================================================================
+# DASHBOARD API ENDPOINTS
+# ============================================================================
+
+@app.route('/api/status/realtime')
+def get_realtime_status():
+    """Get real-time status for all machines"""
+    try:
+        machines = Machine.query.all()
+        result = []
+        
+        for machine in machines:
+            items = Item.query.filter_by(machine_id=machine.id).all()
+            
+            # Calculate low stock items
+            low_stock_items = [
+                item.name for item in items 
+                if item.quantity <= item.low_stock_threshold
+            ]
+            
+            # Calculate today's sales
+            today = datetime.date.today()
+            today_sales_sum = db.session.query(func.sum(Sale.coin_amount + Sale.bill_amount)).filter(
+                Sale.item_id.in_([i.id for i in items]),
+                func.date(Sale.timestamp) == today
+            ).scalar() or 0.0
+            
+            # Count items sold today
+            items_sold_today = {}
+            sales = Sale.query.filter(
+                Sale.item_id.in_([i.id for i in items]),
+                func.date(Sale.timestamp) == today
+            ).all()
+            
+            for sale in sales:
+                item = Item.query.get(sale.item_id)
+                if item:
+                    items_sold_today[item.name] = items_sold_today.get(item.name, 0) + 1
+            
+            result.append({
+                "id": machine.id,
+                "name": machine.name,
+                "is_active": True,
+                "total_items": sum(item.quantity for item in items),
+                "today_sales": today_sales_sum,
+                "low_stock_count": len(low_stock_items),
+                "low_stock_items": low_stock_items,
+                "items_sold_today": items_sold_today
+            })
+        
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error(f"Error getting realtime status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/sales/today')
+def get_today_sales():
+    """Get today's sales summary"""
+    try:
+        today = datetime.date.today()
+        sales = Sale.query.filter(func.date(Sale.timestamp) == today).all()
+        
+        total_sales = sum(s.coin_amount + s.bill_amount for s in sales)
+        total_transactions = len(sales)
+        items_sold = {}
+        
+        for sale in sales:
+            item = Item.query.get(sale.item_id)
+            if item:
+                items_sold[item.name] = items_sold.get(item.name, 0) + 1
+        
+        return jsonify({
+            "total_sales": total_sales,
+            "total_transactions": total_transactions,
+            "items_sold": items_sold
+        }), 200
+    except Exception as e:
+        logger.error(f"Error getting today's sales: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/sales/logs')
+def get_sales_logs():
+    """Get today's sales logs"""
+    try:
+        today = datetime.date.today()
+        sales = Sale.query.filter(func.date(Sale.timestamp) == today).order_by(Sale.timestamp.desc()).limit(100).all()
+        
+        logs = []
+        for sale in sales:
+            item = Item.query.get(sale.item_id)
+            if item:
+                amount = sale.coin_amount + sale.bill_amount
+                logs.append(f"[{sale.timestamp.strftime('%H:%M:%S')}] {item.name} - ₱{amount:.2f}")
+        
+        return jsonify({"logs": logs}), 200
+    except Exception as e:
+        logger.error(f"Error getting sales logs: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================================================
 # ADMIN INITIALIZATION
 # ============================================================================
 

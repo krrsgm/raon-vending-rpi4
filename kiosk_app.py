@@ -341,34 +341,7 @@ class KioskFrame(tk.Frame):
         )
         price_lbl.pack(side='left')
 
-        # Right side: quantity control and add button
-        controls = tk.Frame(bottom_frame, bg=self.colors['card_bg'])
-        controls.pack(side='right')
-
-        max_q = max(0, int(item_data.get('quantity', 0)))
-        qty_var = tk.IntVar(value=1)
-        # Make spinbox very compact so Add button remains visible
-        spin_width = 3
-        spin = tk.Spinbox(controls, from_=1, to=max(1, max_q), width=spin_width, textvariable=qty_var, bg='white', fg='#2222a8', buttonbackground='#2222a8', font=self.fonts['control_small'], highlightthickness=0, relief='solid', bd=1)
-        spin.pack(side='left', padx=(0,3), pady=2)
-
-        def on_add(qvar=qty_var, data=item_data):
-            q = int(qvar.get()) if qvar.get() else 1
-            available = data.get('quantity',0)
-            # guard: check if requested quantity exceeds available stock
-            if available <= 0:
-                tk.messagebox.showwarning('Out of stock', f"{data.get('name','Item')} is out of stock")
-                return
-            if q > available:
-                tk.messagebox.showwarning('Insufficient stock', f"Only {available} available, but you requested {q}")
-                return
-            try:
-                self.controller.add_to_cart(data, q)
-            except Exception:
-                pass
-
-        add_btn = tk.Button(controls, text='Add', bg='white', fg='#2222a8', relief='flat', font=self.fonts['control_bold'], padx=4, pady=2, command=on_add)
-        add_btn.pack(side='left')
+        # Note: Add button removed. Users click item to navigate to detail view where adding happens.
         
         # Add low-stock warning if quantity is low
         if 0 < quantity <= default_threshold:

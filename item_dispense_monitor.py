@@ -2,16 +2,33 @@
 
 Monitors IR sensors to detect if items are successfully dispensed.
 Provides callbacks and timeout alerts when items are not dispensed within expected time.
+
+Supports two modes:
+1. GPIO mode (Raspberry Pi): Reads directly from GPIO pins
+2. ESP32 serial mode: Reads IR states from ESP32 serial output (auto-detected)
 """
 
 try:
+    import serial
+    import serial.tools.list_ports
+    SERIAL_AVAILABLE = True
+except Exception:
+    SERIAL_AVAILABLE = False
+
+try:
     import RPi.GPIO as GPIO
+    GPIO_AVAILABLE = True
 except Exception:
     # Not running on Raspberry Pi / RPi.GPIO unavailable — use a local mock
-    import rpi_gpio_mock as GPIO
+    try:
+        import rpi_gpio_mock as GPIO
+        GPIO_AVAILABLE = True
+    except Exception:
+        GPIO_AVAILABLE = False
 
 import time
 import threading
+import re
 from threading import Thread, Lock
 from queue import Queue
 
@@ -22,15 +39,20 @@ class IRSensor:
     
     Detects when an item is present or absent using IR reflection.
     Configured for sensing items in vending slots.
+    
+    Supports both GPIO (direct read) and ESP32 serial modes.
     """
     
-    def __init__(self, pin, sensor_name="IR_Sensor"):
+    def __init__(self, pin, sensor_name="IR_Sensor", use_esp32_serial=False, esp32_reader=None, esp32_sensor_label="IR1"):
         """
         Initialize IR sensor.
         
         Args:
-            pin (int): GPIO pin for IR sensor (BCM numbering)
+            pin (int): GPIO pin for IR sensor (BCM numbering) - used in GPIO mode
             sensor_name (str): Name/label for this sensor
+            use_esp32_serial (bool): If True, read from ESP32 serial instead of GPIO
+            esp32_reader: Reference to ESP32SerialReader instance (required if use_esp32_serial=True)
+            esp32_sensor_label (str): "IR1" or "IR2" for ESP32 serial mode
         """
         self.pin = pin
         self.sensor_name = sensor_name
@@ -39,35 +61,50 @@ class IRSensor:
         self.debounce_time = 0.2  # 200ms debounce
         self._lock = Lock()
         
-        # GPIO setup with pull-up resistor (IR sensors default HIGH when no obstruction)
-        try:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(self.pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            print(f"[IRSensor] {sensor_name} initialized on GPIO{pin} with pull-up")
-        except Exception as e:
-            print(f"[IRSensor] Failed to initialize {sensor_name}: {e}")
+        self.use_esp32_serial = use_esp32_serial
+        self.esp32_reader = esp32_reader
+        self.esp32_sensor_label = esp32_sensor_label
+        
+        if not use_esp32_serial and GPIO_AVAILABLE:
+            # GPIO setup with pull-up resistor (IR sensors default HIGH when no obstruction)
+            try:
+                if not hasattr(GPIO, '_mock_mode'):  # Only call setmode for real GPIO
+                    GPIO.setmode(GPIO.BCM)
+                GPIO.setup(self.pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+                print(f"[IRSensor] {sensor_name} initialized on GPIO{pin} with pull-up")
+            except Exception as e:
+                print(f"[IRSensor] Failed to initialize {sensor_name}: {e}")
+        elif use_esp32_serial:
+            print(f"[IRSensor] {sensor_name} using ESP32 serial mode ({esp32_sensor_label})")
     
     def read(self):
         """
         Read current item presence state with debouncing.
         
         Returns:
-            bool: True if item detected, False otherwise
+            bool: True if item detected (beam blocked), False if clear, None if error
         """
         try:
-            # Take multiple readings for stability
-            readings = []
-            for _ in range(3):
-                state = GPIO.input(self.pin)
-                readings.append(state == GPIO.HIGH)
-                time.sleep(0.05)  # Small delay between reads
-            
-            # Use majority vote for debouncing
-            item_present = sum(readings) >= 2
-            
-            with self._lock:
-                self.item_present = item_present
-            return self.item_present
+            if self.use_esp32_serial and self.esp32_reader:
+                # Read from ESP32
+                state = self.esp32_reader.get_ir_state(self.esp32_sensor_label)
+                with self._lock:
+                    self.item_present = state
+                return state
+            else:
+                # GPIO mode
+                readings = []
+                for _ in range(3):
+                    state = GPIO.input(self.pin)
+                    readings.append(state == GPIO.HIGH)
+                    time.sleep(0.05)
+                
+                # Use majority vote for debouncing
+                item_present = sum(readings) >= 2
+                
+                with self._lock:
+                    self.item_present = item_present
+                return self.item_present
         except Exception as e:
             print(f"[IRSensor] Error reading {self.sensor_name}: {e}")
             return None
@@ -76,6 +113,85 @@ class IRSensor:
         """Check if item is currently present (thread-safe)."""
         with self._lock:
             return self.item_present
+
+
+class ESP32SerialReader(threading.Thread):
+    """Background thread to read IR sensor states from ESP32 serial."""
+    
+    def __init__(self, port, baudrate=115200):
+        super().__init__(daemon=True)
+        self.port = port
+        self.baudrate = baudrate
+        self.ser = None
+        self.running = True
+        self._lock = Lock()
+        self.ir_states = {'IR1': None, 'IR2': None}  # None, True (BLOCKED), False (CLEAR)
+        self.connected = False
+        
+        # Regex patterns to parse IR output
+        self.ir1_pattern = re.compile(r"IR1.*?:\s*(BLOCKED|CLEAR)", re.IGNORECASE)
+        self.ir2_pattern = re.compile(r"IR2.*?:\s*(BLOCKED|CLEAR)", re.IGNORECASE)
+    
+    def run(self):
+        """Main thread loop - read and store IR data."""
+        try:
+            self.ser = serial.Serial(self.port, self.baudrate, timeout=1)
+            self.connected = True
+            print(f"[ESP32SerialReader] Connected to ESP32 on {self.port}")
+        except Exception as e:
+            print(f"[ESP32SerialReader] Failed to open {self.port}: {e}")
+            self.connected = False
+            return
+        
+        while self.running:
+            try:
+                if self.ser and self.ser.is_open:
+                    line = self.ser.readline().decode(errors="ignore").strip()
+                    if not line:
+                        continue
+                    
+                    # Parse IR1 (BLOCKED = True, CLEAR = False)
+                    m1 = self.ir1_pattern.search(line)
+                    if m1:
+                        state = m1.group(1).upper() == "BLOCKED"
+                        with self._lock:
+                            self.ir_states['IR1'] = state
+                    
+                    # Parse IR2
+                    m2 = self.ir2_pattern.search(line)
+                    if m2:
+                        state = m2.group(1).upper() == "BLOCKED"
+                        with self._lock:
+                            self.ir_states['IR2'] = state
+            except Exception as e:
+                print(f"[ESP32SerialReader] Read error: {e}")
+                continue
+    
+    def get_ir_state(self, label):
+        """Get latest IR state for a sensor. Returns True (blocked), False (clear), or None."""
+        with self._lock:
+            return self.ir_states.get(label, None)
+    
+    def stop(self):
+        """Stop the reader thread."""
+        self.running = False
+        if self.ser and self.ser.is_open:
+            self.ser.close()
+
+
+def autodetect_esp32_port():
+    """Auto-detect ESP32 serial port."""
+    if not SERIAL_AVAILABLE:
+        return None
+    ports = list(serial.tools.list_ports.comports())
+    for p in ports:
+        desc = (p.description or "").lower()
+        mfg = (p.manufacturer or "").lower()
+        keywords = ["esp32", "arduino", "cp210", "ch340", "silicon labs"]
+        if any(kw in desc or kw in mfg for kw in keywords):
+            return p.device
+    return ports[0].device if ports else None
+
 
 class ItemDispenseMonitor:
     """
@@ -92,7 +208,7 @@ class ItemDispenseMonitor:
     Success is marked when ANY sensor detects beam obstruction (item falling through).
     """
     
-    def __init__(self, ir_sensor_pins=[6, 5], default_timeout=15.0, detection_mode='any', simulate_detection=False):
+    def __init__(self, ir_sensor_pins=[6, 5], default_timeout=15.0, detection_mode='any', simulate_detection=False, use_esp32_serial=False):
         """
         Initialize item dispense monitor.
         
@@ -104,17 +220,35 @@ class ItemDispenseMonitor:
                 - 'all': Item is dispensed only if ALL sensors detect obstruction (redundant check)
                 - 'first': Item is dispensed when FIRST sensor detects obstruction (fastest detection)
             simulate_detection (bool): If True, simulate successful item detection for testing (no real sensors)
+            use_esp32_serial (bool): If True, read IR states from ESP32 serial instead of GPIO.
         """
         self.ir_sensor_pins = ir_sensor_pins
         self.default_timeout = default_timeout
         self.detection_mode = detection_mode  # 'any', 'all', or 'first'
         self.simulate_detection = simulate_detection  # For testing without real sensors
+        self.use_esp32_serial = use_esp32_serial
+        
+        # ESP32 serial reader if needed
+        self.esp32_reader = None
+        if use_esp32_serial:
+            port = autodetect_esp32_port()
+            if port:
+                self.esp32_reader = ESP32SerialReader(port)
+                self.esp32_reader.start()
+            else:
+                print("[ItemDispenseMonitor] WARNING: ESP32 serial requested but port not found")
         
         # Initialize IR sensors
         self.sensors = {}
         for i, pin in enumerate(ir_sensor_pins):
             sensor_name = f"Bin_IR_{i+1}"
-            self.sensors[pin] = IRSensor(pin, sensor_name)
+            if use_esp32_serial and self.esp32_reader:
+                label = "IR1" if i == 0 else "IR2"
+                self.sensors[pin] = IRSensor(pin, sensor_name, use_esp32_serial=True,
+                                              esp32_reader=self.esp32_reader,
+                                              esp32_sensor_label=label)
+            else:
+                self.sensors[pin] = IRSensor(pin, sensor_name)
         
         # Monitoring state
         self.running = False
@@ -379,11 +513,22 @@ class ItemDispenseMonitor:
     def cleanup(self):
         """Clean up resources."""
         self.stop_monitoring()
+        
+        # Cleanup ESP32 serial reader if in use
+        if self.esp32_reader:
+            self.esp32_reader.stop()
+            self.esp32_reader.join(timeout=2)
+            print("[ItemDispenseMonitor] ESP32 serial reader cleaned up")
+        
         try:
-            # Cleanup GPIO
-            for pin in self.ir_sensor_pins:
-                GPIO.cleanup(pin)
-            print("[ItemDispenseMonitor] GPIO cleaned up")
+            # Cleanup GPIO (only if not ESP32 mode)
+            if not self.use_esp32_serial and GPIO_AVAILABLE:
+                for pin in self.ir_sensor_pins:
+                    try:
+                        GPIO.cleanup(pin)
+                    except:
+                        pass
+            print("[ItemDispenseMonitor] Cleaned up")
         except Exception as e:
             print(f"[ItemDispenseMonitor] Cleanup error: {e}")
 

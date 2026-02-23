@@ -1,6 +1,9 @@
 """
 Test script for IR sensor graph generation
-Demonstrates the new IR sensor logging and graphing functionality
+Demonstrates the new IR sensor logging and graphing functionality.
+
+This version is compatible with ESP32-based IR sensors.
+It generates simulated test data for graph visualization.
 """
 
 from sensor_data_logger import get_sensor_logger

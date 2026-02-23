@@ -26,8 +26,22 @@
     STATUS\n              → returns "1,5,12\n" if slots 1, 5, 12 are on
 */
 
+
 #include <Arduino.h>
 #include <CD74HC4067.h>
+#include "DHT.h"
+
+// DHT22 sensor configuration
+#define DHTPIN1 35
+#define DHTPIN2 36
+#define DHTTYPE DHT22
+DHT dht1(DHTPIN1, DHTTYPE);
+DHT dht2(DHTPIN2, DHTTYPE);
+
+// IR sensor configuration
+#define IRPIN1 34
+#define IRPIN2 39
+
 
 // ============================================================================
 // CONFIGURATION
@@ -214,6 +228,14 @@ void setup() {
   Serial.print("Baud rate: "); Serial.println(BAUD_RATE);
   Serial.println("Waiting for commands...");
   Serial.println("==============================================================");
+
+  // Initialize DHT22 sensors
+  dht1.begin();
+  dht2.begin();
+
+  // Initialize IR sensor pins
+  pinMode(IRPIN1, INPUT);
+  pinMode(IRPIN2, INPUT);
 }
 
 // ============================================================================
@@ -283,6 +305,30 @@ void loop() {
         setOutput(i, false);
       }
     }
+  }
+
+  // Read and print DHT22 and IR sensor values every 2 seconds
+  static unsigned long lastSensorRead = 0;
+  if (millis() - lastSensorRead > 2000) {
+    lastSensorRead = millis();
+    float h1 = dht1.readHumidity();
+    float t1 = dht1.readTemperature();
+    float h2 = dht2.readHumidity();
+    float t2 = dht2.readTemperature();
+    Serial.print("DHT1 (GPIO35): ");
+    Serial.print(t1); Serial.print("C ");
+    Serial.print(h1); Serial.println("%");
+    Serial.print("DHT2 (GPIO36): ");
+    Serial.print(t2); Serial.print("C ");
+    Serial.print(h2); Serial.println("%");
+
+    // IR sensors
+    int ir1 = digitalRead(IRPIN1);
+    int ir2 = digitalRead(IRPIN2);
+    Serial.print("IR1 (GPIO34): ");
+    Serial.println(ir1 == LOW ? "BLOCKED" : "CLEAR");
+    Serial.print("IR2 (GPIO39): ");
+    Serial.println(ir2 == LOW ? "BLOCKED" : "CLEAR");
   }
 }
 

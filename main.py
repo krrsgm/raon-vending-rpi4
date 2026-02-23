@@ -804,7 +804,7 @@ class MainApp(tk.Tk):
         host = self.config.get('esp32_host') if isinstance(self.config, dict) else None
         if not host:
             host = '192.168.4.1'  # common AP fallback; set in config for your network
-        pulse_ms = self.config.get('esp32_pulse_ms', 800) if isinstance(self.config, dict) else 800
+        pulse_ms = 4000  # Motor pulse duration in milliseconds
         
         # Get dispense timeout from config
         dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 15.0) if isinstance(self.config, dict) else 15.0

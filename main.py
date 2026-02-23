@@ -72,6 +72,9 @@ class MainApp(tk.Tk):
         self.assigned_items_path = get_absolute_path("assigned_items.json")
         self.assigned_slots = self.load_items_from_json(self.assigned_items_path)
         
+        # Initialize current term selector (0 = Term 1, 1 = Term 2, 2 = Term 3)
+        self.assigned_term = 0
+        
         # For backward compatibility, also populate items array
         # Extract items from assigned slots for display in admin and kiosk
         self.items = self._extract_items_from_slots(self.assigned_slots)
@@ -631,6 +634,21 @@ class MainApp(tk.Tk):
         """Passes cart data to the CartScreen and displays it."""
         self.frames["CartScreen"].update_cart(self.cart)
         self.show_frame("CartScreen")
+    
+    def set_term(self, term_index):
+        """Switch to a different term and refresh all items.
+        
+        Args:
+            term_index: 0 for Term 1, 1 for Term 2, 2 for Term 3
+        """
+        if term_index in [0, 1, 2]:
+            self.assigned_term = term_index
+            # Re-extract items from slots based on new term
+            self.items = self._extract_items_from_slots(self.assigned_slots)
+            # Refresh the kiosk frame to show new items
+            if "KioskFrame" in self.frames:
+                self.frames["KioskFrame"].refresh_items()
+            print(f"[MainApp] Switched to Term {term_index + 1}")
 
     def add_to_cart(self, added_item, quantity):
         """Adds an item and its quantity to the cart."""

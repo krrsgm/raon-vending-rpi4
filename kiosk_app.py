@@ -419,8 +419,31 @@ class KioskFrame(tk.Frame):
         right_frame = tk.Frame(self.header, bg=header_bg)
         right_frame.pack(side='right', padx=12)
         
+        # Term selector buttons
+        term_frame = tk.Frame(right_frame, bg=header_bg)
+        term_frame.pack(side='left', padx=(0, 10))
+        
+        tk.Label(term_frame, text='Term:', bg=header_bg, fg='white', font=self.fonts['description']).pack(side='left', padx=(0, 5))
+        
+        self.term_buttons = {}
+        for i in range(3):
+            term_name = f"T{i+1}"
+            btn = tk.Button(
+                term_frame,
+                text=term_name,
+                bg='white' if i == 0 else '#555',
+                fg='#2222a8' if i == 0 else 'white',
+                relief='flat',
+                font=tkfont.Font(family="Helvetica", size=10, weight="bold"),
+                padx=12,
+                pady=5,
+                command=lambda idx=i: self._on_term_selected(idx)
+            )
+            btn.pack(side='left', padx=3)
+            self.term_buttons[i] = btn
+        
         cart_btn = tk.Button(right_frame, text='Cart', bg='white', fg='#2222a8', relief='flat', font=self.fonts['cart_btn'], padx=20, pady=10, command=lambda: self.controller.show_cart())
-        cart_btn.pack()
+        cart_btn.pack(side='left')
 
         # Main content area: left sidebar + main product area
         content = tk.Frame(self, bg=self.colors['background'])
@@ -881,6 +904,29 @@ class KioskFrame(tk.Frame):
                 btn.configure(bg='#e6f0ff', fg='black')
         except Exception:
             pass
+
+    def _on_term_selected(self, term_index):
+        """Handle term selection button click."""
+        self.controller.set_term(term_index)
+        # Update button styling
+        for i, btn in self.term_buttons.items():
+            if i == term_index:
+                btn.configure(bg='white', fg='#2222a8')
+            else:
+                btn.configure(bg='#555', fg='white')
+
+    def refresh_items(self):
+        """Refresh the items display after term change."""
+        try:
+            # Clear existing items frame
+            for widget in self.scrollable_frame.winfo_children():
+                widget.destroy()
+            # Rebuild items grid
+            self.display_items(self.controller.items)
+            # Reset scroll position
+            self.canvas.yview_moveto(0)
+        except Exception as e:
+            print(f"Error refreshing items: {e}")
 
     def load_header_logo(self):
         """Load and display header logo image from config path."""

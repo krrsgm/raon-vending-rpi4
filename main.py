@@ -307,12 +307,12 @@ class MainApp(tk.Tk):
             for frame in self.frames.values():
                 try:
                     if hasattr(frame, 'status_panel') and frame.status_panel:
-                        frame.status_panel.update_tec_status(
-                            enabled=enabled,
-                            active=active,
-                            target_temp=target_temp,
-                            current_temp=current_temp
-                        )
+                        # Schedule widget updates on the main/UI thread
+                        try:
+                            frame.after(0, lambda f=frame, e=enabled, a=active, t=target_temp, c=current_temp: f.status_panel.update_tec_status(enabled=e, active=a, target_temp=t, current_temp=c))
+                        except Exception:
+                            # Fallback: direct call if scheduling fails
+                            frame.status_panel.update_tec_status(enabled=enabled, active=active, target_temp=target_temp, current_temp=current_temp)
                 except Exception:
                     pass
             
@@ -335,14 +335,19 @@ class MainApp(tk.Tk):
         try:
             # Update all frames that expose a status_panel so UI shows
             # DHT readings regardless of which view is active.
+            # Debug: notify console that a DHT22 update was received
+            try:
+                print(f"[MainApp] DHT22 update: sensor={sensor_number} temp={temp} hum={humidity}")
+            except Exception:
+                pass
+
             for frame in self.frames.values():
                 try:
                     if hasattr(frame, 'status_panel') and frame.status_panel:
-                        frame.status_panel.update_dht22_reading(
-                            sensor_number=sensor_number,
-                            temp=temp,
-                            humidity=humidity
-                        )
+                        try:
+                            frame.after(0, lambda f=frame, s=sensor_number, tt=temp, hh=humidity: f.status_panel.update_dht22_reading(sensor_number=s, temp=tt, humidity=hh))
+                        except Exception:
+                            frame.status_panel.update_dht22_reading(sensor_number=sensor_number, temp=temp, humidity=humidity)
                 except Exception:
                     pass
             
@@ -366,12 +371,10 @@ class MainApp(tk.Tk):
             for frame in self.frames.values():
                 try:
                     if hasattr(frame, 'status_panel') and frame.status_panel:
-                        frame.status_panel.update_ir_status(
-                            sensor_1=sensor_1,
-                            sensor_2=sensor_2,
-                            detection_mode=detection_mode,
-                            last_detection=last_detection
-                        )
+                        try:
+                            frame.after(0, lambda f=frame, s1=sensor_1, s2=sensor_2, dm=detection_mode, ld=last_detection: f.status_panel.update_ir_status(sensor_1=s1, sensor_2=s2, detection_mode=dm, last_detection=ld))
+                        except Exception:
+                            frame.status_panel.update_ir_status(sensor_1=sensor_1, sensor_2=sensor_2, detection_mode=detection_mode, last_detection=last_detection)
                 except Exception:
                     pass
         except Exception as e:

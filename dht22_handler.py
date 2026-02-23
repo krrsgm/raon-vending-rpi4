@@ -76,6 +76,7 @@ class DHT22Sensor:
                 if cached:
                     h, t, last_time = cached
                     if (current_time - last_time) < self.min_read_interval:
+                        # Return cached value (rate-limited)
                         return (h, t)
         except Exception:
             # If cache isn't available for any reason, fall back to instance timing
@@ -107,11 +108,11 @@ class DHT22Sensor:
                 except Exception:
                     pass
                 return (humidity, temperature)
-        except RuntimeError:
+        except RuntimeError as e:
             # Common DHT22 error, return None to retry
             return (None, None)
         except Exception as e:
-            print(f"Sensor read error: {e}")
+            print(f"[DHT22Sensor] GPIO{self.pin} read error: {e}")
             return (None, None)
 
 

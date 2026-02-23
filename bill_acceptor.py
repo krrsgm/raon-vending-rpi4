@@ -285,9 +285,9 @@ class BillAcceptor:
         # Enqueue dispatch request so a separate thread invokes the registered callback.
         try:
             print(f"DEBUG: Enqueueing bill callback for amount {self.received_amount}")
-                # Add prompt message to warn user to wait before inserting another bill
-                prompt_msg = "Please wait a few seconds before inserting another bill."
-                self._dispatch_queue.put_nowait((self.received_amount, prompt_msg))
+            # Add prompt message to warn user to wait before inserting another bill
+            prompt_msg = "Please wait a few seconds before inserting another bill."
+            self._dispatch_queue.put_nowait((self.received_amount, prompt_msg))
         except Exception as e:
             print(f"DEBUG: Failed to enqueue callback: {e}")
 

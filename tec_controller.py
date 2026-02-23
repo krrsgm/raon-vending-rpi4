@@ -122,6 +122,10 @@ class TECController:
                     humidity, temperature = sensor.read()
                     pin = self.sensor_pins[i]
                     
+                    # Debug: log raw sensor reads
+                    if i == 0:  # Only print for first sensor each cycle to avoid spam
+                        print(f"[TECController] DHT22 read attempt: pin={pin} temp={temperature} humid={humidity}")
+                    
                     if temperature is not None:
                         temps.append(temperature)
                         humidities.append(humidity)

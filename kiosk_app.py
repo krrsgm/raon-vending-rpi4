@@ -127,6 +127,16 @@ class KioskFrame(tk.Frame):
         self.configure(bg=self.colors['background'])
         # Create widgets and expose header/footer widgets so they can be updated
         self.create_widgets()
+    
+        def cleanup(self):
+            """Cancel deferred image loader job and clear queue to prevent leaks/freezes."""
+            if self._deferred_loader_job:
+                try:
+                    self.after_cancel(self._deferred_loader_job)
+                except Exception:
+                    pass
+                self._deferred_loader_job = None
+            self._deferred_image_queue.clear()
 
 
     def on_canvas_press(self, event):

@@ -1,268 +1,223 @@
 #!/usr/bin/env python3
 """
-DHT22 Sensor Test Script
-Displays real-time temperature and humidity readings
+ESP32 DHT22 Sensor Test Script
+Reads temperature and humidity from DHT22 sensors connected to ESP32
+via serial communication. Displays readings in real-time GUI.
 """
 
 import tkinter as tk
 from tkinter import ttk
 import time
 import threading
-import platform
+import re
+import sys
 
-# Conditional imports for Raspberry Pi
 try:
-    import board
-    import adafruit_dht
-    DHT_AVAILABLE = True
+    import serial
+    import serial.tools.list_ports
+    SERIAL_AVAILABLE = True
 except ImportError:
-    DHT_AVAILABLE = False
-    print("Warning: Adafruit DHT library not available - will use simulated readings")
+    SERIAL_AVAILABLE = False
+    print("Warning: pyserial not installed. Install with: pip install pyserial")
 
 
-class DHT22Sensor:
-    """DHT22 sensor handler"""
+def autodetect_esp32_port():
+    """Auto-detect ESP32 serial port from available COM ports."""
+    if not SERIAL_AVAILABLE:
+        return None
     
-    def __init__(self, pin):
-        """
-        Initialize DHT22 sensor.
-        
-        Args:
-            pin (int): GPIO pin number (BCM numbering)
-        """
-        self.pin = pin
-        self.sensor = None
-        self.last_read_time = 0
-        self.min_read_interval = 2.0  # Minimum 2 second interval for DHT22
-        
-        if DHT_AVAILABLE and platform.system() == "Linux":
-            try:
-                # Map BCM pin numbers to board pins
-                pin_map = {
-                    27: board.D27,
-                    22: board.D22,
-                }
-                board_pin = pin_map.get(pin, board.D27)
-                self.sensor = adafruit_dht.DHT22(board_pin, use_pulseio=False)
-                print(f"✓ DHT22 initialized on GPIO{pin}")
-            except Exception as e:
-                print(f"✗ Failed to initialize DHT22 on GPIO{pin}: {e}")
-                self.sensor = None
-        else:
-            if not DHT_AVAILABLE:
-                print(f"ℹ DHT22 library not available - using simulated readings for GPIO{pin}")
-            else:
-                print(f"ℹ Running on {platform.system()} - using simulated readings for GPIO{pin}")
+    ports = list(serial.tools.list_ports.comports())
+    for p in ports:
+        desc = p.description or ""
+        mfg = p.manufacturer or ""
+        # Look for common ESP32/Arduino identifiers
+        keywords = ["USB", "UART", "CP210", "Silicon Labs", "CH340", "ESP32", "Arduino"]
+        if any(kw in desc or kw in mfg for kw in keywords):
+            return p.device
     
-    def read(self):
-        """
-        Read temperature and humidity from sensor.
-        Returns (humidity, temperature) or (None, None) on error.
-        """
-        current_time = time.time()
-        
-        # Enforce minimum read interval
-        if (current_time - self.last_read_time) < self.min_read_interval:
-            return (None, None)
-        
-        try:
-            if self.sensor is not None and DHT_AVAILABLE and platform.system() == "Linux":
-                # Real hardware reading
-                temperature = self.sensor.temperature
-                humidity = self.sensor.humidity
-                self.last_read_time = current_time
-                return (humidity, temperature)
-            else:
-                # Simulated reading for development/testing
-                import random
-                temperature = round(random.uniform(20, 30), 1)
-                humidity = round(random.uniform(40, 60), 1)
-                self.last_read_time = current_time
-                return (humidity, temperature)
-        except RuntimeError as e:
-            # Common DHT11 error
-            print(f"RuntimeError on GPIO{self.pin}: {e}")
-            return (None, None)
-        except Exception as e:
-            print(f"Sensor read error on GPIO{self.pin}: {e}")
-            return (None, None)
+    # Fallback: first available port
+    if ports:
+        return ports[0].device
+    return None
 
 
-class DHT22TestGUI:
-    """GUI for testing DHT22 sensors"""
+class ESP32DHT22Reader(threading.Thread):
+    """Background thread to read DHT22 values from ESP32 serial port."""
     
-    def __init__(self, root):
-        self.root = root
-        self.root.title("DHT22 Sensor Test")
-        self.root.geometry("600x400")
-        
-        # Sensor configurations
-        self.sensors = {
-            "Sensor 1 (GPIO 27)": 27,
-            "Sensor 2 (GPIO 22)": 22,
-        }
-        
-        self.sensor_objects = {}
+    def __init__(self, port, baudrate=115200):
+        super().__init__(daemon=True)
+        self.port = port
+        self.baudrate = baudrate
+        self.ser = None
         self.running = True
-        self.labels = {}
-        
-        # Create GUI
-        self.create_widgets()
-        
-        # Start sensor readings in background thread
-        self.reading_thread = threading.Thread(target=self.read_sensors_loop, daemon=True)
-        self.reading_thread.start()
-        
-        # Handle window close
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.lock = threading.Lock()
+        self.latest = {1: (None, None), 2: (None, None)}  # {sensor: (temp, humidity)}
+        self.connected = False
     
-    def create_widgets(self):
-        """Create GUI elements"""
-        # Title
-        title_frame = ttk.Frame(self.root)
-        title_frame.pack(fill=tk.X, padx=20, pady=10)
+    def run(self):
+        """Main thread loop."""
+        try:
+            self.ser = serial.Serial(self.port, self.baudrate, timeout=1)
+            print(f"✓ Connected to ESP32 on {self.port}")
+            self.connected = True
+        except Exception as e:
+            print(f"✗ Failed to open serial port {self.port}: {e}")
+            self.connected = False
+            return
         
-        title_label = ttk.Label(
-            title_frame, 
-            text="DHT22 Temperature & Humidity Monitor",
-            font=("Helvetica", 14, "bold")
-        )
-        title_label.pack()
-        
-        # Sensors frame
-        sensors_frame = ttk.LabelFrame(self.root, text="Sensor Readings", padding=15)
-        sensors_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
-        
-        for sensor_name, pin in self.sensors.items():
-            # Create a frame for each sensor
-            sensor_frame = ttk.Frame(sensors_frame)
-            sensor_frame.pack(fill=tk.X, pady=10)
-            
-            # Sensor label
-            label = ttk.Label(sensor_frame, text=sensor_name, font=("Helvetica", 11, "bold"))
-            label.pack(anchor=tk.W)
-            
-            # Temperature
-            temp_frame = ttk.Frame(sensor_frame)
-            temp_frame.pack(fill=tk.X, padx=20)
-            ttk.Label(temp_frame, text="Temperature:", width=15).pack(side=tk.LEFT)
-            temp_value = ttk.Label(temp_frame, text="-- °C", font=("Helvetica", 10), foreground="blue")
-            temp_value.pack(side=tk.LEFT, padx=5)
-            
-            # Humidity
-            humidity_frame = ttk.Frame(sensor_frame)
-            humidity_frame.pack(fill=tk.X, padx=20)
-            ttk.Label(humidity_frame, text="Humidity:", width=15).pack(side=tk.LEFT)
-            humidity_value = ttk.Label(humidity_frame, text="-- %", font=("Helvetica", 10), foreground="green")
-            humidity_value.pack(side=tk.LEFT, padx=5)
-            
-            # Status
-            status_frame = ttk.Frame(sensor_frame)
-            status_frame.pack(fill=tk.X, padx=20)
-            status_label = ttk.Label(status_frame, text="Status: Initializing...", font=("Helvetica", 9), foreground="gray")
-            status_label.pack(anchor=tk.W)
-            
-            self.labels[pin] = {
-                'temp': temp_value,
-                'humidity': humidity_value,
-                'status': status_label
-            }
-            
-            # Initialize sensor
-            self.sensor_objects[pin] = DHT22Sensor(pin)
-        
-        # Button frame
-        button_frame = ttk.Frame(self.root)
-        button_frame.pack(fill=tk.X, padx=20, pady=10)
-        
-        refresh_button = ttk.Button(button_frame, text="Refresh Now", command=self.force_refresh)
-        refresh_button.pack(side=tk.LEFT, padx=5)
-        
-        quit_button = ttk.Button(button_frame, text="Exit", command=self.on_closing)
-        quit_button.pack(side=tk.LEFT, padx=5)
-        
-        # Info frame
-        info_frame = ttk.Frame(self.root)
-        info_frame.pack(fill=tk.X, padx=20, pady=10)
-        
-        info_label = ttk.Label(
-            info_frame,
-            text="Readings update every 2 seconds. Readings are simulated if sensors are not connected.",
-            font=("Helvetica", 9),
-            foreground="gray"
-        )
-        info_label.pack()
-    
-    def read_sensors_loop(self):
-        """Background thread to read sensors continuously"""
-        last_update = {}
+        # Regex patterns to parse ESP32 output
+        dht1_pattern = re.compile(r"DHT1.*?:\s*([\d.\-]+)C\s+([\d.\-]+)%")
+        dht2_pattern = re.compile(r"DHT2.*?:\s*([\d.\-]+)C\s+([\d.\-]+)%")
         
         while self.running:
             try:
-                for pin, sensor in self.sensor_objects.items():
-                    humidity, temp = sensor.read()
+                if self.ser and self.ser.is_open:
+                    line = self.ser.readline().decode(errors="ignore").strip()
+                    if not line:
+                        continue
                     
-                    if temp is not None and humidity is not None:
-                        # Update labels
-                        self.labels[pin]['temp'].config(
-                            text=f"{temp:.1f} °C",
-                            foreground="blue"
-                        )
-                        self.labels[pin]['humidity'].config(
-                            text=f"{humidity:.1f} %",
-                            foreground="green"
-                        )
-                        self.labels[pin]['status'].config(
-                            text="Status: ✓ OK",
-                            foreground="darkgreen"
-                        )
-                        last_update[pin] = time.time()
-                    else:
-                        # No update available yet
-                        time_since_update = time.time() - last_update.get(pin, time.time())
-                        if time_since_update > 10:
-                            self.labels[pin]['status'].config(
-                                text="Status: ✗ No reading",
-                                foreground="red"
-                            )
-                        else:
-                            self.labels[pin]['status'].config(
-                                text="Status: ⏳ Waiting...",
-                                foreground="orange"
-                            )
-                
-                time.sleep(0.5)
+                    # Parse DHT1 (GPIO35)
+                    m1 = dht1_pattern.search(line)
+                    if m1:
+                        try:
+                            temp = float(m1.group(1))
+                            humidity = float(m1.group(2))
+                            with self.lock:
+                                self.latest[1] = (temp, humidity)
+                        except (ValueError, IndexError):
+                            pass
+                    
+                    # Parse DHT2 (GPIO36)
+                    m2 = dht2_pattern.search(line)
+                    if m2:
+                        try:
+                            temp = float(m2.group(1))
+                            humidity = float(m2.group(2))
+                            with self.lock:
+                                self.latest[2] = (temp, humidity)
+                        except (ValueError, IndexError):
+                            pass
             except Exception as e:
-                print(f"Error in sensor loop: {e}")
-                time.sleep(1)
+                print(f"Serial read error: {e}")
+                continue
     
-    def force_refresh(self):
-        """Force immediate sensor read"""
-        for pin, sensor in self.sensor_objects.items():
-            sensor.last_read_time = 0  # Reset to allow immediate read
+    def get_latest(self, sensor):
+        """Get latest reading for a sensor (1 or 2)."""
+        with self.lock:
+            return self.latest.get(sensor, (None, None))
     
-    def on_closing(self):
-        """Handle window closing"""
+    def stop(self):
+        """Stop the reader thread."""
         self.running = False
-        self.root.destroy()
+        if self.ser and self.ser.is_open:
+            self.ser.close()
+
+
+class DHT22App(tk.Tk):
+    """GUI application to display DHT22 sensor readings from ESP32."""
+    
+    def __init__(self, port):
+        super().__init__()
+        self.title("ESP32 DHT22 Sensor Test")
+        self.geometry("500x250")
+        self.resizable(False, False)
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+        
+        # Title
+        title_label = ttk.Label(self, text="ESP32 DHT22 Sensor Monitor", font=("Helvetica", 16, "bold"))
+        title_label.pack(pady=15)
+        
+        # Sensor 1 Frame
+        sensor1_frame = ttk.LabelFrame(self, text="DHT1 (GPIO35)", padding=10)
+        sensor1_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        self.dht1_temp_label = ttk.Label(sensor1_frame, text="Temperature: -- °C", font=("Helvetica", 12))
+        self.dht1_temp_label.pack(anchor=tk.W)
+        self.dht1_hum_label = ttk.Label(sensor1_frame, text="Humidity: -- %", font=("Helvetica", 12))
+        self.dht1_hum_label.pack(anchor=tk.W)
+        
+        # Sensor 2 Frame
+        sensor2_frame = ttk.LabelFrame(self, text="DHT2 (GPIO36)", padding=10)
+        sensor2_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        self.dht2_temp_label = ttk.Label(sensor2_frame, text="Temperature: -- °C", font=("Helvetica", 12))
+        self.dht2_temp_label.pack(anchor=tk.W)
+        self.dht2_hum_label = ttk.Label(sensor2_frame, text="Humidity: -- %", font=("Helvetica", 12))
+        self.dht2_hum_label.pack(anchor=tk.W)
+        
+        # Status frame
+        status_frame = ttk.Frame(self)
+        status_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        status_text = f"Connected to: {port}"
+        self.status_label = ttk.Label(status_frame, text=status_text, font=("Helvetica", 10), foreground="green")
+        self.status_label.pack(anchor=tk.W)
+        
+        # Start reader thread
+        self.reader = ESP32DHT22Reader(port)
+        self.reader.start()
+        
+        if not self.reader.connected:
+            self.status_label.config(text="Failed to connect to ESP32", foreground="red")
+        
+        # Update readings periodically
+        self.update_readings()
+    
+    def update_readings(self):
+        """Update sensor readings from ESP32."""
+        # DHT1
+        t1, h1 = self.reader.get_latest(1)
+        if t1 is not None and h1 is not None:
+            self.dht1_temp_label.config(text=f"Temperature: {t1:.1f} °C", foreground="black")
+            self.dht1_hum_label.config(text=f"Humidity: {h1:.1f} %", foreground="black")
+        else:
+            self.dht1_temp_label.config(text="Temperature: -- °C", foreground="gray")
+            self.dht1_hum_label.config(text="Humidity: -- %", foreground="gray")
+        
+        # DHT2
+        t2, h2 = self.reader.get_latest(2)
+        if t2 is not None and h2 is not None:
+            self.dht2_temp_label.config(text=f"Temperature: {t2:.1f} °C", foreground="black")
+            self.dht2_hum_label.config(text=f"Humidity: {h2:.1f} %", foreground="black")
+        else:
+            self.dht2_temp_label.config(text="Temperature: -- °C", foreground="gray")
+            self.dht2_hum_label.config(text="Humidity: -- %", foreground="gray")
+        
+        self.after(1000, self.update_readings)
+    
+    def on_close(self):
+        """Clean up and close."""
+        self.reader.stop()
+        self.destroy()
 
 
 def main():
-    """Main function"""
+    """Main function."""
     print("=" * 60)
-    print("DHT22 Sensor Test")
+    print("ESP32 DHT22 Sensor Test")
     print("=" * 60)
     print()
-    print("Sensors configured:")
-    print("  - Sensor 1: GPIO 27")
-    print("  - Sensor 2: GPIO 22")
-    print()
+    
+    if not SERIAL_AVAILABLE:
+        print("Error: pyserial is not installed.")
+        print("Install with: pip install pyserial")
+        sys.exit(1)
+    
+    port = autodetect_esp32_port()
+    if not port:
+        print("Error: Could not find ESP32 serial port.")
+        print("Please check:")
+        print("  - ESP32 is connected via USB")
+        print("  - USB driver is installed")
+        print("  - Port is not in use by another application")
+        sys.exit(1)
+    
+    print(f"Detected ESP32 on port: {port}")
     print("Starting GUI...")
     print()
     
-    root = tk.Tk()
-    gui = DHT22TestGUI(root)
-    root.mainloop()
+    app = DHT22App(port)
+    app.mainloop()
     
     print("Test completed.")
 

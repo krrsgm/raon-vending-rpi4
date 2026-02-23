@@ -25,7 +25,7 @@ class PriceStockDialog(tk.Toplevel):
 
     If `read_only` is True the fields are disabled and the dialog acts as a viewer.
     """
-    def __init__(self, parent, item_data=None, read_only=False):
+    def __init__(self, parent, item_data=None, read_only=False, category_options=None):
         """
         Args:
             parent: parent window
@@ -39,6 +39,7 @@ class PriceStockDialog(tk.Toplevel):
         self.title("Edit Item Details")
         self.transient(parent)
         self.grab_set()
+        self.category_options = category_options or []
         self._create_widgets()
     
     def _create_widgets(self):
@@ -64,11 +65,18 @@ class PriceStockDialog(tk.Toplevel):
         self.qty_entry.grid(row=3, column=1, columnspan=2, sticky="ew", pady=4)
         self.qty_entry.insert(0, str(self.item_data.get('quantity', 0)))
         
-        # Category
+        # Category (select from available or type new)
         ttk.Label(frame, text="Category:").grid(row=4, column=0, sticky="w", pady=4)
-        self.category_entry = ttk.Entry(frame, width=20)
-        self.category_entry.grid(row=4, column=1, columnspan=2, sticky="ew", pady=4)
-        self.category_entry.insert(0, self.item_data.get('category', ''))
+        try:
+            self.category_var = tk.StringVar(value=self.item_data.get('category', ''))
+            self.category_combo = ttk.Combobox(frame, textvariable=self.category_var, values=self.category_options, width=18)
+            self.category_combo.grid(row=4, column=1, columnspan=2, sticky="ew", pady=4)
+            # allow typing new categories
+            self.category_combo.configure(state='normal')
+        except Exception:
+            self.category_entry = ttk.Entry(frame, width=20)
+            self.category_entry.grid(row=4, column=1, columnspan=2, sticky="ew", pady=4)
+            self.category_entry.insert(0, self.item_data.get('category', ''))
         
         # Description
         ttk.Label(frame, text="Description:").grid(row=5, column=0, sticky="nw", pady=4)
@@ -121,10 +129,16 @@ class PriceStockDialog(tk.Toplevel):
         # Keep price and quantity editable in preset read-only viewer
         # (user requested price/stock editable in preset mode)
         try:
-            self.category_entry.state(['disabled'])
+            if hasattr(self, 'category_combo'):
+                self.category_combo.state(['disabled'])
+            elif hasattr(self, 'category_entry'):
+                self.category_entry.state(['disabled'])
         except Exception:
             try:
-                self.category_entry.config(state='disabled')
+                if hasattr(self, 'category_combo'):
+                    self.category_combo.config(state='disabled')
+                elif hasattr(self, 'category_entry'):
+                    self.category_entry.config(state='disabled')
             except Exception:
                 pass
         try:
@@ -165,7 +179,15 @@ class PriceStockDialog(tk.Toplevel):
         self.result = dict(self.item_data)
         self.result['price'] = price
         self.result['quantity'] = qty
-        self.result['category'] = self.category_entry.get().strip()
+        try:
+            if hasattr(self, 'category_var'):
+                self.result['category'] = self.category_var.get().strip()
+            elif hasattr(self, 'category_entry'):
+                self.result['category'] = self.category_entry.get().strip()
+            else:
+                self.result['category'] = ''
+        except Exception:
+            self.result['category'] = self.item_data.get('category', '')
         self.result['description'] = self.desc_text.get('1.0', 'end-1c').strip()
         self.result['image'] = self.image_entry.get().strip()
         self.destroy()
@@ -213,7 +235,7 @@ def convert_image_path_to_relative(absolute_path: str) -> str:
 
 class EditSlotDialog(tk.Toplevel):
     """Modal dialog to select from 3 term options or customize a slot item."""
-    def __init__(self, parent, slot_idx=0, term_options=None, current_term_idx=0):
+    def __init__(self, parent, slot_idx=0, term_options=None, current_term_idx=0, category_options=None):
         """
         Args:
             parent: parent window
@@ -227,6 +249,7 @@ class EditSlotDialog(tk.Toplevel):
         self.current_term_idx = current_term_idx
         self.result = None
         self.customize_mode = False
+        self.category_options = category_options or []
         
         self.title(f"Assign Item to Slot {slot_idx+1}")
         self.transient(parent)
@@ -349,7 +372,7 @@ Description: {item.get('description', '')}"""
 
     def _open_customize_dialog(self):
         """Open full customization form."""
-        CustomizeDialog(self, parent_result_callback=self._on_customize_done)
+        CustomizeDialog(self, parent_result_callback=self._on_customize_done, category_options=self.category_options)
 
     def _on_customize_done(self, custom_data):
         """Called when customize dialog completes."""
@@ -365,13 +388,14 @@ Description: {item.get('description', '')}"""
 
 class CustomizeDialog(tk.Toplevel):
     """Dialog for manual entry/customization of item details."""
-    def __init__(self, parent, parent_result_callback=None):
+    def __init__(self, parent, parent_result_callback=None, category_options=None):
         super().__init__(parent)
         self.title("Customize Item")
         self.transient(parent)
         self.grab_set()
         self.result = None
         self.parent_result_callback = parent_result_callback
+        self.category_options = category_options or []
         self._create_widgets()
 
     def _create_widgets(self):
@@ -385,8 +409,15 @@ class CustomizeDialog(tk.Toplevel):
         self.name_entry.grid(row=0, column=1, sticky="ew", pady=4)
 
         ttk.Label(frame, text="Category:").grid(row=1, column=0, sticky="w", pady=4)
-        self.category_entry = ttk.Entry(frame, width=40)
-        self.category_entry.grid(row=1, column=1, sticky="ew", pady=4)
+        # Provide combobox so admin can pick existing categories or type new
+        try:
+            self.category_var = tk.StringVar(value='')
+            self.category_entry = ttk.Combobox(frame, textvariable=self.category_var, values=self.category_options or [], width=40)
+            self.category_entry.grid(row=1, column=1, sticky="ew", pady=4)
+            self.category_entry.configure(state='normal')
+        except Exception:
+            self.category_entry = ttk.Entry(frame, width=40)
+            self.category_entry.grid(row=1, column=1, sticky="ew", pady=4)
 
         ttk.Label(frame, text="Price:").grid(row=2, column=0, sticky="w", pady=4)
         self.price_entry = ttk.Entry(frame, width=20)
@@ -866,7 +897,7 @@ class AssignItemsScreen(tk.Frame):
         if self.custom_mode:
             # Custom mode: open full EditSlotDialog for item selection/creation
             term_options = self.slots[idx].get('terms') or [None]*self.TERM_COUNT
-            dlg = EditSlotDialog(self.master, slot_idx=idx, term_options=term_options, current_term_idx=self.current_term)
+            dlg = EditSlotDialog(self.master, slot_idx=idx, term_options=term_options, current_term_idx=self.current_term, category_options=self.get_category_options())
             self.master.wait_window(dlg)
             if getattr(dlg, 'result', None):
                 self.slots[idx]['terms'][self.current_term] = dlg.result
@@ -891,7 +922,7 @@ class AssignItemsScreen(tk.Frame):
             item_to_edit['description'] = auto_desc
 
         # Open Price/Stock viewer but allow editing of price, quantity and description
-        dlg = PriceStockDialog(self.master, item_data=item_to_edit, read_only=False)
+        dlg = PriceStockDialog(self.master, item_data=item_to_edit, read_only=False, category_options=self.get_category_options())
         # Restrict some fields (keep price/qty/description editable; disable category/image)
         try:
             dlg._set_readonly()
@@ -1206,7 +1237,7 @@ class AssignItemsScreen(tk.Frame):
             def _cb(data):
                 setattr(self, '_last_custom_item', data)
 
-            dlg = CustomizeDialog(self.master, parent_result_callback=_cb)
+            dlg = CustomizeDialog(self.master, parent_result_callback=_cb, category_options=self.get_category_options())
             self.master.wait_window(dlg)
             custom_item = getattr(self, '_last_custom_item', None)
             if not custom_item:
@@ -1285,6 +1316,31 @@ class AssignItemsScreen(tk.Frame):
         self.refresh_all()
         # Ensure controller sees current assignments
         self._publish_assignments()
+
+    def get_category_options(self):
+        """Return a sorted list of available categories gathered from keyword map and current slots."""
+        cats = set()
+        # Start with keyword map keys
+        try:
+            for k in (self._keyword_map or {}).keys():
+                if k:
+                    cats.add(k)
+        except Exception:
+            pass
+        # Add categories found in slot assignments across all terms
+        try:
+            for s in self.slots:
+                try:
+                    for t in s.get('terms', []):
+                        if t and isinstance(t, dict):
+                            c = t.get('category')
+                            if c:
+                                cats.add(c)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return sorted(list(cats))
 
     def save_slots(self):
         try:

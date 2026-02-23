@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 import time
 import platform
+import threading
 
 # Conditional imports for Raspberry Pi
 try:
@@ -33,6 +34,14 @@ class DHT22Sensor:
         self.sensor = None
         self.last_read_time = 0
         self.min_read_interval = 2.0  # DHT22 minimum 2 second interval
+
+        # Use a class-level cache so multiple DHT22Sensor instances
+        # (e.g. one in `TECController` and one in UI) don't hammer
+        # the same GPIO pin independently. Cache stores tuple
+        # (humidity, temperature, last_time).
+        if not hasattr(DHT22Sensor, '_cache'):
+            DHT22Sensor._cache = {}
+            DHT22Sensor._cache_lock = threading.Lock()
         
         if DHT_AVAILABLE and platform.system() == "Linux":
             try:
@@ -59,10 +68,19 @@ class DHT22Sensor:
         Returns (humidity, temperature) or (None, None) on error.
         """
         current_time = time.time()
-        
-        # Enforce minimum read interval
-        if (current_time - self.last_read_time) < self.min_read_interval:
-            return (None, None)
+        # Check class-level cache first to ensure reads for the same
+        # pin are rate-limited across all instances.
+        try:
+            with DHT22Sensor._cache_lock:
+                cached = DHT22Sensor._cache.get(self.pin)
+                if cached:
+                    h, t, last_time = cached
+                    if (current_time - last_time) < self.min_read_interval:
+                        return (h, t)
+        except Exception:
+            # If cache isn't available for any reason, fall back to instance timing
+            if (current_time - self.last_read_time) < self.min_read_interval:
+                return (None, None)
         
         try:
             if self.sensor is not None and DHT_AVAILABLE:
@@ -70,6 +88,12 @@ class DHT22Sensor:
                 temperature = self.sensor.temperature
                 humidity = self.sensor.humidity
                 self.last_read_time = current_time
+                # Update class cache
+                try:
+                    with DHT22Sensor._cache_lock:
+                        DHT22Sensor._cache[self.pin] = (humidity, temperature, current_time)
+                except Exception:
+                    pass
                 return (humidity, temperature)
             else:
                 # Simulated reading for development
@@ -77,6 +101,11 @@ class DHT22Sensor:
                 temperature = round(random.uniform(20, 30), 1)
                 humidity = round(random.uniform(40, 60), 1)
                 self.last_read_time = current_time
+                try:
+                    with DHT22Sensor._cache_lock:
+                        DHT22Sensor._cache[self.pin] = (humidity, temperature, current_time)
+                except Exception:
+                    pass
                 return (humidity, temperature)
         except RuntimeError:
             # Common DHT22 error, return None to retry

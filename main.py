@@ -302,15 +302,19 @@ class MainApp(tk.Tk):
     def _on_tec_status_update(self, enabled, active, target_temp, current_temp):
         """Handle TEC controller status updates - update status panel."""
         try:
-            # Update status panel if it's available in the current frame
-            current_frame = self.frames.get(self.active_frame_name)
-            if hasattr(current_frame, 'status_panel'):
-                current_frame.status_panel.update_tec_status(
-                    enabled=enabled,
-                    active=active,
-                    target_temp=target_temp,
-                    current_temp=current_temp
-                )
+            # Update all frames that expose a status_panel so UI shows
+            # sensor/TEC updates regardless of which view is active.
+            for frame in self.frames.values():
+                try:
+                    if hasattr(frame, 'status_panel') and frame.status_panel:
+                        frame.status_panel.update_tec_status(
+                            enabled=enabled,
+                            active=active,
+                            target_temp=target_temp,
+                            current_temp=current_temp
+                        )
+                except Exception:
+                    pass
             
             # Log temperature periodically (not on every update to avoid spam)
             try:
@@ -329,14 +333,18 @@ class MainApp(tk.Tk):
     def _on_dht22_update(self, sensor_number, temp, humidity):
         """Handle DHT22 sensor updates - update status panel."""
         try:
-            # Update status panel if it's available in the current frame
-            current_frame = self.frames.get(self.active_frame_name)
-            if hasattr(current_frame, 'status_panel'):
-                current_frame.status_panel.update_dht22_reading(
-                    sensor_number=sensor_number,
-                    temp=temp,
-                    humidity=humidity
-                )
+            # Update all frames that expose a status_panel so UI shows
+            # DHT readings regardless of which view is active.
+            for frame in self.frames.values():
+                try:
+                    if hasattr(frame, 'status_panel') and frame.status_panel:
+                        frame.status_panel.update_dht22_reading(
+                            sensor_number=sensor_number,
+                            temp=temp,
+                            humidity=humidity
+                        )
+                except Exception:
+                    pass
             
             # Log temperature reading (DHT22 updates less frequently)
             try:
@@ -353,15 +361,19 @@ class MainApp(tk.Tk):
     def _on_ir_status_update(self, sensor_1, sensor_2, detection_mode, last_detection):
         """Handle IR sensor status updates - update status panel."""
         try:
-            # Update status panel if it's available in the current frame
-            current_frame = self.frames.get(self.active_frame_name)
-            if hasattr(current_frame, 'status_panel'):
-                current_frame.status_panel.update_ir_status(
-                    sensor_1=sensor_1,
-                    sensor_2=sensor_2,
-                    detection_mode=detection_mode,
-                    last_detection=last_detection
-                )
+            # Update all frames that expose a status_panel so UI shows
+            # IR updates regardless of which view is active.
+            for frame in self.frames.values():
+                try:
+                    if hasattr(frame, 'status_panel') and frame.status_panel:
+                        frame.status_panel.update_ir_status(
+                            sensor_1=sensor_1,
+                            sensor_2=sensor_2,
+                            detection_mode=detection_mode,
+                            last_detection=last_detection
+                        )
+                except Exception:
+                    pass
         except Exception as e:
             print(f"[MainApp] Error updating IR status panel: {e}")
     

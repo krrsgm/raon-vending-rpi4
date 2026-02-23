@@ -289,6 +289,17 @@ class CartScreen(tk.Frame):
         total_amount = sum(item["item"]["price"] * item["quantity"] for item in self.controller.cart)
         
         if not self.payment_in_progress:
+            # Show exact amount warning prompt
+            from tkinter import messagebox
+            result = messagebox.showwarning(
+                "Exact Amount Required",
+                f"Please insert the EXACT amount: ₱{total_amount:.2f}\n\n"
+                "This machine does NOT dispense change.\n\n"
+                "Proceed?",
+                type=messagebox.OKCANCEL
+            )
+            if result != messagebox.OK:
+                return
             # Start payment session
             self.payment_in_progress = True
             self.payment_required = total_amount
@@ -404,9 +415,9 @@ class CartScreen(tk.Frame):
             
             coins_text = (
                 "Coins: • ₱1 • ₱5 • ₱10 (Old and New)\n"
-                "Bills: • ₱20 • ₱50 • ₱100\n"
-                "Overpayment accepted.\n"
-                "Change will be dispensed automatically."
+                "Bills: • ₱20 • ₱50 • ₱100\n\n"
+                "⚠️  EXACT AMOUNT REQUIRED\n"
+                "No change will be dispensed."
             )
             
             tk.Label(
@@ -553,14 +564,10 @@ class CartScreen(tk.Frame):
             
         self.payment_in_progress = False
         
-        # Stop payment session and handle change
+        # Stop payment session WITHOUT dispensing change (machine only accepts exact amount)
         received, change_dispensed, change_status = self.payment_handler.stop_payment_session(
-            required_amount=self.payment_required
+            required_amount=None
         )
-        
-        # Show change being dispensed if needed
-        if change_dispensed > 0:
-            self.update_change_status(f"Dispensing change: ₱{change_dispensed:.2f}...")
             
         # Get individual amounts for final display
         coin_amount = self.coin_received
@@ -602,14 +609,8 @@ class CartScreen(tk.Frame):
             f"Coins received: ₱{coin_amount:.2f}\n"
             f"Bills received: ₱{bill_amount:.2f}\n"
             f"Total paid: ₱{received:.2f}\n"
+            f"\nYour items will now be dispensed."
         )
-        
-        if change_dispensed > 0:
-            status_text += f"Change dispensed: ₱{change_dispensed:.2f}\n"
-            if change_status:
-                status_text += f"{change_status}\n"
-                
-        status_text += "\nYour items will now be dispensed."
         
         messagebox.showinfo("Payment Complete", status_text)
         

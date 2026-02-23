@@ -285,7 +285,9 @@ class BillAcceptor:
         # Enqueue dispatch request so a separate thread invokes the registered callback.
         try:
             print(f"DEBUG: Enqueueing bill callback for amount {self.received_amount}")
-            self._dispatch_queue.put_nowait(self.received_amount)
+                # Add prompt message to warn user to wait before inserting another bill
+                prompt_msg = "Please wait a few seconds before inserting another bill."
+                self._dispatch_queue.put_nowait((self.received_amount, prompt_msg))
         except Exception as e:
             print(f"DEBUG: Failed to enqueue callback: {e}")
 
@@ -299,25 +301,26 @@ class BillAcceptor:
         import time, traceback
         while True:
             try:
-                amt = self._dispatch_queue.get(timeout=1.0)
+                callback_data = self._dispatch_queue.get(timeout=1.0)
             except Exception:
                 # Timeout - check if we should keep running
                 if not getattr(self, '_dispatch_running', True):
                     break
                 continue
             # Recognize sentinel None to stop the dispatcher
-            if amt is None:
+            if callback_data is None:
                 break
             try:
                 if self._callback:
-                    print(f"DEBUG: Dispatcher invoking callback on thread {threading.current_thread().name} with amount={amt}")
+                    print(f"DEBUG: Dispatcher invoking callback on thread {threading.current_thread().name} with data={callback_data}")
                     try:
-                        self._callback(amt)
+                        # callback_data is a tuple: (amount, prompt_msg)
+                        self._callback(*callback_data)
                     except Exception as e:
                         print(f"DEBUG: Dispatcher callback error: {e}")
                         traceback.print_exc()
                 else:
-                    print(f"DEBUG: Dispatcher dropped callback (no callback registered) for amount={amt}")
+                    print(f"DEBUG: Dispatcher dropped callback (no callback registered) for data={callback_data}")
             except Exception as e:
                 print(f"DEBUG: Dispatcher loop unexpected error: {e}")
                 try:

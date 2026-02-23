@@ -1,0 +1,1674 @@
+[
+  {
+    "terms": [
+      {
+        "code": "SS1",
+        "name": "SS1 - Sensor - IR Sensor, Photodiode, PIR Sensor",
+        "category": null,
+        "price": 185.0,
+        "quantity": 1,
+        "image": "images/SS1.png",
+        "description": "P185.0"
+      },
+      {
+        "code": "SS1",
+        "name": "SS1 - Sensor - IR Sensor, Photodiode, PIR Sensor",
+        "category": null,
+        "price": 185.0,
+        "quantity": 1,
+        "image": "images/SS1.png",
+        "description": "P185.0"
+      },
+      {
+        "code": "SS1",
+        "name": "SS1 - Sensor - IR Sensor, Photodiode, PIR Sensor",
+        "category": null,
+        "price": 185.0,
+        "quantity": 1,
+        "image": "images/SS1.png",
+        "description": "P185.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "FC",
+        "name": "FC - Ferric Chloride - Ferric Chloride, Glove",
+        "category": null,
+        "price": 36.0,
+        "quantity": 1,
+        "image": "images/FC.png",
+        "description": "P36.0"
+      },
+      {
+        "code": "FC",
+        "name": "FC - Ferric Chloride - Ferric Chloride, Glove",
+        "category": null,
+        "price": 36.0,
+        "quantity": 1,
+        "image": "images/FC.png",
+        "description": "P36.0"
+      },
+      {
+        "code": "FC",
+        "name": "FC - Ferric Chloride - Ferric Chloride, Glove",
+        "category": null,
+        "price": 36.0,
+        "quantity": 1,
+        "image": "images/FC.png",
+        "description": "P36.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "SD",
+        "name": "SD - Solder Bundle - Soldering Lead,Soldering Paster",
+        "category": null,
+        "price": 110.0,
+        "quantity": 1,
+        "image": "images/SD.png",
+        "description": "P110.0"
+      },
+      {
+        "code": "SD",
+        "name": "SD - Solder Bundle - Soldering Lead,Soldering Paster",
+        "category": null,
+        "price": 110.0,
+        "quantity": 1,
+        "image": "images/SD.png",
+        "description": "P110.0"
+      },
+      {
+        "code": "SD",
+        "name": "SD - Solder Bundle - Soldering Lead,Soldering Paster",
+        "category": null,
+        "price": 110.0,
+        "quantity": 1,
+        "image": "images/SD.png",
+        "description": "P110.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "JMM",
+        "name": "JMM - Jumper Wires (Male to Male)",
+        "category": null,
+        "price": 87.0,
+        "quantity": 1,
+        "image": "images/JMM.png",
+        "description": "P87.0"
+      },
+      {
+        "code": "JMM",
+        "name": "JMM - Jumper Wires (Male to Male)",
+        "category": null,
+        "price": 87.0,
+        "quantity": 1,
+        "image": "images/JMM.png",
+        "description": "P87.0"
+      },
+      {
+        "code": "JMM",
+        "name": "JMM - Jumper Wires (Male to Male)",
+        "category": null,
+        "price": 87.0,
+        "quantity": 1,
+        "image": "images/JMM.png",
+        "description": "P87.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "JFF",
+        "name": "JFF - Jumper Wires (Female to Female)",
+        "category": null,
+        "price": 87.0,
+        "quantity": 1,
+        "image": "images/JFF.png",
+        "description": "P87.0"
+      },
+      {
+        "code": "JFF",
+        "name": "JFF - Jumper Wires (Female to Female)",
+        "category": null,
+        "price": 87.0,
+        "quantity": 1,
+        "image": "images/JFF.png",
+        "description": "P87.0"
+      },
+      {
+        "code": "JFF",
+        "name": "JFF - Jumper Wires (Female to Female)",
+        "category": null,
+        "price": 87.0,
+        "quantity": 1,
+        "image": "images/JFF.png",
+        "description": "P87.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "JMF",
+        "name": "JMF - Jumper Wires (Male to Female)",
+        "category": null,
+        "price": 87.0,
+        "quantity": 1,
+        "image": "images/JMF.png",
+        "description": "P87.0"
+      },
+      {
+        "code": "JMF",
+        "name": "JMF - Jumper Wires (Male to Female)",
+        "category": null,
+        "price": 87.0,
+        "quantity": 1,
+        "image": "images/JMF.png",
+        "description": "P87.0"
+      },
+      {
+        "code": "JMF",
+        "name": "JMF - Jumper Wires (Male to Female)",
+        "category": null,
+        "price": 87.0,
+        "quantity": 1,
+        "image": "images/JMF.png",
+        "description": "P87.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "BB",
+        "name": "BB - Breadboard",
+        "category": null,
+        "price": 90.0,
+        "quantity": 1,
+        "image": "images/BB.png",
+        "description": "P90.0"
+      },
+      {
+        "code": "BB",
+        "name": "BB - Breadboard",
+        "category": null,
+        "price": 90.0,
+        "quantity": 1,
+        "image": "images/BB.png",
+        "description": "P90.0"
+      },
+      {
+        "code": "BB",
+        "name": "BB - Breadboard",
+        "category": null,
+        "price": 90.0,
+        "quantity": 1,
+        "image": "images/BB.png",
+        "description": "P90.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AC",
+        "name": "AC - Alligator Clips",
+        "category": null,
+        "price": 137.0,
+        "quantity": 1,
+        "image": "images/AC.png",
+        "description": "P137.0"
+      },
+      {
+        "code": "AC",
+        "name": "AC - Alligator Clips",
+        "category": null,
+        "price": 137.0,
+        "quantity": 1,
+        "image": "images/AC.png",
+        "description": "P137.0"
+      },
+      {
+        "code": "AC",
+        "name": "AC - Alligator Clips",
+        "category": null,
+        "price": 137.0,
+        "quantity": 1,
+        "image": "images/AC.png",
+        "description": "P137.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "UNO",
+        "name": "UNO - Arduino UNO",
+        "category": null,
+        "price": 180.0,
+        "quantity": 1,
+        "image": "images/UNO.png",
+        "description": "P180.0"
+      },
+      {
+        "code": "UNO",
+        "name": "UNO - Arduino UNO",
+        "category": null,
+        "price": 180.0,
+        "quantity": 1,
+        "image": "images/UNO.png",
+        "description": "P180.0"
+      },
+      {
+        "code": "UNO",
+        "name": "UNO - Arduino UNO",
+        "category": null,
+        "price": 180.0,
+        "quantity": 1,
+        "image": "images/UNO.png",
+        "description": "P180.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "PSP",
+        "name": "PSP - Power Supply Potentiometer - 5k ohm Potentiometer",
+        "category": null,
+        "price": 47.0,
+        "quantity": 1,
+        "image": "images/PSP.png",
+        "description": "P47.0"
+      },
+      {
+        "code": "PSCB",
+        "name": "PSCB - Power Supply Circuit Board - PCB 3x5",
+        "category": null,
+        "price": 94.0,
+        "quantity": 1,
+        "image": "images/PSCB.png",
+        "description": "P94.0"
+      },
+      {
+        "code": "PSCB",
+        "name": "PSCB - Power Supply Circuit Board - PCB 3x5",
+        "category": null,
+        "price": 94.0,
+        "quantity": 1,
+        "image": "images/PSCB.png",
+        "description": "P94.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMPCB",
+        "name": "AMPCB - Amplifier Circuit Board - Pre-sensitized PCB Single Sided 4\"x6\" with Developer",
+        "category": null,
+        "price": 338.0,
+        "quantity": 1,
+        "image": "images/AMPCB.png",
+        "description": "P338.0"
+      },
+      null,
+      null
+    ]
+  },
+  {
+    "terms": [
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "terms": [
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "terms": [
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "terms": [
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "terms": [
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "D1",
+        "name": "D1 - Diode - 1N4002, 1N5400",
+        "category": null,
+        "price": 39.0,
+        "quantity": 1,
+        "image": "images/D1.png",
+        "description": "P39.0"
+      },
+      {
+        "code": "D1",
+        "name": "D1 - Diode - 1N4002, 1N5400",
+        "category": null,
+        "price": 39.0,
+        "quantity": 1,
+        "image": "images/D1.png",
+        "description": "P39.0"
+      },
+      {
+        "code": "D1",
+        "name": "D1 - Diode - 1N4002, 1N5400",
+        "category": null,
+        "price": 39.0,
+        "quantity": 1,
+        "image": "images/D1.png",
+        "description": "P39.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "T1",
+        "name": "T1 - Transistor 1 - 2N3904, 2N3906, TIP3055, TIP2955",
+        "category": null,
+        "price": 211.0,
+        "quantity": 1,
+        "image": "images/T1.png",
+        "description": "P211.0"
+      },
+      {
+        "code": "T1",
+        "name": "T1 - Transistor 1 - 2N3904, 2N3906, TIP3055, TIP2955",
+        "category": null,
+        "price": 211.0,
+        "quantity": 1,
+        "image": "images/T1.png",
+        "description": "P211.0"
+      },
+      {
+        "code": "T1",
+        "name": "T1 - Transistor 1 - 2N3904, 2N3906, TIP3055, TIP2955",
+        "category": null,
+        "price": 211.0,
+        "quantity": 1,
+        "image": "images/T1.png",
+        "description": "P211.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "VR1",
+        "name": "VR1 - Voltage Regulator - LM7805, LM317T",
+        "category": null,
+        "price": 110.0,
+        "quantity": 1,
+        "image": "images/VR1.png",
+        "description": "P110.0"
+      },
+      {
+        "code": "VR1",
+        "name": "VR1 - Voltage Regulator - LM7805, LM317T",
+        "category": null,
+        "price": 110.0,
+        "quantity": 1,
+        "image": "images/VR1.png",
+        "description": "P110.0"
+      },
+      {
+        "code": "VR1",
+        "name": "VR1 - Voltage Regulator - LM7805, LM317T",
+        "category": null,
+        "price": 110.0,
+        "quantity": 1,
+        "image": "images/VR1.png",
+        "description": "P110.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "IC1",
+        "name": "IC1 - AND-NAND - 7408, 7421, 7400, 7420",
+        "category": null,
+        "price": 146.0,
+        "quantity": 1,
+        "image": "images/IC1.png",
+        "description": "P146.0"
+      },
+      {
+        "code": "IC1",
+        "name": "IC1 - AND-NAND - 7408, 7421, 7400, 7420",
+        "category": null,
+        "price": 146.0,
+        "quantity": 1,
+        "image": "images/IC1.png",
+        "description": "P146.0"
+      },
+      {
+        "code": "IC1",
+        "name": "IC1 - AND-NAND - 7408, 7421, 7400, 7420",
+        "category": null,
+        "price": 146.0,
+        "quantity": 1,
+        "image": "images/IC1.png",
+        "description": "P146.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "IC2",
+        "name": "IC2 - OR-NOR - 7432, 7431, 7402, 7425",
+        "category": null,
+        "price": 63.0,
+        "quantity": 1,
+        "image": "images/IC2.png",
+        "description": "P63.0"
+      },
+      {
+        "code": "IC2",
+        "name": "IC2 - OR-NOR - 7432, 7431, 7402, 7425",
+        "category": null,
+        "price": 63.0,
+        "quantity": 1,
+        "image": "images/IC2.png",
+        "description": "P63.0"
+      },
+      {
+        "code": "IC2",
+        "name": "IC2 - OR-NOR - 7432, 7431, 7402, 7425",
+        "category": null,
+        "price": 63.0,
+        "quantity": 1,
+        "image": "images/IC2.png",
+        "description": "P63.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "IC3",
+        "name": "IC3 - XOR-XNOR - 7486, 74268, 74266",
+        "category": null,
+        "price": 63.0,
+        "quantity": 1,
+        "image": "images/IC3.png",
+        "description": "P63.0"
+      },
+      {
+        "code": "IC3",
+        "name": "IC3 - XOR-XNOR - 7486, 74268, 74266",
+        "category": null,
+        "price": 63.0,
+        "quantity": 1,
+        "image": "images/IC3.png",
+        "description": "P63.0"
+      },
+      {
+        "code": "IC3",
+        "name": "IC3 - XOR-XNOR - 7486, 74268, 74266",
+        "category": null,
+        "price": 63.0,
+        "quantity": 1,
+        "image": "images/IC3.png",
+        "description": "P63.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "IC4",
+        "name": "IC4 - NOT - 7404",
+        "category": null,
+        "price": 63.0,
+        "quantity": 1,
+        "image": "images/IC4.png",
+        "description": "P63.0"
+      },
+      {
+        "code": "IC4",
+        "name": "IC4 - NOT - 7404",
+        "category": null,
+        "price": 63.0,
+        "quantity": 1,
+        "image": "images/IC4.png",
+        "description": "P63.0"
+      },
+      {
+        "code": "IC4",
+        "name": "IC4 - NOT - 7404",
+        "category": null,
+        "price": 63.0,
+        "quantity": 1,
+        "image": "images/IC4.png",
+        "description": "P63.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "IC5",
+        "name": "IC5 - MUX - 74153, 74155",
+        "category": null,
+        "price": 106.0,
+        "quantity": 1,
+        "image": "images/IC5.png",
+        "description": "P106.0"
+      },
+      {
+        "code": "IC5",
+        "name": "IC5 - MUX - 74153, 74155",
+        "category": null,
+        "price": 106.0,
+        "quantity": 1,
+        "image": "images/IC5.png",
+        "description": "P106.0"
+      },
+      {
+        "code": "IC5",
+        "name": "IC5 - MUX - 74153, 74155",
+        "category": null,
+        "price": 106.0,
+        "quantity": 1,
+        "image": "images/IC5.png",
+        "description": "P106.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "IC6",
+        "name": "IC6 - Display - 74147, 7448, 7 Segment Cathode",
+        "category": null,
+        "price": 129.0,
+        "quantity": 1,
+        "image": "images/IC6.png",
+        "description": "P129.0"
+      },
+      {
+        "code": "IC6",
+        "name": "IC6 - Display - 74147, 7448, 7 Segment Cathode",
+        "category": null,
+        "price": 129.0,
+        "quantity": 1,
+        "image": "images/IC6.png",
+        "description": "P129.0"
+      },
+      {
+        "code": "IC6",
+        "name": "IC6 - Display - 74147, 7448, 7 Segment Cathode",
+        "category": null,
+        "price": 129.0,
+        "quantity": 1,
+        "image": "images/IC6.png",
+        "description": "P129.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "IC7",
+        "name": "IC7 - Sequential IC - 74195, 74194, 74193",
+        "category": null,
+        "price": 150.0,
+        "quantity": 1,
+        "image": "images/IC7.png",
+        "description": "P150.0"
+      },
+      {
+        "code": "IC7",
+        "name": "IC7 - Sequential IC - 74195, 74194, 74193",
+        "category": null,
+        "price": 150.0,
+        "quantity": 1,
+        "image": "images/IC7.png",
+        "description": "P150.0"
+      },
+      {
+        "code": "IC7",
+        "name": "IC7 - Sequential IC - 74195, 74194, 74193",
+        "category": null,
+        "price": 150.0,
+        "quantity": 1,
+        "image": "images/IC7.png",
+        "description": "P150.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "M1",
+        "name": "M1 - Miscellaneous - 555 Timer, LM393 , 74LS74",
+        "category": null,
+        "price": 86.0,
+        "quantity": 1,
+        "image": "images/M1.png",
+        "description": "P86.0"
+      },
+      {
+        "code": "M1",
+        "name": "M1 - Miscellaneous - 555 Timer, LM393 , 74LS74",
+        "category": null,
+        "price": 86.0,
+        "quantity": 1,
+        "image": "images/M1.png",
+        "description": "P86.0"
+      },
+      {
+        "code": "M1",
+        "name": "M1 - Miscellaneous - 555 Timer, LM393 , 74LS74",
+        "category": null,
+        "price": 86.0,
+        "quantity": 1,
+        "image": "images/M1.png",
+        "description": "P86.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "SR22",
+        "name": "SR22 - Stranded Wires - 22 AWG",
+        "category": null,
+        "price": 113.0,
+        "quantity": 1,
+        "image": "images/SR22.png",
+        "description": "P113.0"
+      },
+      {
+        "code": "SR22",
+        "name": "SR22 - Stranded Wires - 22 AWG",
+        "category": null,
+        "price": 113.0,
+        "quantity": 1,
+        "image": "images/SR22.png",
+        "description": "P113.0"
+      },
+      {
+        "code": "SR22",
+        "name": "SR22 - Stranded Wires - 22 AWG",
+        "category": null,
+        "price": 113.0,
+        "quantity": 1,
+        "image": "images/SR22.png",
+        "description": "P113.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "SR18",
+        "name": "SR18 - Stranded Wires - 18 AWG",
+        "category": null,
+        "price": 105.0,
+        "quantity": 1,
+        "image": "images/SR18.png",
+        "description": "P105.0"
+      },
+      {
+        "code": "SR18",
+        "name": "SR18 - Stranded Wires - 18 AWG",
+        "category": null,
+        "price": 105.0,
+        "quantity": 1,
+        "image": "images/SR18.png",
+        "description": "P105.0"
+      },
+      {
+        "code": "SR18",
+        "name": "SR18 - Stranded Wires - 18 AWG",
+        "category": null,
+        "price": 105.0,
+        "quantity": 1,
+        "image": "images/SR18.png",
+        "description": "P105.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "SD22",
+        "name": "SD22 - Solid Wires - 22 AWG",
+        "category": null,
+        "price": 83.0,
+        "quantity": 1,
+        "image": "images/SD22.png",
+        "description": "P83.0"
+      },
+      {
+        "code": "SD22",
+        "name": "SD22 - Solid Wires - 22 AWG",
+        "category": null,
+        "price": 83.0,
+        "quantity": 1,
+        "image": "images/SD22.png",
+        "description": "P83.0"
+      },
+      {
+        "code": "SD22",
+        "name": "SD22 - Solid Wires - 22 AWG",
+        "category": null,
+        "price": 83.0,
+        "quantity": 1,
+        "image": "images/SD22.png",
+        "description": "P83.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "PB",
+        "name": "PB - Push Buttons - Push Buttons",
+        "category": null,
+        "price": 13.0,
+        "quantity": 1,
+        "image": "images/PB.png",
+        "description": "P13.0"
+      },
+      {
+        "code": "PB",
+        "name": "PB - Push Buttons - Push Buttons",
+        "category": null,
+        "price": 13.0,
+        "quantity": 1,
+        "image": "images/PB.png",
+        "description": "P13.0"
+      },
+      {
+        "code": "PB",
+        "name": "PB - Push Buttons - Push Buttons",
+        "category": null,
+        "price": 13.0,
+        "quantity": 1,
+        "image": "images/PB.png",
+        "description": "P13.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "SW",
+        "name": "SW - Switches",
+        "category": null,
+        "price": 13.0,
+        "quantity": 1,
+        "image": "images/SW.png",
+        "description": "P13.0"
+      },
+      {
+        "code": "SW",
+        "name": "SW - Switches",
+        "category": null,
+        "price": 13.0,
+        "quantity": 1,
+        "image": "images/SW.png",
+        "description": "P13.0"
+      },
+      {
+        "code": "SW",
+        "name": "SW - Switches",
+        "category": null,
+        "price": 13.0,
+        "quantity": 1,
+        "image": "images/SW.png",
+        "description": "P13.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "LED",
+        "name": "LED - LED - LED",
+        "category": null,
+        "price": 32.0,
+        "quantity": 1,
+        "image": "images/LED.png",
+        "description": "P32.0"
+      },
+      {
+        "code": "LED",
+        "name": "LED - LED - LED",
+        "category": null,
+        "price": 32.0,
+        "quantity": 1,
+        "image": "images/LED.png",
+        "description": "P32.0"
+      },
+      {
+        "code": "LED",
+        "name": "LED - LED - LED",
+        "category": null,
+        "price": 32.0,
+        "quantity": 1,
+        "image": "images/LED.png",
+        "description": "P32.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "R1",
+        "name": "R1 - Resistor 1 - 10, 22, 47, 100",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R1.png",
+        "description": "P48.0"
+      },
+      {
+        "code": "R1",
+        "name": "R1 - Resistor 1 - 10, 22, 47, 100",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R1.png",
+        "description": "P48.0"
+      },
+      {
+        "code": "R1",
+        "name": "R1 - Resistor 1 - 10, 22, 47, 100",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R1.png",
+        "description": "P48.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "R2",
+        "name": "R2 - Resistor 2 - 150, 200, 220, 270",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R2.png",
+        "description": "P48.0"
+      },
+      {
+        "code": "R2",
+        "name": "R2 - Resistor 2 - 150, 200, 220, 270",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R2.png",
+        "description": "P48.0"
+      },
+      {
+        "code": "R2",
+        "name": "R2 - Resistor 2 - 150, 200, 220, 270",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R2.png",
+        "description": "P48.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "R3",
+        "name": "R3 - Resistor 3 - 330, 470, 530, 680",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R3.png",
+        "description": "P48.0"
+      },
+      {
+        "code": "R3",
+        "name": "R3 - Resistor 3 - 330, 470, 530, 680",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R3.png",
+        "description": "P48.0"
+      },
+      {
+        "code": "R3",
+        "name": "R3 - Resistor 3 - 330, 470, 530, 680",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R3.png",
+        "description": "P48.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "R4",
+        "name": "R4 - Resistor 4 - 1K, 2K, 2.2k, 3.3k",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R4.png",
+        "description": "P48.0"
+      },
+      {
+        "code": "R4",
+        "name": "R4 - Resistor 4 - 1K, 2K, 2.2k, 3.3k",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R4.png",
+        "description": "P48.0"
+      },
+      {
+        "code": "R4",
+        "name": "R4 - Resistor 4 - 1K, 2K, 2.2k, 3.3k",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R4.png",
+        "description": "P48.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "R5",
+        "name": "R5 - Resistor 5 - 4.7k, 5.1k, 6.8k, 10k",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R5.png",
+        "description": "P48.0"
+      },
+      {
+        "code": "R5",
+        "name": "R5 - Resistor 5 - 4.7k, 5.1k, 6.8k, 10k",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R5.png",
+        "description": "P48.0"
+      },
+      {
+        "code": "R5",
+        "name": "R5 - Resistor 5 - 4.7k, 5.1k, 6.8k, 10k",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R5.png",
+        "description": "P48.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "R6",
+        "name": "R6 - Resistor 6 - 20k, 47k, 51k, 68k",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R6.png",
+        "description": "P48.0"
+      },
+      {
+        "code": "R6",
+        "name": "R6 - Resistor 6 - 20k, 47k, 51k, 68k",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R6.png",
+        "description": "P48.0"
+      },
+      {
+        "code": "R6",
+        "name": "R6 - Resistor 6 - 20k, 47k, 51k, 68k",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R6.png",
+        "description": "P48.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "R7",
+        "name": "R7 - Resistor 7 - 100k, 220k, 300k, 470k",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R7.png",
+        "description": "P48.0"
+      },
+      {
+        "code": "R7",
+        "name": "R7 - Resistor 7 - 100k, 220k, 300k, 470k",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R7.png",
+        "description": "P48.0"
+      },
+      {
+        "code": "R7",
+        "name": "R7 - Resistor 7 - 100k, 220k, 300k, 470k",
+        "category": null,
+        "price": 48.0,
+        "quantity": 1,
+        "image": "images/R7.png",
+        "description": "P48.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "R8",
+        "name": "R8 - Resistor 8 - 680k, 1M",
+        "category": null,
+        "price": 24.0,
+        "quantity": 1,
+        "image": "images/R8.png",
+        "description": "P24.0"
+      },
+      {
+        "code": "R8",
+        "name": "R8 - Resistor 8 - 680k, 1M",
+        "category": null,
+        "price": 24.0,
+        "quantity": 1,
+        "image": "images/R8.png",
+        "description": "P24.0"
+      },
+      {
+        "code": "R8",
+        "name": "R8 - Resistor 8 - 680k, 1M",
+        "category": null,
+        "price": 24.0,
+        "quantity": 1,
+        "image": "images/R8.png",
+        "description": "P24.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "C1",
+        "name": "C1 - Capacitor 1 - 0.1uF, 0.22uF, 0.47uF, 1uF, 2.2uF",
+        "category": null,
+        "price": 44.0,
+        "quantity": 1,
+        "image": "images/C1.png",
+        "description": "P44.0"
+      },
+      {
+        "code": "C1",
+        "name": "C1 - Capacitor 1 - 0.1uF, 0.22uF, 0.47uF, 1uF, 2.2uF",
+        "category": null,
+        "price": 44.0,
+        "quantity": 1,
+        "image": "images/C1.png",
+        "description": "P44.0"
+      },
+      {
+        "code": "C1",
+        "name": "C1 - Capacitor 1 - 0.1uF, 0.22uF, 0.47uF, 1uF, 2.2uF",
+        "category": null,
+        "price": 44.0,
+        "quantity": 1,
+        "image": "images/C1.png",
+        "description": "P44.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "C2",
+        "name": "C2 - Capacitor 2 - 3.3uF, 4.7uF, 10uF, 22uF",
+        "category": null,
+        "price": 54.0,
+        "quantity": 1,
+        "image": "images/C2.png",
+        "description": "P54.0"
+      },
+      {
+        "code": "C2",
+        "name": "C2 - Capacitor 2 - 3.3uF, 4.7uF, 10uF, 22uF",
+        "category": null,
+        "price": 54.0,
+        "quantity": 1,
+        "image": "images/C2.png",
+        "description": "P54.0"
+      },
+      {
+        "code": "C2",
+        "name": "C2 - Capacitor 2 - 3.3uF, 4.7uF, 10uF, 22uF",
+        "category": null,
+        "price": 54.0,
+        "quantity": 1,
+        "image": "images/C2.png",
+        "description": "P54.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "C3",
+        "name": "C3 - Capacitor 3 - 33uF, 47uF 16V 47uF 25V",
+        "category": null,
+        "price": 58.0,
+        "quantity": 1,
+        "image": "images/C3.png",
+        "description": "P58.0"
+      },
+      {
+        "code": "C3",
+        "name": "C3 - Capacitor 3 - 33uF, 47uF 16V 47uF 25V",
+        "category": null,
+        "price": 58.0,
+        "quantity": 1,
+        "image": "images/C3.png",
+        "description": "P58.0"
+      },
+      {
+        "code": "C3",
+        "name": "C3 - Capacitor 3 - 33uF, 47uF 16V 47uF 25V",
+        "category": null,
+        "price": 58.0,
+        "quantity": 1,
+        "image": "images/C3.png",
+        "description": "P58.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "C4",
+        "name": "C4 - Capacitor 4 - 100uF 16V, 100uF 25V, 220uF",
+        "category": null,
+        "price": 83.0,
+        "quantity": 1,
+        "image": "images/C4.png",
+        "description": "P83.0"
+      },
+      {
+        "code": "C4",
+        "name": "C4 - Capacitor 4 - 100uF 16V, 100uF 25V, 220uF",
+        "category": null,
+        "price": 83.0,
+        "quantity": 1,
+        "image": "images/C4.png",
+        "description": "P83.0"
+      },
+      {
+        "code": "C4",
+        "name": "C4 - Capacitor 4 - 100uF 16V, 100uF 25V, 220uF",
+        "category": null,
+        "price": 83.0,
+        "quantity": 1,
+        "image": "images/C4.png",
+        "description": "P83.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMP",
+        "name": "AMP R1 - Amplifier R1 - R - 1M",
+        "category": null,
+        "price": 7.0,
+        "quantity": 1,
+        "image": "images/AMP.png",
+        "description": "P7.0"
+      },
+      {
+        "code": "PSP",
+        "name": "PSP - Power Supply Potentiometer - 5k ohm Potentiometer",
+        "category": null,
+        "price": 47.0,
+        "quantity": 1,
+        "image": "images/PSP.png",
+        "description": "P47.0"
+      },
+      {
+        "code": "PSP",
+        "name": "PSP - Power Supply Potentiometer - 5k ohm Potentiometer",
+        "category": null,
+        "price": 47.0,
+        "quantity": 1,
+        "image": "images/PSP.png",
+        "description": "P47.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMP",
+        "name": "AMP R2 - Amplifier R2 - R - 330",
+        "category": null,
+        "price": 7.0,
+        "quantity": 1,
+        "image": "images/AMP.png",
+        "description": "P7.0"
+      },
+      {
+        "code": "PSR",
+        "name": "PSR - Power Supply Resistor - 0.22 ohms, 240 ohms, 1k ohms",
+        "category": null,
+        "price": 78.0,
+        "quantity": 1,
+        "image": "images/PSR.png",
+        "description": "P78.0"
+      },
+      {
+        "code": "PSR",
+        "name": "PSR - Power Supply Resistor - 0.22 ohms, 240 ohms, 1k ohms",
+        "category": null,
+        "price": 78.0,
+        "quantity": 1,
+        "image": "images/PSR.png",
+        "description": "P78.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMP",
+        "name": "AMP R3 - Amplifier R3 - R - 5.6K",
+        "category": null,
+        "price": 7.0,
+        "quantity": 1,
+        "image": "images/AMP.png",
+        "description": "P7.0"
+      },
+      {
+        "code": "PSC",
+        "name": "PSC - Power Supply Capacitor - 4700uF",
+        "category": null,
+        "price": 125.0,
+        "quantity": 1,
+        "image": "images/PSC.png",
+        "description": "P125.0"
+      },
+      {
+        "code": "PSC",
+        "name": "PSC - Power Supply Capacitor - 4700uF",
+        "category": null,
+        "price": 125.0,
+        "quantity": 1,
+        "image": "images/PSC.png",
+        "description": "P125.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMPR4",
+        "name": "AMPR4 - Amplifier R4 - R- 10K",
+        "category": null,
+        "price": 13.0,
+        "quantity": 1,
+        "image": "images/AMPR4.png",
+        "description": "P13.0"
+      },
+      {
+        "code": "PSD",
+        "name": "PSD - Power Supply Diode - 1N5400, 1N4001, Zener Diode",
+        "category": null,
+        "price": 126.0,
+        "quantity": 1,
+        "image": "images/PSD.png",
+        "description": "P126.0"
+      },
+      {
+        "code": "PSD",
+        "name": "PSD - Power Supply Diode - 1N5400, 1N4001, Zener Diode",
+        "category": null,
+        "price": 126.0,
+        "quantity": 1,
+        "image": "images/PSD.png",
+        "description": "P126.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMPR5",
+        "name": "AMPR5 - Amplifier R5 - R - 2.2K",
+        "category": null,
+        "price": 7.0,
+        "quantity": 1,
+        "image": "images/AMPR5.png",
+        "description": "P7.0"
+      },
+      {
+        "code": "PSF",
+        "name": "PSF - Power Supply Fuse:1A, 3A",
+        "category": null,
+        "price": 117.0,
+        "quantity": 1,
+        "image": "images/PSF.png",
+        "description": "P117.0"
+      },
+      {
+        "code": "PSF",
+        "name": "PSF - Power Supply Fuse:1A, 3A",
+        "category": null,
+        "price": 117.0,
+        "quantity": 1,
+        "image": "images/PSF.png",
+        "description": "P117.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMPC1",
+        "name": "AMPC1 - Amplifier C1 - C - 4.7uF",
+        "category": null,
+        "price": 57.0,
+        "quantity": 1,
+        "image": "images/AMPC1.png",
+        "description": "P57.0"
+      },
+      {
+        "code": "PSV",
+        "name": "PSV - Power Supply Voltmeter - Voltmeter",
+        "category": null,
+        "price": 51.0,
+        "quantity": 1,
+        "image": "images/PSV.png",
+        "description": "P51.0"
+      },
+      {
+        "code": "PSV",
+        "name": "PSV - Power Supply Voltmeter - Voltmeter",
+        "category": null,
+        "price": 51.0,
+        "quantity": 1,
+        "image": "images/PSV.png",
+        "description": "P51.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMPC2",
+        "name": "AMPC2 - Amplifier C2 - C - 10uF",
+        "category": null,
+        "price": 82.0,
+        "quantity": 1,
+        "image": "images/AMPC2.png",
+        "description": "P82.0"
+      },
+      {
+        "code": "PST&VR",
+        "name": "PST&VR - Power Supply Transistor & Voltage Regulator - LM317T, TIP2955",
+        "category": null,
+        "price": 117.0,
+        "quantity": 1,
+        "image": "images/PST&VR.png",
+        "description": "P117.0"
+      },
+      {
+        "code": "PST&VR",
+        "name": "PST&VR - Power Supply Transistor & Voltage Regulator - LM317T, TIP2955",
+        "category": null,
+        "price": 117.0,
+        "quantity": 1,
+        "image": "images/PST&VR.png",
+        "description": "P117.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMPC3",
+        "name": "AMPC3 - Amplifier C3 - C - 1000uF",
+        "category": null,
+        "price": 157.0,
+        "quantity": 1,
+        "image": "images/AMPC3.png",
+        "description": "P157.0"
+      },
+      {
+        "code": "PSM",
+        "name": "PSM - Power Supply Miscellaneous - Knob, Binding Posts, Switch Indicator, Fuse, Holder",
+        "category": null,
+        "price": 97.0,
+        "quantity": 1,
+        "image": "images/PSM.png",
+        "description": "P97.0"
+      },
+      {
+        "code": "PSM",
+        "name": "PSM - Power Supply Miscellaneous - Knob, Binding Posts, Switch Indicator, Fuse, Holder",
+        "category": null,
+        "price": 97.0,
+        "quantity": 1,
+        "image": "images/PSM.png",
+        "description": "P97.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMPC4",
+        "name": "AMPC4 - Amplifier C4 - C - 220uF",
+        "category": null,
+        "price": 32.0,
+        "quantity": 1,
+        "image": "images/AMPC4.png",
+        "description": "P32.0"
+      },
+      null,
+      {
+        "code": "T2",
+        "name": "T2 - Transistor 2 - 2N6073, 2N6397, 2N6027",
+        "category": null,
+        "price": 126.0,
+        "quantity": 1,
+        "image": "images/T2.png",
+        "description": "P126.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMPC5",
+        "name": "AMPC5 - Amplifier C5 - C - 104",
+        "category": null,
+        "price": 10.0,
+        "quantity": 1,
+        "image": "images/AMPC5.png",
+        "description": "P10.0"
+      },
+      null,
+      {
+        "code": "M2",
+        "name": "M2 - Miscellaneous 2 - SCR (295060), 1N5758, 51mH Inductor",
+        "category": null,
+        "price": 258.0,
+        "quantity": 1,
+        "image": "images/M2.png",
+        "description": "P258.0"
+      }
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMPC6",
+        "name": "AMPC6 - Amplifier C6 - C - 103",
+        "category": null,
+        "price": 10.0,
+        "quantity": 1,
+        "image": "images/AMPC6.png",
+        "description": "P10.0"
+      },
+      null,
+      null
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMPC7",
+        "name": "AMPC7 - Amplifier C7 - C - 222",
+        "category": null,
+        "price": 10.0,
+        "quantity": 1,
+        "image": "images/AMPC7.png",
+        "description": "P10.0"
+      },
+      null,
+      null
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMPC8",
+        "name": "AMPC8 - Amplifier C8 - C - 224",
+        "category": null,
+        "price": 10.0,
+        "quantity": 1,
+        "image": "images/AMPC8.png",
+        "description": "P10.0"
+      },
+      null,
+      null
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMPT1",
+        "name": "AMPT1 - Amplifier T1 - T - C945",
+        "category": null,
+        "price": 8.0,
+        "quantity": 1,
+        "image": "images/AMPT1.png",
+        "description": "P8.0"
+      },
+      null,
+      null
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMPD1",
+        "name": "AMPD1 - Amplifier D1 - D - CR1",
+        "category": null,
+        "price": 57.0,
+        "quantity": 1,
+        "image": "images/AMPD1.png",
+        "description": "P57.0"
+      },
+      null,
+      null
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMPI1",
+        "name": "AMPI1 - Amplifier I1 - I - LA202",
+        "category": null,
+        "price": 313.0,
+        "quantity": 1,
+        "image": "images/AMPI1.png",
+        "description": "P313.0"
+      },
+      null,
+      null
+    ]
+  },
+  {
+    "terms": [
+      {
+        "code": "AMPM",
+        "name": "AMPM - Amplifier Miscellaneous - Knob",
+        "category": null,
+        "price": 50.0,
+        "quantity": 1,
+        "image": "images/AMPM.png",
+        "description": "P50.0"
+      },
+      null,
+      null
+    ]
+  },
+  {
+    "terms": [
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "terms": [
+      null,
+      null,
+      null
+    ]
+  }
+]

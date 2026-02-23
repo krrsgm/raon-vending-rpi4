@@ -322,11 +322,25 @@
         </div>
         
         <!-- Low Stock Alerts Section -->
-        <div id="alertsSection" style="display:none; margin-bottom: 30px;">
+        <div id="alertsSection" style="margin-bottom: 30px;">
             <div class="logs-section" style="background: #fff5f5; border-left: 5px solid #e74c3c;">
-                <h3 style="color: #c0392b;">🚨 Active Alerts</h3>
-                <div id="alertsContainer" style="max-height: 300px; overflow-y: auto;">
-                    <div style="padding: 10px; color: #666;">No active alerts</div>
+                <h3 style="color: #c0392b;">🚨 Stock Alerts</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                    <div style="background: white; padding: 10px; border-radius: 4px; border-left: 4px solid #c0392b;">
+                        <div style="font-size: 12px; color: #999; font-weight: bold;">Out of Stock</div>
+                        <div style="font-size: 24px; font-weight: bold; color: #c0392b;" id="criticalCount">0</div>
+                    </div>
+                    <div style="background: white; padding: 10px; border-radius: 4px; border-left: 4px solid #f39c12;">
+                        <div style="font-size: 12px; color: #999; font-weight: bold;">Low Stock</div>
+                        <div style="font-size: 24px; font-weight: bold; color: #f39c12;" id="warningCount">0</div>
+                    </div>
+                    <div style="background: white; padding: 10px; border-radius: 4px; border-left: 4px solid #667eea;">
+                        <div style="font-size: 12px; color: #999; font-weight: bold;">Last Updated</div>
+                        <div style="font-size: 12px; font-weight: bold; color: #667eea;" id="alertsLastUpdated">--:--</div>
+                    </div>
+                </div>
+                <div id="alertsContainer" style="max-height: 400px; overflow-y: auto;">
+                    <div style="padding: 20px; text-align: center; color: #999;">Loading alerts...</div>
                 </div>
             </div>
         </div>
@@ -706,6 +720,89 @@
                 sensorChartPreviousInstance = chart;
             }
         }
+        
+        // Load and display stock alerts
+        async function loadStockAlerts() {
+            try {
+                const res = await fetch('/api/stock-alerts');
+                const data = await res.json();
+                const alerts = data.alerts || [];
+                
+                // Update counts
+                document.getElementById('criticalCount').textContent = data.total_critical || 0;
+                document.getElementById('warningCount').textContent = data.total_warning || 0;
+                
+                const now = new Date();
+                document.getElementById('alertsLastUpdated').textContent = now.toLocaleTimeString();
+                
+                const container = document.getElementById('alertsContainer');
+                
+                if (alerts.length === 0) {
+                    container.innerHTML = '<div style="padding: 20px; text-align: center; color: #27ae60; font-weight: bold;">✓ All items in stock!</div>';
+                    return;
+                }
+                
+                // Group alerts by machine
+                const alertsByMachine = {};
+                alerts.forEach(alert => {
+                    if (!alertsByMachine[alert.machine_id]) {
+                        alertsByMachine[alert.machine_id] = {
+                            machine_name: alert.machine_name,
+                            critical: [],
+                            warning: []
+                        };
+                    }
+                    if (alert.alert_type === 'out_of_stock') {
+                        alertsByMachine[alert.machine_id].critical.push(alert);
+                    } else {
+                        alertsByMachine[alert.machine_id].warning.push(alert);
+                    }
+                });
+                
+                // Render alerts
+                let html = '';
+                Object.entries(alertsByMachine).forEach(([machineId, items]) => {
+                    html += `<div style="margin-bottom: 15px;">
+                        <div style="font-weight: bold; color: #333; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #ddd;">
+                            🏪 ${items.machine_name}
+                        </div>`;
+                    
+                    // Critical alerts (out of stock)
+                    items.critical.forEach(alert => {
+                        html += `<div class="alert-item critical" style="margin-bottom: 8px;">
+                            <div class="alert-info">
+                                <div class="alert-title">❌ OUT OF STOCK</div>
+                                <div class="alert-message">
+                                    <strong>${alert.item_name}</strong> (${alert.category || 'Uncategorized'})<br/>
+                                    Slots: ${alert.slots || 'N/A'} | Price: ₱${alert.price.toFixed(2)}
+                                </div>
+                            </div>
+                        </div>`;
+                    });
+                    
+                    // Warning alerts (low stock)
+                    items.warning.forEach(alert => {
+                        html += `<div class="alert-item warning" style="margin-bottom: 8px;">
+                            <div class="alert-info">
+                                <div class="alert-title">⚠️ LOW STOCK</div>
+                                <div class="alert-message">
+                                    <strong>${alert.item_name}</strong>: ${alert.current_quantity}/${alert.threshold} units<br/>
+                                    Category: ${alert.category || 'Uncategorized'} | Slots: ${alert.slots || 'N/A'}
+                                </div>
+                            </div>
+                        </div>`;
+                    });
+                    
+                    html += `</div>`;
+                });
+                
+                container.innerHTML = html;
+            } catch (error) {
+                console.error('Error loading stock alerts:', error);
+                document.getElementById('alertsContainer').innerHTML = '<div style="padding: 10px; color: #e74c3c;">Error loading alerts</div>';
+            }
+        }
+        
         // Fetch real-time status
         async function updateStatus() {
             try {
@@ -788,7 +885,7 @@
                 loadSensorReadings();
                 
                 // Load low stock alerts
-                loadLowStockAlerts();
+                loadStockAlerts();
                 
                 // Update timestamp
                 const now = new Date();
@@ -800,9 +897,11 @@
         
         // Initial load
         updateStatus();
+        loadStockAlerts();
         
         // Auto-refresh every 5 seconds
         setInterval(updateStatus, 5000);
+        setInterval(loadStockAlerts, 10000);  // Refresh alerts every 10 seconds
     </script>
 </body>
 </html>

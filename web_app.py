@@ -434,6 +434,52 @@ def api_sensor_readings_previous_day():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/stock-alerts')
+def api_stock_alerts():
+    """API: Get active stock alerts (low stock and out of stock items)."""
+    try:
+        alerts = []
+        machines = Machine.query.filter_by(is_active=True).all()
+        
+        for machine in machines:
+            items = Item.query.filter_by(machine_id=machine.id).all()
+            
+            for item in items:
+                alert_type = None
+                if item.quantity <= 0:
+                    alert_type = 'out_of_stock'
+                elif item.quantity <= item.low_stock_threshold:
+                    alert_type = 'low_stock'
+                
+                if alert_type:
+                    alerts.append({
+                        'machine_id': machine.machine_id,
+                        'machine_name': machine.name,
+                        'item_id': item.id,
+                        'item_name': item.name,
+                        'category': item.category,
+                        'current_quantity': item.quantity,
+                        'threshold': item.low_stock_threshold,
+                        'price': item.price,
+                        'slots': item.slots,
+                        'alert_type': alert_type,
+                        'timestamp': datetime.utcnow().isoformat()
+                    })
+        
+        # Sort by alert type (out_of_stock first) then by machine and item name
+        alerts.sort(key=lambda x: (0 if x['alert_type'] == 'out_of_stock' else 1, x['machine_id'], x['item_name']))
+        
+        return jsonify({
+            'alerts': alerts,
+            'total_critical': sum(1 for a in alerts if a['alert_type'] == 'out_of_stock'),
+            'total_warning': sum(1 for a in alerts if a['alert_type'] == 'low_stock'),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+    except Exception as e:
+        logger.error(f"Stock alerts error: {e}")
+        return jsonify({'error': str(e), 'alerts': []}), 200
+
+
 @app.route('/api/status/realtime')
 def api_realtime_status():
     """API: Get real-time machine status (stock, sales, connectivity)."""

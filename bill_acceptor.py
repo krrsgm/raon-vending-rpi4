@@ -46,7 +46,8 @@ class BillAcceptor:
 
         self._last_bill_time_ms = 0
         self._last_bill_amount = None
-        self._bill_debounce_ms = 300
+        # Increase debounce to reduce false positives from noisy serial lines
+        self._bill_debounce_ms = 800
 
         # Dispatcher queue to invoke callbacks outside of the serial read thread.
         # We enqueue the running received total and a background thread will call
@@ -208,7 +209,11 @@ class BillAcceptor:
                 cnt = int(s.split(':', 1)[1])
                 amount = cnt * 10
                 print(f"DEBUG: Parsed PULSES:{cnt} -> amount {amount}")
-                self._debounced_register(amount)
+                # Only register if resulting amount matches an accepted denomination
+                if amount in self.ACCEPTED_DENOMINATIONS:
+                    self._debounced_register(amount)
+                else:
+                    print(f"DEBUG: Ignored PULSES amount {amount} (not an accepted denomination)")
                 return
             except Exception:
                 pass
@@ -217,12 +222,17 @@ class BillAcceptor:
         # e.g. "BILL 100", "INSERTED 100", "PAYMENT: 100", or just "₱100". Try to
         # extract an amount if the line contains bill-related keywords or currency symbols.
         try:
-            if any(k in s_upper for k in ('INSERT', 'PAY', 'BILL', '\u20B1', '₱', 'PESO', 'PHP')):
+            # Only use fallback if the line includes explicit bill-related keywords
+            if any(k in s_upper for k in ('INSERT', 'BILL')) or ('₱' in s or '\u20B1' in s):
                 m2 = re.search(r'[:\s]*[\u20B1₱]?\s*(\d{2,4})', s)
                 if m2:
                     amount = int(m2.group(1))
-                    print(f"DEBUG: Fallback parsed amount {amount} from '{s}'")
-                    self._debounced_register(amount)
+                    # Only accept known denominations to avoid noise (e.g., stray '20' parsed)
+                    if amount in self.ACCEPTED_DENOMINATIONS:
+                        print(f"DEBUG: Fallback parsed accepted amount {amount} from '{s}'")
+                        self._debounced_register(amount)
+                    else:
+                        print(f"DEBUG: Fallback parsed amount {amount} ignored (not an accepted denomination)")
                     return
         except Exception:
             pass

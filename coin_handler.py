@@ -22,10 +22,12 @@ class CoinAcceptor:
         self.coin_pin = coin_pin
         self.counter_pin = counter_pin
         self.last_trigger_time = 0
-        self.debounce_time = 0.05  # 50ms debounce for Allan 123A-Pro
+        # Slightly increase debounce to avoid double-counting noisy transients
+        self.debounce_time = 0.08  # 80ms debounce
         # Pulse validation: ignore very short noise pulses and overly long signals
-        self.min_pulse_width = 0.005   # 5 ms
-        self.max_pulse_width = 0.5     # 500 ms
+        # Raise min to ignore electrical spikes and reduce false positives
+        self.min_pulse_width = 0.015   # 15 ms
+        self.max_pulse_width = 0.25    # 250 ms (avoid stuck/long pulses)
         self.validation_timeout_ms = int(self.max_pulse_width * 1000)
         self.running = False
         self.payment_lock = Lock()
@@ -99,14 +101,17 @@ class CoinAcceptor:
             return
 
         # Determine coin value based on pulse width (Allan 123A-Pro calibration)
-        # INVERTED: 1peso=60ms, 5peso=40ms, 10peso=20ms (reversed from typical)
-        coin_value = 1.0  # default
-        if width >= 0.045:  # 45ms+ = 1 peso (longest pulse)
-            coin_value = 1.0   # 1 peso coin
-        elif width >= 0.030:  # 30-45ms = 5 peso (medium pulse)
-            coin_value = 5.0   # 5 peso coin
-        else:  # < 30ms = 10 peso (shortest pulse)
-            coin_value = 10.0  # 10 peso coin
+        # Use slightly tightened windows to avoid misclassification from noisy pulses.
+        coin_value = None
+        if width >= 0.050:  # >=50ms = 1 peso (longest pulse)
+            coin_value = 1.0
+        elif width >= 0.035:  # 35-50ms = 5 peso (medium pulse)
+            coin_value = 5.0
+        elif width >= self.min_pulse_width:  # 15-35ms = 10 peso (shortest pulse)
+            coin_value = 10.0
+        else:
+            # width below min_pulse_width already filtered earlier, but double-check
+            coin_value = None
 
         # Final debounce and registration under lock
         with self.payment_lock:
@@ -114,6 +119,10 @@ class CoinAcceptor:
             if (now - self.last_trigger_time) < self.debounce_time:
                 return
             self.last_trigger_time = now
+            if coin_value is None:
+                # didn't match any valid coin window, ignore as noise
+                print(f"DEBUG: Ignored pulse width={width:.3f}s (no matching coin value)")
+                return
             self.received_amount += coin_value
             amount = self.received_amount
             callback = self._callback

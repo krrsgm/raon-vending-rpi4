@@ -1,15 +1,17 @@
-"""Coin hopper tester CLI (replaces old interactive test script)
+#!/usr/bin/env python3
+"""Simple CLI tool to test coin hopper relay and dispense commands.
 
-This tool provides two simple modes to validate coin hopper relay behavior
-and dispensing commands:
+Usage examples:
+  python tools/coin_hopper_tester.py --port COM3 --denom 1 --count 3 --mode relay
+  python tools/coin_hopper_tester.py --port /dev/ttyUSB0 --denom 5 --count 2 --mode dispense
 
-- relay: toggles `COIN_OPEN` / `COIN_CLOSE` for a denomination to exercise the relay
-- dispense: issues `DISPENSE_DENOM` and reports the result
-
-It supports `--simulate` for dry runs without hardware, and auto-detects USB
-serial ports when `--port` is not provided.
+Features:
+- Connects to `CoinHopper` controller in this repo
+- Supports 'relay' mode: toggles COIN_OPEN/COIN_CLOSE for a denomination to exercise the hopper relay
+- Supports 'dispense' mode: sends DISPENSE_DENOM to request specific coins
+- Can poll COIN_STATUS between operations to verify state
+- Has a `--simulate` option to run without hardware
 """
-
 import argparse
 import time
 import sys
@@ -97,80 +99,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
-
-        print("  8 - Relay OFF only (CLOSE 1 and 5)")
-        print("  9 - Relay ON only (OPEN 1 and 5)")
-        print("  Q - Quit")
-        print("="*60)
-        
-        # Connect to Arduino
-        if not tester.connect():
-            print("\nCannot proceed without Arduino connection.")
-            return
-        
-        print("\nArduino connected successfully!\n")
-        
-        while True:
-            try:
-                choice = input("Select option (1-9, Q): ").strip().upper()
-
-                if choice == '1':
-                    tester.test_relay1_control()
-
-                elif choice == '2':
-                    tester.test_relay5_control()
-
-                elif choice == '3':
-                    tester.test_sensor_reading()
-
-                elif choice == '4':
-                    try:
-                        duration = int(input("Enter duration in seconds: "))
-                        target = int(input("Enter target coin count: "))
-                        tester.monitor_coins(duration=duration, target_coins=target)
-                    except ValueError:
-                        print("Invalid input")
-                    
-                elif choice == '5':
-                    tester.monitor_coins(duration=60, target_coins=5)
-
-                elif choice == '6':
-                    status = tester.get_status()
-                    print(f"\nCurrent Status:")
-                    print(f"  Coins detected: {status['coins_detected']}")
-                    print(f"  Relay state: {status['relay_state']}")
-                    print(f"  Recent coins: {status['recent_coins']}")
-                    
-                elif choice == '7':
-                    tester.reset_count()
-                    
-                elif choice == '8':
-                    tester.relay_off()
-                    
-                elif choice == '9':
-                    tester.relay_on()
-                    
-                elif choice == 'Q':
-                    break
-                    
-                else:
-                    print("Invalid option")
-                    
-            except EOFError:
-                break
-            except KeyboardInterrupt:
-                print("\nInterrupted")
-                break
-        
-    except KeyboardInterrupt:
-        print("\n\nTest interrupted by user")
-    except Exception as e:
-        print(f"\nError: {e}")
-    finally:
-        if tester:
-            tester.cleanup()
-
-
-if __name__ == "__main__":
     main()

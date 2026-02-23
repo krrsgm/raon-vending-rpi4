@@ -28,6 +28,11 @@ class KioskFrame(tk.Frame):
         self._clicked_item_data = None
         self._resize_job = None
         self.image_cache = {} # To prevent images from being garbage-collected
+        self._deferred_image_queue = []
+        self._deferred_loader_job = None
+        # Tunable: how many images to load per batch and delay between batches (ms)
+        self._deferred_batch = int(getattr(controller, 'config', {}).get('deferred_image_batch', 12))
+        self._deferred_delay = int(getattr(controller, 'config', {}).get('deferred_image_delay_ms', 20))
         self._category_cache = {} # Cache for category detection (item_name -> categories)
 
         # --- Color and Font Scheme ---
@@ -257,18 +262,20 @@ class KioskFrame(tk.Frame):
             
             if resolved_path:
                 try:
-                    # Open, resize, and display the image
-                    img = Image.open(resolved_path)
-                    
-                    # Resize image to fit the frame height while maintaining aspect ratio
-                    base_height = image_height - 8  # Account for padding
-                    h_percent = (base_height / float(img.size[1]))
-                    w_size = int((float(img.size[0]) * float(h_percent)))
-                    img = img.resize((w_size, base_height), Image.Resampling.LANCZOS)
-
-                    photo = pil_to_photoimage(img)
-                    image_label.config(image=photo)
-                    image_label.image = photo # Keep a reference!
+                    # Queue image for deferred loading to avoid blocking UI
+                    # If already cached, use it immediately
+                    if resolved_path in self.image_cache:
+                        photo = self.image_cache[resolved_path]
+                        image_label.config(image=photo)
+                        image_label.image = photo
+                    else:
+                        # Store desired target height so loader can resize appropriately
+                        image_label._deferred_image = (resolved_path, image_height - 8)
+                        image_label.config(text='')
+                        # Add to queue and ensure loader is running
+                        self._deferred_image_queue.append(image_label)
+                        if not self._deferred_loader_job:
+                            self._deferred_loader_job = self.after(10, self._process_deferred_batch)
                 except Exception as e:
                     print(f"Error loading image {resolved_path}: {e}")
                     print("\n".join(debug_log))
@@ -419,31 +426,8 @@ class KioskFrame(tk.Frame):
         right_frame = tk.Frame(self.header, bg=header_bg)
         right_frame.pack(side='right', padx=12)
         
-        # Term selector buttons
-        term_frame = tk.Frame(right_frame, bg=header_bg)
-        term_frame.pack(side='left', padx=(0, 10))
-        
-        tk.Label(term_frame, text='Term:', bg=header_bg, fg='white', font=self.fonts['description']).pack(side='left', padx=(0, 5))
-        
-        self.term_buttons = {}
-        for i in range(3):
-            term_name = f"T{i+1}"
-            btn = tk.Button(
-                term_frame,
-                text=term_name,
-                bg='white' if i == 0 else '#555',
-                fg='#2222a8' if i == 0 else 'white',
-                relief='flat',
-                font=tkfont.Font(family="Helvetica", size=10, weight="bold"),
-                padx=12,
-                pady=5,
-                command=lambda idx=i: self._on_term_selected(idx)
-            )
-            btn.pack(side='left', padx=3)
-            self.term_buttons[i] = btn
-        
         cart_btn = tk.Button(right_frame, text='Cart', bg='white', fg='#2222a8', relief='flat', font=self.fonts['cart_btn'], padx=20, pady=10, command=lambda: self.controller.show_cart())
-        cart_btn.pack(side='left')
+        cart_btn.pack()
 
         # Main content area: left sidebar + main product area
         content = tk.Frame(self, bg=self.colors['background'])
@@ -905,29 +889,6 @@ class KioskFrame(tk.Frame):
         except Exception:
             pass
 
-    def _on_term_selected(self, term_index):
-        """Handle term selection button click."""
-        self.controller.set_term(term_index)
-        # Update button styling
-        for i, btn in self.term_buttons.items():
-            if i == term_index:
-                btn.configure(bg='white', fg='#2222a8')
-            else:
-                btn.configure(bg='#555', fg='white')
-
-    def refresh_items(self):
-        """Refresh the items display after term change."""
-        try:
-            # Clear existing items frame
-            for widget in self.scrollable_frame.winfo_children():
-                widget.destroy()
-            # Rebuild items grid
-            self.display_items(self.controller.items)
-            # Reset scroll position
-            self.canvas.yview_moveto(0)
-        except Exception as e:
-            print(f"Error refreshing items: {e}")
-
     def load_header_logo(self):
         """Load and display header logo image from config path."""
         try:
@@ -982,3 +943,49 @@ class KioskFrame(tk.Frame):
             placeholder_text = (self.machine_name[:1] if self.machine_name else 'R').upper()
             self.logo_image_label.config(text=placeholder_text, font=self.fonts['logo_placeholder'],
                                         fg='white', bg='#2222a8')
+
+    def _process_deferred_batch(self):
+        """Process a batch of deferred image loads to avoid blocking the UI."""
+        try:
+            count = 0
+            while self._deferred_image_queue and count < max(1, self._deferred_batch):
+                image_label = self._deferred_image_queue.pop(0)
+                try:
+                    info = getattr(image_label, '_deferred_image', None)
+                    if not info:
+                        continue
+                    resolved_path, target_h = info
+                    if resolved_path in self.image_cache:
+                        photo = self.image_cache[resolved_path]
+                        image_label.config(image=photo)
+                        image_label.image = photo
+                        continue
+
+                    img = Image.open(resolved_path)
+                    # Resize to target height while keeping aspect ratio
+                    h_percent = (target_h / float(img.size[1])) if img.size[1] else 1.0
+                    w_size = int((float(img.size[0]) * float(h_percent)))
+                    if w_size < 1:
+                        w_size = 1
+                    if target_h < 1:
+                        target_h = 1
+                    img = img.resize((w_size, target_h), Image.Resampling.LANCZOS)
+                    photo = pil_to_photoimage(img)
+                    # Cache and set on label
+                    self.image_cache[resolved_path] = photo
+                    image_label.config(image=photo)
+                    image_label.image = photo
+                except Exception:
+                    try:
+                        image_label.config(text='No Image', font=self.fonts['image_placeholder'], fg=self.colors['gray_fg'])
+                    except Exception:
+                        pass
+                count += 1
+
+            # Schedule next batch if queue not empty
+            if self._deferred_image_queue:
+                self._deferred_loader_job = self.after(self._deferred_delay, self._process_deferred_batch)
+            else:
+                self._deferred_loader_job = None
+        except Exception:
+            self._deferred_loader_job = None

@@ -581,9 +581,7 @@ class CartScreen(tk.Frame):
                         if item_obj and item_obj.get('name'):
                             name = item_obj.get('name')
                             print(f"Vending {qty} x {name}...")
-                            # pulse configured ms (fallback to 800ms)
-                            pulse_ms = self.controller.config.get('esp32_pulse_ms', 800) if isinstance(self.controller.config, dict) else 800
-                            # vend_slots_for will handle round-robin if multiple slots assigned
+                            # vend_slots_for will handle round-robin if multiple slots assigned (uses 4000ms pulse)
                             try:
                                 self.controller.vend_slots_for(name, qty)
                             except Exception as e:

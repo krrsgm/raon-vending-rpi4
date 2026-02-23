@@ -46,6 +46,11 @@ const int SERIAL2_TX_PIN = 1;        // ESP32 sends to Pi RX (GPIO 15)
 // PWM global motor speed control (shared for all motors on external parallel wiring)
 const int PWM_PIN = 19;              // GPIO19 - PWM output to control motor speed
 const int PWM_DEFAULT_DUTY = 230;    // default speed (~200 of 255)
+
+// ============================================================================
+// MOTOR PULSE CONFIGURATION
+// ============================================================================
+const unsigned long DEFAULT_PULSE_MS = 4000;  // Default pulse duration (4000ms = 4 seconds)
 // ============================================================================
 // MULTIPLEXER PIN DEFINITIONS
 // ============================================================================
@@ -427,14 +432,13 @@ void processCommand(String cmd, Stream &out) {
   String command = parts[0];
   command.toUpperCase();
 
-  // PULSE <slot> <ms> - pulse for specified milliseconds
+  // PULSE <slot> <ms> - pulse for specified milliseconds (uses DEFAULT_PULSE_MS from ESP32 config)
   if (command == "PULSE") {
-    if (partCount >= 3) {
+    if (partCount >= 2) {
       int slot = parts[1].toInt();
-      unsigned long ms = (unsigned long)parts[2].toInt();
       if (slot >= 1 && slot <= NUM_OUTPUTS) {
         int idx = slot - 1;
-        active_until[idx] = millis() + ms;
+        active_until[idx] = millis() + DEFAULT_PULSE_MS;  // Use DEFAULT_PULSE_MS from ESP32 config
         outputs_state[idx] = true;
         setOutput(idx, true);
         out.println("OK");
@@ -443,7 +447,7 @@ void processCommand(String cmd, Stream &out) {
         out.println(slot);
       }
     } else {
-      out.println("ERR PULSE requires: PULSE <slot> <ms>");
+      out.println("ERR PULSE requires: PULSE <slot>");
     }
   }
   // OPEN <slot> - turn on

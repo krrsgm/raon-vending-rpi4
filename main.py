@@ -882,6 +882,176 @@ class MainApp(tk.Tk):
                 import traceback
                 traceback.print_exc()
 
+    def vend_cart_items_organized(self, cart_items):
+        """Dispense multiple items organized by slot in ascending order.
+        
+        This method groups items by their assigned slots and dispenses them slot-by-slot
+        in ascending order. For items assigned to the same slot, all are dispensed from
+        that slot before moving to the next slot. Each item gets 4 seconds (4000ms) to dispense.
+        
+        Args:
+            cart_items (list): List of dicts with 'item' (item object) and 'quantity' (int)
+        """
+        if not cart_items:
+            print('[VEND-ORG] ERROR: No items to vend')
+            return
+            
+        assigned = getattr(self, 'assigned_slots', None)
+        if not assigned:
+            print('[VEND-ORG] ERROR: No assigned_slots available to vend from')
+            return
+        
+        # Build a mapping: slot_number -> list of (item_name, quantity) tuples
+        slot_to_items = {}
+        
+        for item_entry in cart_items:
+            try:
+                item_obj = item_entry.get('item') if isinstance(item_entry, dict) else None
+                qty = int(item_entry.get('quantity', 1)) if isinstance(item_entry, dict) else 1
+                
+                if not item_obj or not item_obj.get('name'):
+                    print(f'[VEND-ORG] WARNING: Invalid item entry: {item_entry}')
+                    continue
+                    
+                item_name = item_obj.get('name')
+                
+                # Find all slots assigned to this item
+                item_slots = []
+                for idx, slot in enumerate(assigned):
+                    if not slot:
+                        continue
+                    
+                    # Legacy single-slot format
+                    if isinstance(slot, dict) and slot.get('name'):
+                        if slot.get('name') == item_name:
+                            item_slots.append(idx + 1)
+                            continue
+                    
+                    # New 'terms' format
+                    if isinstance(slot, dict) and 'terms' in slot:
+                        terms = slot.get('terms', [])
+                        term_idx = getattr(self, 'assigned_term', 0) or 0
+                        if isinstance(terms, list) and len(terms) > term_idx:
+                            term_entry = terms[term_idx]
+                            if isinstance(term_entry, dict):
+                                term_name = term_entry.get('name')
+                                if term_name and term_name == item_name:
+                                    item_slots.append(idx + 1)
+                                    continue
+                
+                if not item_slots:
+                    print(f'[VEND-ORG] ERROR: No physical slots assigned for item "{item_name}"')
+                    continue
+                
+                # Add all quantities for this item to its respective slots
+                # If item is in multiple slots, distribute quantities round-robin
+                for i in range(qty):
+                    slot_num = item_slots[i % len(item_slots)]
+                    if slot_num not in slot_to_items:
+                        slot_to_items[slot_num] = []
+                    slot_to_items[slot_num].append({
+                        'name': item_name,
+                        'count': 1  # Each entry represents 1 dispense
+                    })
+                    
+                print(f'[VEND-ORG] Item "{item_name}" (qty: {qty}) assigned to slots: {item_slots}')
+                    
+            except Exception as e:
+                print(f'[VEND-ORG] ERROR processing item entry: {e}')
+                import traceback
+                traceback.print_exc()
+                continue
+        
+        if not slot_to_items:
+            print('[VEND-ORG] ERROR: No items could be mapped to slots')
+            return
+        
+        # Sort slots in ascending order
+        sorted_slots = sorted(slot_to_items.keys())
+        print(f'[VEND-ORG] Dispensing from slots in order: {sorted_slots}')
+        print(f'[VEND-ORG] Slot-to-items mapping: {slot_to_items}')
+        
+        host = self.config.get('esp32_host') if isinstance(self.config, dict) else None
+        if not host:
+            host = '192.168.4.1'
+        pulse_ms = 4000  # 4 seconds per item as requested
+        
+        # Get dispense timeout from config
+        dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 15.0) if isinstance(self.config, dict) else 15.0
+        
+        print(f'[VEND-ORG] Using ESP32 host: {host}, pulse_ms: {pulse_ms}')
+        
+        # Dispense each slot completely before moving to the next
+        for slot_number in sorted_slots:
+            items_for_slot = slot_to_items[slot_number]
+            print(f'[VEND-ORG] Processing slot {slot_number}: {len(items_for_slot)} item(s) to dispense')
+            
+            for item_entry in items_for_slot:
+                item_name = item_entry.get('name', 'Unknown')
+                try:
+                    print(f'[VEND-ORG] Pulsing slot {slot_number} for {pulse_ms}ms (item: {item_name})')
+                    
+                    # Start monitoring dispense for this slot if available
+                    if self.dispense_monitor:
+                        self.dispense_monitor.start_dispense(
+                            slot_id=slot_number,
+                            timeout=dispense_timeout,
+                            item_name=item_name
+                        )
+                        print(f'[VEND-ORG] IR sensor monitoring started for slot {slot_number}, timeout={dispense_timeout}s')
+                    else:
+                        print(f'[VEND-ORG] WARNING: Dispense monitor not available - no IR sensor verification')
+                    
+                    try:
+                        # Check if slot is in MUX4 range (49-64)
+                        if 49 <= slot_number <= 64 and self.mux4_controller:
+                            print(f'[VEND-ORG] MUX4 slot detected - selecting channel + pulsing on Raspberry Pi')
+                            self.mux4_controller.pulse_channel(slot_number, pulse_ms)
+                            print(f'[VEND-ORG] SUCCESS: Pulse sent via MUX4 controller for slot {slot_number}')
+                        else:
+                            # For slots 1-48, ESP32 controls everything
+                            from esp32_client import send_command, pulse_slot
+                            try:
+                                # Quick STATUS check
+                                status_resp = send_command(host, "STATUS", timeout=1.0)
+                                print(f'[VEND-ORG] ESP32 STATUS: {status_resp}')
+                                # Small settle time before pulsing
+                                time.sleep(0.05)
+                            except Exception as e:
+                                print(f'[VEND-ORG] WARNING: ESP32 STATUS check failed: {e}')
+                            
+                            # Attempt pulse and validate response
+                            result = None
+                            try:
+                                result = pulse_slot(host, slot_number, pulse_ms, timeout=3.0)
+                                print(f'[VEND-ORG] Pulse response: {result}')
+                            except Exception as e:
+                                print(f'[VEND-ORG] WARNING: pulse_slot raised: {e}')
+                            
+                            # Retry if not OK
+                            if not result or "OK" not in str(result).upper():
+                                print(f'[VEND-ORG] Info: pulse response not OK, retrying once for slot {slot_number}')
+                                try:
+                                    time.sleep(0.05)
+                                    result = pulse_slot(host, slot_number, pulse_ms, timeout=3.0)
+                                    print(f'[VEND-ORG] Retry pulse response: {result}')
+                                except Exception as e:
+                                    print(f'[VEND-ORG] Retry failed: {e}')
+                            
+                            if result and "OK" in str(result).upper():
+                                print(f'[VEND-ORG] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')
+                            else:
+                                print(f'[VEND-ORG] ERROR: ESP32 did not confirm pulse for slot {slot_number}. Response: {result}')
+                    except Exception as e:
+                        print(f'[VEND-ORG] CRITICAL ERROR: Failed to send pulse for slot {slot_number}: {e}')
+                        import traceback
+                        traceback.print_exc()
+                        
+                except Exception as e:
+                    print(f'[VEND-ORG] CRITICAL ERROR: Exception vending slot {slot_number}: {e}')
+                    import traceback
+                    traceback.print_exc()
+
     def update_item(self, original_item_name, updated_item_data):
         """Updates an existing item in the master list and saves to JSON."""
         for i, item in enumerate(self.items):

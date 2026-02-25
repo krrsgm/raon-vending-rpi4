@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate a minimal assigned_items.json from images/ when none exists.
 
-Creates 64 slot entries each with a single term populated from available images.
+Creates 48 slot entries each with a single term populated from available images.
 This is a convenience helper for initial Pi setup when `assigned_items.json` is missing.
 """
 import os
@@ -9,7 +9,7 @@ import json
 
 IMAGES_DIR = 'images'
 OUT_FILE = 'assigned_items.json'
-SLOTS = 64
+SLOTS = 48
 
 def gather_images():
     if not os.path.isdir(IMAGES_DIR):

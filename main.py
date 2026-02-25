@@ -1,5 +1,6 @@
 import tkinter as tk
 import time
+import threading
 from kiosk_app import KioskFrame
 from selection_screen import SelectionScreen
 import json
@@ -46,6 +47,7 @@ class MainApp(tk.Tk):
         self.cart = []
         self.tec_controller = None  # TEC Peltier module controller
         self.dispense_monitor = None  # Item dispense IR sensor monitor
+        self._vend_lock = threading.Lock()  # Ensure only one motor pulse at a time
 
         # Start in fullscreen mode for kiosk display
         self.is_fullscreen = True
@@ -78,16 +80,21 @@ class MainApp(tk.Tk):
         self.items_file_path = get_absolute_path("item_list.json")  # For legacy support
         self.currency_symbol = self.config.get("currency_symbol", "$")
         self.title("Vending Machine UI")
-        # Initialize TEC Controller if enabled in config
-        self._init_tec_controller()
-        
-        # Initialize Item Dispense Monitor if enabled in config
-        self._init_dispense_monitor()
-        
-        # Initialize Stock Tracker for inventory management
+        # Initialize TEC/Dispense/Stock after first paint to reduce startup lag
         self.stock_tracker = None
+        try:
+            self.after(50, self._init_tec_controller)
+        except Exception:
+            self._init_tec_controller()
+        try:
+            self.after(75, self._init_dispense_monitor)
+        except Exception:
+            self._init_dispense_monitor()
         if STOCK_TRACKER_AVAILABLE:
-            self._init_stock_tracker()
+            try:
+                self.after(100, self._init_stock_tracker)
+            except Exception:
+                self._init_stock_tracker()
         
         
         # Apply fullscreen and rotation according to config
@@ -185,6 +192,9 @@ class MainApp(tk.Tk):
                 dht22_config.get('sensor_1', {}).get('gpio_pin', 27),
                 dht22_config.get('sensor_2', {}).get('gpio_pin', 22)
             ]
+            use_esp32_dht = dht22_config.get('use_esp32_serial', True)
+            esp32_dht_port = dht22_config.get('esp32_port')
+            esp32_dht_baud = dht22_config.get('esp32_baud', 115200)
             
             relay_pin = tec_config.get('gpio_pin', 26)
             average_sensors = tec_config.get('average_sensors', True)
@@ -211,7 +221,10 @@ class MainApp(tk.Tk):
                 target_temp_min=target_min,
                 target_temp_max=target_max,
                 humidity_threshold=humidity_threshold,
-                average_sensors=average_sensors
+                average_sensors=average_sensors,
+                use_esp32_serial=use_esp32_dht,
+                esp32_port=esp32_dht_port,
+                esp32_baud=esp32_dht_baud
             )
             
             # Register status callback for UI panel
@@ -258,12 +271,14 @@ class MainApp(tk.Tk):
             timeout = ir_config.get('dispense_timeout', 10.0)
             detection_mode = ir_config.get('detection_mode', 'any')  # 'any', 'all', or 'first'
             simulate_detection = ir_config.get('simulate_detection', False)  # For testing
+            use_esp32_ir = ir_config.get('use_esp32_serial', True)
             
             self.dispense_monitor = ItemDispenseMonitor(
                 ir_sensor_pins=ir_pins,
                 default_timeout=timeout,
                 detection_mode=detection_mode,
-                simulate_detection=simulate_detection
+                simulate_detection=simulate_detection,
+                use_esp32_serial=use_esp32_ir
             )
             
             # Register callbacks for UI alerts
@@ -296,7 +311,7 @@ class MainApp(tk.Tk):
             print(f"[MainApp] Failed to initialize Stock Tracker: {e}")
             self.stock_tracker = None
     
-    # MUX4 support removed — device supports only slots 1..48
+        # Device uses ESP32-controlled MUX boards for slots 1..48
     
     
     def _on_tec_status_update(self, enabled, active, target_temp, current_temp):
@@ -445,7 +460,17 @@ class MainApp(tk.Tk):
         """Loads item data from a JSON file."""
         try:
             with open(file_path, "r") as file:
-                return json.load(file)
+                data = json.load(file)
+            # Clamp assigned_items.json to 48 slots if older 64-slot data exists
+            try:
+                if isinstance(data, list) and os.path.basename(file_path) == "assigned_items.json":
+                    if len(data) > 48:
+                        data = data[:48]
+                    elif len(data) < 48:
+                        data = data + [None] * (48 - len(data))
+            except Exception:
+                pass
+            return data
         except FileNotFoundError:
             print(
                 f"Warning: {file_path} not found. Generating a new one with default items."
@@ -634,6 +659,23 @@ class MainApp(tk.Tk):
 
     def add_to_cart(self, added_item, quantity):
         """Adds an item and its quantity to the cart."""
+        # Enforce available stock (do not decrement until payment completes)
+        try:
+            available = int(added_item.get("quantity", 0))
+        except Exception:
+            available = 0
+        current_in_cart = 0
+        for item_info in self.cart:
+            if item_info["item"]["name"] == added_item["name"]:
+                current_in_cart = item_info["quantity"]
+                break
+        if available <= current_in_cart:
+            return
+        # Clamp requested quantity to remaining availability
+        if quantity + current_in_cart > available:
+            quantity = max(0, available - current_in_cart)
+        if quantity <= 0:
+            return
         # Check if item is already in cart
         for item_info in self.cart:
             if item_info["item"]["name"] == added_item["name"]:
@@ -652,23 +694,22 @@ class MainApp(tk.Tk):
                 break
 
         if item_found:
-            self.increase_item_quantity(item_found["item"], item_found["quantity"])
             self.cart.remove(item_found)
             self.show_cart()  # Refresh cart screen
 
     def increase_cart_item_quantity(self, item_to_increase):
         """Increases an item's quantity in the cart by 1."""
-        # First, check if there is available stock
-        for master_item in self.items:
-            if master_item["name"] == item_to_increase["name"]:
-                if master_item["quantity"] > 0:
-                    master_item["quantity"] -= 1  # Reduce from master list
-                    # Now, increase in cart
-                    for cart_item_info in self.cart:
-                        if cart_item_info["item"]["name"] == item_to_increase["name"]:
-                            cart_item_info["quantity"] += 1
-                            self.show_cart()  # Refresh cart screen
-                            return
+        # Enforce available stock (do not decrement until payment completes)
+        try:
+            available = int(item_to_increase.get("quantity", 0))
+        except Exception:
+            available = 0
+        for cart_item_info in self.cart:
+            if cart_item_info["item"]["name"] == item_to_increase["name"]:
+                if cart_item_info["quantity"] < available:
+                    cart_item_info["quantity"] += 1
+                    self.show_cart()  # Refresh cart screen
+                return
 
     def decrease_cart_item_quantity(self, item_to_decrease):
         """Decreases an item's quantity in the cart by 1."""
@@ -676,7 +717,6 @@ class MainApp(tk.Tk):
             if item_info["item"]["name"] == item_to_decrease["name"]:
                 if item_info["quantity"] > 1:
                     item_info["quantity"] -= 1
-                    self.increase_item_quantity(item_to_decrease, 1)
                     self.show_cart()  # Refresh cart screen
                 else:  # If quantity is 1, remove it completely
                     self.remove_from_cart(item_to_decrease)
@@ -685,6 +725,104 @@ class MainApp(tk.Tk):
     def clear_cart(self):
         """Empties the cart."""
         self.cart.clear()
+
+    def get_available_stock(self, item_name):
+        """Return available stock for an item based on assigned slots (current term)."""
+        if not item_name:
+            return 0
+        assigned = getattr(self, 'assigned_slots', None)
+        if isinstance(assigned, list) and assigned:
+            term_idx = getattr(self, 'assigned_term', 0) or 0
+            total = 0
+            for slot in assigned:
+                try:
+                    if not slot or not isinstance(slot, dict):
+                        continue
+                    terms = slot.get('terms', [])
+                    if len(terms) > term_idx and terms[term_idx]:
+                        if terms[term_idx].get('name') == item_name:
+                            total += int(terms[term_idx].get('quantity', 0))
+                except Exception:
+                    continue
+            return max(0, total)
+        # Fallback to items list
+        for item in getattr(self, 'items', []):
+            if item.get('name') == item_name:
+                return max(0, int(item.get('quantity', 0)))
+        return 0
+
+    def _decrement_assigned_stock(self, item_name, quantity):
+        """Decrement stock across assigned slots for the given item name."""
+        if quantity <= 0:
+            return 0
+        assigned = getattr(self, 'assigned_slots', None)
+        if not isinstance(assigned, list) or not assigned:
+            return 0
+        term_idx = getattr(self, 'assigned_term', 0) or 0
+        # Collect matching slot indices
+        matches = []
+        for idx, slot in enumerate(assigned):
+            try:
+                if not slot or not isinstance(slot, dict):
+                    continue
+                terms = slot.get('terms', [])
+                if len(terms) > term_idx and terms[term_idx]:
+                    if terms[term_idx].get('name') == item_name:
+                        matches.append(idx)
+            except Exception:
+                continue
+        if not matches:
+            return 0
+        remaining = int(quantity)
+        # Round-robin decrement across matching slots
+        while remaining > 0:
+            progressed = False
+            for idx in matches:
+                if remaining <= 0:
+                    break
+                try:
+                    entry = assigned[idx]['terms'][term_idx]
+                    cur = int(entry.get('quantity', 0))
+                    if cur > 0:
+                        entry['quantity'] = cur - 1
+                        remaining -= 1
+                        progressed = True
+                except Exception:
+                    continue
+            if not progressed:
+                break
+        return int(quantity) - remaining
+
+    def apply_cart_stock_deductions(self, cart_items):
+        """Apply stock deductions to assigned slots after successful payment."""
+        if not cart_items:
+            return
+        total_deducted = {}
+        for item_info in cart_items:
+            try:
+                item_obj = item_info.get('item') if isinstance(item_info, dict) else None
+                qty = int(item_info.get('quantity', 1)) if isinstance(item_info, dict) else 1
+                name = item_obj.get('name') if isinstance(item_obj, dict) else None
+                if not name or qty <= 0:
+                    continue
+                deducted = self._decrement_assigned_stock(name, qty)
+                total_deducted[name] = total_deducted.get(name, 0) + deducted
+            except Exception:
+                continue
+        # Persist assigned slots to disk
+        try:
+            with open(self.assigned_items_path, "w") as f:
+                json.dump(self.assigned_slots, f, indent=2)
+        except Exception as e:
+            print(f"[Stock] Failed to save assigned_items.json: {e}")
+        # Refresh derived items list and kiosk view
+        try:
+            self.items = self._extract_items_from_slots(self.assigned_slots)
+            kf = self.frames.get("KioskFrame")
+            if kf:
+                kf.populate_items()
+        except Exception:
+            pass
 
     def handle_checkout(self, checked_out_items):
         """
@@ -816,32 +954,24 @@ class MainApp(tk.Tk):
         for i in range(quantity):
             slot_number = matches[i % len(matches)]
             try:
-                print(f'[VEND] Pulsing slot {slot_number} for {pulse_ms}ms (item: {item_name}, quantity item {i+1}/{quantity})')
-                
-                # Start monitoring dispense for this slot if dispense monitor is available
-                if self.dispense_monitor:
-                    self.dispense_monitor.start_dispense(
-                        slot_id=slot_number,
-                        timeout=dispense_timeout,
-                        item_name=item_name
-                    )
-                    print(f'[VEND] IR sensor monitoring started for slot {slot_number}, timeout={dispense_timeout}s')
-                else:
-                    print(f'[VEND] WARNING: Dispense monitor not available - no IR sensor verification')
-                
-                try:
-                    # Check if slot is in MUX4 range (49-64)
-                    if 49 <= slot_number <= 64 and self.mux4_controller:
-                        # For MUX4 slots, Raspberry Pi controls selectors and SIG
-                        print(f'[VEND] MUX4 slot detected - selecting channel + pulsing on Raspberry Pi')
-                        self.mux4_controller.pulse_channel(slot_number, pulse_ms)
-                        print(f'[VEND] SUCCESS: Pulse sent via MUX4 controller for slot {slot_number}')
+                with self._vend_lock:
+                    print(f'[VEND] Pulsing slot {slot_number} for {pulse_ms}ms (item: {item_name}, quantity item {i+1}/{quantity})')
+                    
+                    # Start monitoring dispense for this slot if dispense monitor is available
+                    if self.dispense_monitor:
+                        self.dispense_monitor.start_dispense(
+                            slot_id=slot_number,
+                            timeout=dispense_timeout,
+                            item_name=item_name
+                        )
+                        print(f'[VEND] IR sensor monitoring started for slot {slot_number}, timeout={dispense_timeout}s')
                     else:
-                        # For slots 1-48, ESP32 controls everything
-                        # Mirror test_motor: verify ESP32 reachable via STATUS before pulsing
+                        print(f'[VEND] WARNING: Dispense monitor not available - no IR sensor verification')
+                    
+                    try:
+                        # ESP32 controls the MUX boards for slots 1-48
                         from esp32_client import send_command, pulse_slot
                         try:
-                            is_ok = False
                             # quick STATUS check
                             status_resp = send_command(host, "STATUS", timeout=1.0)
                             print(f'[VEND] ESP32 STATUS: {status_resp}')
@@ -871,16 +1001,24 @@ class MainApp(tk.Tk):
                             print(f'[VEND] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')
                         else:
                             print(f'[VEND] ERROR: ESP32 did not confirm pulse for slot {slot_number}. Response: {result}')
-                except Exception as e:
-                    print(f'[VEND] CRITICAL ERROR: Failed to send pulse for slot {slot_number}: {e}')
-                    print(f'[VEND]   Slot: {slot_number}')
-                    print(f'[VEND]   Pulse duration: {pulse_ms}ms')
-                    import traceback
-                    traceback.print_exc()
+                    except Exception as e:
+                        print(f'[VEND] CRITICAL ERROR: Failed to send pulse for slot {slot_number}: {e}')
+                        print(f'[VEND]   Slot: {slot_number}')
+                        print(f'[VEND]   Pulse duration: {pulse_ms}ms')
+                        import traceback
+                        traceback.print_exc()
             except Exception as e:
                 print(f'[VEND] CRITICAL ERROR: Exception vending slot {slot_number}: {e}')
                 import traceback
                 traceback.print_exc()
+
+            # Small settle delay to keep MUX switching safe between pulses
+            try:
+                settle_ms = int(self.config.get('hardware', {}).get('vend_settle_ms', 200))
+                if settle_ms > 0:
+                    time.sleep(settle_ms / 1000.0)
+            except Exception:
+                time.sleep(0.2)
 
     def vend_cart_items_organized(self, cart_items):
         """Dispense multiple items organized by slot in ascending order.
@@ -989,27 +1127,22 @@ class MainApp(tk.Tk):
             for item_entry in items_for_slot:
                 item_name = item_entry.get('name', 'Unknown')
                 try:
-                    print(f'[VEND-ORG] Pulsing slot {slot_number} for {pulse_ms}ms (item: {item_name})')
-                    
-                    # Start monitoring dispense for this slot if available
-                    if self.dispense_monitor:
-                        self.dispense_monitor.start_dispense(
-                            slot_id=slot_number,
-                            timeout=dispense_timeout,
-                            item_name=item_name
-                        )
-                        print(f'[VEND-ORG] IR sensor monitoring started for slot {slot_number}, timeout={dispense_timeout}s')
-                    else:
-                        print(f'[VEND-ORG] WARNING: Dispense monitor not available - no IR sensor verification')
-                    
-                    try:
-                        # Check if slot is in MUX4 range (49-64)
-                        if 49 <= slot_number <= 64 and self.mux4_controller:
-                            print(f'[VEND-ORG] MUX4 slot detected - selecting channel + pulsing on Raspberry Pi')
-                            self.mux4_controller.pulse_channel(slot_number, pulse_ms)
-                            print(f'[VEND-ORG] SUCCESS: Pulse sent via MUX4 controller for slot {slot_number}')
+                    with self._vend_lock:
+                        print(f'[VEND-ORG] Pulsing slot {slot_number} for {pulse_ms}ms (item: {item_name})')
+                        
+                        # Start monitoring dispense for this slot if available
+                        if self.dispense_monitor:
+                            self.dispense_monitor.start_dispense(
+                                slot_id=slot_number,
+                                timeout=dispense_timeout,
+                                item_name=item_name
+                            )
+                            print(f'[VEND-ORG] IR sensor monitoring started for slot {slot_number}, timeout={dispense_timeout}s')
                         else:
-                            # For slots 1-48, ESP32 controls everything
+                            print(f'[VEND-ORG] WARNING: Dispense monitor not available - no IR sensor verification')
+                        
+                        try:
+                            # ESP32 controls the MUX boards for slots 1-48
                             from esp32_client import send_command, pulse_slot
                             try:
                                 # Quick STATUS check
@@ -1042,15 +1175,23 @@ class MainApp(tk.Tk):
                                 print(f'[VEND-ORG] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')
                             else:
                                 print(f'[VEND-ORG] ERROR: ESP32 did not confirm pulse for slot {slot_number}. Response: {result}')
-                    except Exception as e:
-                        print(f'[VEND-ORG] CRITICAL ERROR: Failed to send pulse for slot {slot_number}: {e}')
-                        import traceback
-                        traceback.print_exc()
+                        except Exception as e:
+                            print(f'[VEND-ORG] CRITICAL ERROR: Failed to send pulse for slot {slot_number}: {e}')
+                            import traceback
+                            traceback.print_exc()
                         
                 except Exception as e:
                     print(f'[VEND-ORG] CRITICAL ERROR: Exception vending slot {slot_number}: {e}')
                     import traceback
                     traceback.print_exc()
+
+                # Small settle delay to keep MUX switching safe between pulses
+                try:
+                    settle_ms = int(self.config.get('hardware', {}).get('vend_settle_ms', 200))
+                    if settle_ms > 0:
+                        time.sleep(settle_ms / 1000.0)
+                except Exception:
+                    time.sleep(0.2)
 
     def update_item(self, original_item_name, updated_item_data):
         """Updates an existing item in the master list and saves to JSON."""

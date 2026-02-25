@@ -5,7 +5,7 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parents[1]
 LAYOUT = BASE / 'Product List Layout.txt'
 OUT = BASE / 'assigned_items.json'
-MAX_SLOTS = 64
+MAX_SLOTS = 48
 TERM_COUNT = 3
 
 if not LAYOUT.exists():

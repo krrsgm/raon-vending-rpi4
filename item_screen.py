@@ -163,8 +163,7 @@ class ItemScreen(tk.Frame):
     def add_to_cart(self):
         """Handles adding the item to the cart via the controller."""
         if self.current_item:
-            self.controller.add_to_cart(self.current_item, self.selected_quantity)            
-            self.controller.reduce_item_quantity(self.current_item, self.selected_quantity)
+            self.controller.add_to_cart(self.current_item, self.selected_quantity)
             # Navigate to the cart screen after adding an item
             self.controller.show_kiosk()
 
@@ -189,11 +188,12 @@ class ItemScreen(tk.Frame):
         self.name_label.config(text=item_data['name'])
         self.description_label.config(text=item_data['description'])
         self.price_label.config(text=f"{self.controller.currency_symbol}{item_data['price']:.2f}")
-        self.quantity_label.config(text=f"Quantity available: {item_data['quantity']}")
+        available_qty = item_data.get('quantity', 0)
+        self.quantity_label.config(text=f"Quantity available: {available_qty}")
         
         # Reset quantity selector for the new item
         self.selected_quantity = 1
-        self.max_quantity = item_data['quantity']
+        self.max_quantity = max(0, int(available_qty))
         self.quantity_display_label.config(text="1")
         
         # --- Update Image ---

@@ -7,11 +7,11 @@ Complete pinout documentation for RAON Vending Machine hardware (Raspberry Pi 4,
 ### Raspberry Pi 4 (BCM GPIO)
 | Component | Pin | Pin Name | Purpose |
 |-----------|-----|----------|---------|
-| DHT22 Sensor 1 | GPIO 27 | BCM 27 | Temperature/Humidity monitor |
-| DHT22 Sensor 2 | GPIO 22 | BCM 22 | Temperature/Humidity monitor |
+| DHT22 Sensor 1 (ESP32) | GPIO 36 | ADC1_CH0 | Temperature/Humidity monitor |
+| DHT22 Sensor 2 (ESP32) | GPIO 39 | ADC1_CH3 | Temperature/Humidity monitor |
 | TEC Relay Control | GPIO 26 | BCM 26 | Peltier cooling module ON/OFF |
-| IR Sensor 1 (Bin) | GPIO 24 | BCM 24 | Item detection in bin |
-| IR Sensor 2 (Bin) | GPIO 25 | BCM 25 | Item detection in bin |
+| IR Sensor 1 (Bin, ESP32) | GPIO 34 | ADC1_CH6 | Item detection in bin |
+| IR Sensor 2 (Bin, ESP32) | GPIO 35 | ADC1_CH7 | Item detection in bin |
 | Coin Acceptor | GPIO 17 | BCM 17 | Coin detection input |
 | Serial UART TX | GPIO 14 | TXD | Communicate with ESP32 (RXTX cable) |
 | Serial UART RX | GPIO 15 | RXD | Communicate with ESP32 (RXTX cable) |
@@ -135,9 +135,9 @@ const int COUNTER_PIN = 18;     // Counter feedback (optional)
 
 ### Temperature & Cooling System
 ```
-Raspberry Pi GPIO 27 ──┐
+ESP32 GPIO 36 ──┐
                        ├──→ Temperature Monitor (main.py)
-Raspberry Pi GPIO 22 ──┘
+ESP32 GPIO 39 ──┘
 
 Raspberry Pi GPIO 26 ──→ TEC Relay (tec_controller.py)
                         └→ Controls Peltier cooling module
@@ -148,7 +148,7 @@ Raspberry Pi GPIO 26 ──→ TEC Relay (tec_controller.py)
 Raspberry Pi GPIO 14/15 ─UART─→ ESP32-Vending-Controller (GPIO 19 PWM)
                                 └→ Drives motor to dispense items
 
-Raspberry Pi GPIO 24/25 ← IR Sensors in catch bin
+ESP32 GPIO 34/35 ← IR Sensors in catch bin
                         └→ Detects successful dispensing
 ```
 
@@ -221,19 +221,13 @@ Raspberry Pi GPIO 14/15 ─USB/UART─→ ESP32-Bill-Forward
 ```json
 {
   "hardware": {
-    "dht22_sensors": {
-      "sensor_1": {"enabled": true, "gpio_pin": 27},
-      "sensor_2": {"enabled": true, "gpio_pin": 22}
-    },
+    "dht22_sensors": {"sensor_1": {"enabled": true, "gpio_pin": 36}, "sensor_2": {"enabled": true, "gpio_pin": 39}, "use_esp32_serial": true},
     "tec_relay": {
       "enabled": true,
       "gpio_pin": 26,
       "target_temp": 10.0
     },
-    "ir_sensors": {
-      "sensor_1": {"enabled": true, "gpio_pin": 24},
-      "sensor_2": {"enabled": true, "gpio_pin": 25}
-    }
+    "ir_sensors": {"sensor_1": {"enabled": true, "gpio_pin": 34}, "sensor_2": {"enabled": true, "gpio_pin": 35}, "use_esp32_serial": true}
   }
 }
 ```
@@ -285,3 +279,4 @@ const int PWM_PIN = 19;         // Motor control PWM
   - `item_dispense_monitor.py` - Item detection
   - `esp32_bill_forward/esp32_bill_forward.ino` - Bill & hopper control
   - `vending_controller/vending_controller.ino` - Motor control
+

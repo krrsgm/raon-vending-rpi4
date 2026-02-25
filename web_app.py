@@ -672,6 +672,43 @@ def api_low_stock_alerts():
         machine = Machine.query.filter_by(machine_id=machine_id).first()
         if not machine:
             return jsonify({'alerts': []}), 200
+
+        # Ensure alerts exist for any currently low/out-of-stock items
+        try:
+            items = Item.query.filter_by(machine_id=machine.id).all()
+            for item in items:
+                if item.quantity <= 0:
+                    alert_type = 'out_of_stock'
+                elif item.quantity <= item.low_stock_threshold:
+                    alert_type = 'low_stock'
+                else:
+                    continue
+
+                existing_alert = LowStockAlert.query.filter_by(
+                    machine_id=machine.id,
+                    item_id=item.id,
+                    alert_type=alert_type,
+                    acknowledged=False
+                ).filter(
+                    LowStockAlert.timestamp > datetime.utcnow() - timedelta(days=7)
+                ).first()
+
+                if not existing_alert:
+                    alert = LowStockAlert(
+                        machine_id=machine.id,
+                        item_id=item.id,
+                        item_name=item.name,
+                        current_quantity=item.quantity,
+                        threshold=item.low_stock_threshold,
+                        alert_type=alert_type,
+                        timestamp=datetime.utcnow(),
+                        acknowledged=False
+                    )
+                    db.session.add(alert)
+            db.session.commit()
+        except Exception as e:
+            logger.error(f"Low stock alert sync error: {e}")
+            db.session.rollback()
         
         # Get unacknowledged alerts from last 7 days
         alerts = LowStockAlert.query.filter_by(

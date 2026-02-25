@@ -6,7 +6,7 @@ This script handles:
 - Explicit slot numbering (Slot 1, Slot 17, etc.)
 - Per-term, per-row layout
 - Image mapping by product code
-- Correct slot positioning in 64-slot grid
+- Correct slot positioning in 48-slot grid
 
 Usage:
     python tools/import_and_organize.py --mapping "Product List Layout.txt" --product-list "./Product List"
@@ -121,7 +121,7 @@ def parse_mapping_file(path: str, term_count: int = 3) -> Dict[int, Dict[str, Op
                 continue
             
             slot_num = int(slot_match.group(1))
-            if not (1 <= slot_num <= 64):
+            if not (1 <= slot_num <= 48):
                 continue
             
             # Extract item data after "Slot N:"
@@ -190,8 +190,8 @@ def parse_item_line(line: str) -> Dict[str, Optional[str]]:
 
 
 def build_slots_from_slot_data(slot_data: Dict[int, Dict], images_dir: str) -> List[Dict]:
-    """Build the 64-slot structure with per-term data and images."""
-    MAX_SLOTS = 64
+    """Build the 48-slot structure with per-term data and images."""
+    MAX_SLOTS = 48
     TERM_COUNT = 3
     slots = [{'terms': [None] * TERM_COUNT} for _ in range(MAX_SLOTS)]
 

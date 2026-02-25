@@ -9,7 +9,7 @@ Behavior:
 
 ESP32 output format expected (examples):
   IR1 (GPIO34): BLOCKED
-  IR2 (GPIO39): CLEAR
+  IR2 (GPIO35): CLEAR
 """
 
 import time
@@ -65,7 +65,7 @@ def read_from_esp32(port, duration=30):
         return
 
     print(f"✓ Reading IR sensor states from ESP32 on {port} for {duration}s")
-    print(f"{'Time (s)':>8} | {'IR1 (GPIO34)':>15} | {'IR2 (GPIO39)':>15}")
+    print(f"{'Time (s)':>8} | {'IR1 (GPIO34)':>15} | {'IR2 (GPIO35)':>15}")
     print('-' * 48)
 
     start = time.time()

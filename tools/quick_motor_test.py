@@ -54,8 +54,8 @@ def main():
     config_file = sys.argv[2] if len(sys.argv) > 2 else 'config.json'
     
     # Validate slot number
-    if slot < 1 or slot > 64:
-        print(f"Error: Slot must be between 1 and 64, got: {slot}")
+    if slot < 1 or slot > 48:
+        print(f"Error: Slot must be between 1 and 48, got: {slot}")
         return 1
     
     # Load config

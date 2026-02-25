@@ -16,7 +16,7 @@ def test_tec_controller():
     
     # Create TEC controller with test configuration
     tec = TECController(
-        sensor_pin=27,      # DHT22 Sensor 1
+        sensor_pin=36,      # DHT22 Sensor 1 (ESP32)
         relay_pin=26,       # TEC relay GPIO26
         target_temp=10.0,   # Target 10°C for freezing
         temp_hysteresis=1.0 # ±1°C hysteresis

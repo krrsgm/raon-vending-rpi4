@@ -39,7 +39,10 @@ class TECController:
                  target_temp_min=None, target_temp_max=None,
                  # Optional humidity threshold (percent) to force TEC on when exceeded
                  humidity_threshold=None,
-                 average_sensors=True):
+                 average_sensors=True,
+                 use_esp32_serial=False,
+                 esp32_port=None,
+                 esp32_baud=115200):
         """
         Initialize TEC controller.
         
@@ -78,7 +81,18 @@ class TECController:
         self.temp_off = self.target_temp_min
         
         # Initialize sensors
-        self.sensors = [DHT22Sensor(pin=pin) for pin in sensor_pins]
+        self.sensors = []
+        for i, pin in enumerate(sensor_pins):
+            label = "DHT1" if i == 0 else "DHT2"
+            self.sensors.append(
+                DHT22Sensor(
+                    pin=pin,
+                    use_esp32_serial=use_esp32_serial,
+                    esp32_port=esp32_port,
+                    esp32_baud=esp32_baud,
+                    esp32_label=label
+                )
+            )
         self.sensor_pins = sensor_pins
         
         # GPIO setup

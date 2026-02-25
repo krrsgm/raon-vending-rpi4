@@ -180,7 +180,7 @@ class KioskFrame(tk.Frame):
         """Creates a single item card widget with dimensions: 1in width x 2.5in height."""
         # Determine stock status and color-coding
         quantity = item_data.get('quantity', 0)
-        default_threshold = 3  # Default low stock threshold
+        default_threshold = item_data.get('low_stock_threshold', 3)  # Per-item override
         
         # Determine stock status color
         if quantity <= 0:
@@ -567,8 +567,8 @@ class KioskFrame(tk.Frame):
         except Exception:
             pass
 
-        # Populate grid with item cards
-        self.populate_items()
+        # Populate grid with item cards after first paint to reduce startup lag
+        self.after(1, self.populate_items)
 
         # System Status Panel (shows hardware and sensor status)
         self.status_panel = SystemStatusPanel(self, controller=self.controller)

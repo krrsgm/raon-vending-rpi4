@@ -3,6 +3,14 @@ from tkinter import ttk
 import time
 import platform
 import threading
+import re
+
+try:
+    import serial
+    import serial.tools.list_ports
+    SERIAL_AVAILABLE = True
+except Exception:
+    SERIAL_AVAILABLE = False
 
 # Conditional imports for Raspberry Pi
 try:
@@ -15,13 +23,87 @@ except ImportError:
     from rpi_gpio_mock import GPIO
 
 
+class ESP32DHTReader(threading.Thread):
+    """Background reader for DHT22 values printed by ESP32 over serial."""
+    def __init__(self, port, baudrate=115200):
+        super().__init__(daemon=True)
+        self.port = port
+        self.baudrate = baudrate
+        self.ser = None
+        self.running = True
+        self._lock = threading.Lock()
+        # Store latest readings per label
+        self.readings = {
+            'DHT1': {'temp': None, 'humidity': None},
+            'DHT2': {'temp': None, 'humidity': None},
+        }
+        self.connected = False
+        # Match lines like: "DHT1 (GPIO36): 25.0C 60%"
+        self.pattern = re.compile(r"(DHT1|DHT2).*?:\s*([\-0-9.]+)\s*C\s*([\-0-9.]+)\s*%?", re.IGNORECASE)
+
+    def run(self):
+        try:
+            self.ser = serial.Serial(self.port, self.baudrate, timeout=1)
+            self.connected = True
+            print(f"[ESP32DHTReader] Connected to ESP32 on {self.port}")
+        except Exception as e:
+            print(f"[ESP32DHTReader] Failed to open {self.port}: {e}")
+            self.connected = False
+            return
+
+        while self.running:
+            try:
+                if self.ser and self.ser.is_open:
+                    line = self.ser.readline().decode(errors="ignore").strip()
+                    if not line:
+                        continue
+                    m = self.pattern.search(line)
+                    if m:
+                        label = m.group(1).upper()
+                        try:
+                            temp = float(m.group(2))
+                            humid = float(m.group(3))
+                        except Exception:
+                            continue
+                        with self._lock:
+                            if label in self.readings:
+                                self.readings[label]['temp'] = temp
+                                self.readings[label]['humidity'] = humid
+            except Exception as e:
+                print(f"[ESP32DHTReader] Read error: {e}")
+                continue
+
+    def get_reading(self, label):
+        with self._lock:
+            data = self.readings.get(label.upper(), {})
+            return data.get('humidity'), data.get('temp')
+
+    def stop(self):
+        self.running = False
+        if self.ser and self.ser.is_open:
+            self.ser.close()
+
+
+def _autodetect_esp32_port():
+    if not SERIAL_AVAILABLE:
+        return None
+    ports = list(serial.tools.list_ports.comports())
+    for p in ports:
+        desc = (p.description or "").lower()
+        mfg = (p.manufacturer or "").lower()
+        keywords = ["esp32", "arduino", "cp210", "ch340", "silicon labs"]
+        if any(kw in desc or kw in mfg for kw in keywords):
+            return p.device
+    return ports[0].device if ports else None
+
+
 class DHT22Sensor:
     """
     DHT22 sensor handler compatible with Raspberry Pi 4.
     Uses Adafruit's circuit python library for reliable readings.
     """
     
-    def __init__(self, pin=27):
+    def __init__(self, pin=27, use_esp32_serial=False, esp32_port=None, esp32_baud=115200, esp32_label=None):
         """
         Initialize DHT22 sensor.
         
@@ -34,6 +116,8 @@ class DHT22Sensor:
         self.sensor = None
         self.last_read_time = 0
         self.min_read_interval = 2.0  # DHT22 minimum 2 second interval
+        self.use_esp32_serial = use_esp32_serial
+        self.esp32_label = esp32_label
 
         # Use a class-level cache so multiple DHT22Sensor instances
         # (e.g. one in `TECController` and one in UI) don't hammer
@@ -43,7 +127,28 @@ class DHT22Sensor:
             DHT22Sensor._cache = {}
             DHT22Sensor._cache_lock = threading.Lock()
         
-        if DHT_AVAILABLE and platform.system() == "Linux":
+        if self.use_esp32_serial:
+            # Use shared ESP32 reader (class-level cache)
+            if not hasattr(DHT22Sensor, '_esp32_readers'):
+                DHT22Sensor._esp32_readers = {}
+            if not hasattr(DHT22Sensor, '_esp32_lock'):
+                DHT22Sensor._esp32_lock = threading.Lock()
+            port = esp32_port or _autodetect_esp32_port()
+            if port:
+                key = f"{port}:{esp32_baud}"
+                with DHT22Sensor._esp32_lock:
+                    reader = DHT22Sensor._esp32_readers.get(key)
+                    if not reader:
+                        reader = ESP32DHTReader(port, esp32_baud)
+                        reader.start()
+                        DHT22Sensor._esp32_readers[key] = reader
+                self.sensor = reader
+                if not self.esp32_label:
+                    # Default mapping: pin order -> DHT1/DHT2
+                    self.esp32_label = "DHT1" if pin == 27 else "DHT2"
+            else:
+                print("[DHT22Sensor] WARNING: ESP32 serial requested but port not found")
+        elif DHT_AVAILABLE and platform.system() == "Linux":
             try:
                 # Map BCM pin numbers to board pins for RPi4
                 pin_map = {
@@ -84,6 +189,16 @@ class DHT22Sensor:
                 return (None, None)
         
         try:
+            if self.use_esp32_serial and self.sensor is not None:
+                humidity, temperature = self.sensor.get_reading(self.esp32_label or "DHT1")
+                if humidity is not None and temperature is not None:
+                    self.last_read_time = current_time
+                    try:
+                        with DHT22Sensor._cache_lock:
+                            DHT22Sensor._cache[self.pin] = (humidity, temperature, current_time)
+                    except Exception:
+                        pass
+                return (humidity, temperature)
             if self.sensor is not None and DHT_AVAILABLE:
                 # Real hardware reading
                 temperature = self.sensor.temperature

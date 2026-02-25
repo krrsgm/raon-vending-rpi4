@@ -122,7 +122,7 @@ def parse_item_line(line: str) -> Dict[str, Optional[str]]:
 
 def build_slots_from_terms(terms: List[List[List[str]]], images_dir: str) -> List[Dict]:
     # initialize empty wrapper per slot
-    MAX_SLOTS = 8 * 8
+    MAX_SLOTS = 6 * 8
     TERM_COUNT = len(terms)
     slots = [{'terms': [None] * TERM_COUNT} for _ in range(MAX_SLOTS)]
 

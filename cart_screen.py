@@ -289,17 +289,13 @@ class CartScreen(tk.Frame):
         total_amount = sum(item["item"]["price"] * item["quantity"] for item in self.controller.cart)
         
         if not self.payment_in_progress:
-            # Show exact amount warning prompt
+            # Confirm payment start
             from tkinter import messagebox
-            result = messagebox.showwarning(
-                "Exact Amount Required",
-                f"Please insert the EXACT amount: ₱{total_amount:.2f}\n\n"
-                "This machine does NOT dispense change.\n\n"
-                "Proceed?",
-                type=messagebox.OKCANCEL
+            messagebox.showinfo(
+                "Insert Payment",
+                f"Amount due: ₱{total_amount:.2f}\n\n"
+                "Change will be dispensed using ₱1 and ₱5 coins only.",
             )
-            if result != messagebox.OK:
-                return
             # Start payment session
             self.payment_in_progress = True
             self.payment_required = total_amount
@@ -416,8 +412,7 @@ class CartScreen(tk.Frame):
             coins_text = (
                 "Coins: • ₱1 • ₱5 • ₱10 (Old and New)\n"
                 "Bills: • ₱20 • ₱50 • ₱100\n\n"
-                "⚠️  EXACT AMOUNT REQUIRED\n"
-                "No change will be dispensed."
+                "Change is dispensed using ₱1 and ₱5 coins only."
             )
             
             tk.Label(
@@ -477,10 +472,15 @@ class CartScreen(tk.Frame):
                 self.bill_received = bill_amount
                 remaining = total_amount - received
                 
+                if remaining >= 0:
+                    remaining_text = f"Remaining: ₱{remaining:.2f}"
+                else:
+                    remaining_text = f"Change Due: ₱{abs(remaining):.2f}"
+                
                 status_text = (
                     f"Coins: ₱{coin_amount:.2f} | Bills: ₱{bill_amount:.2f}\n"
                     f"Total Received: ₱{received:.2f}\n"
-                    f"Remaining: ₱{remaining:.2f}"
+                    f"{remaining_text}"
                 )
                 
                 self.payment_status.config(text=status_text)
@@ -523,10 +523,15 @@ class CartScreen(tk.Frame):
         self.bill_received = bill_amount
         remaining = self.payment_required - amount
 
+        if remaining >= 0:
+            remaining_text = f"Remaining: ₱{remaining:.2f}"
+        else:
+            remaining_text = f"Change Due: ₱{abs(remaining):.2f}"
+
         status_text = (
             f"Coins: ₱{coin_amount:.2f} | Bills: ₱{bill_amount:.2f}\n"
             f"Total Received: ₱{amount:.2f}\n"
-            f"Remaining: ₱{remaining:.2f}"
+            f"{remaining_text}"
         )
 
         print(f"[PAYMENT UPDATE] Coins: {coin_amount}, Bills: {bill_amount}, Total: {amount}, Required: {self.payment_required}")
@@ -564,9 +569,9 @@ class CartScreen(tk.Frame):
             
         self.payment_in_progress = False
         
-        # Stop payment session WITHOUT dispensing change (machine only accepts exact amount)
+        # Stop payment session and dispense change if needed
         received, change_dispensed, change_status = self.payment_handler.stop_payment_session(
-            required_amount=None
+            required_amount=self.payment_required
         )
             
         # Get individual amounts for final display
@@ -602,6 +607,12 @@ class CartScreen(tk.Frame):
             threading.Thread(target=_vend_items, daemon=True).start()
         except Exception:
             pass
+
+        # Apply stock deductions only after payment is complete
+        try:
+            self.controller.apply_cart_stock_deductions(self.controller.cart)
+        except Exception as e:
+            print(f"[CartScreen] Error applying stock deductions: {e}")
 
         # Show final status
         status_text = (

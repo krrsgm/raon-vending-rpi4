@@ -65,39 +65,45 @@ class PriceStockDialog(tk.Toplevel):
         self.qty_entry.grid(row=3, column=1, columnspan=2, sticky="ew", pady=4)
         self.qty_entry.insert(0, str(self.item_data.get('quantity', 0)))
         
+        # Low stock threshold
+        ttk.Label(frame, text="Low Stock Threshold:").grid(row=4, column=0, sticky="w", pady=4)
+        self.threshold_entry = ttk.Entry(frame, width=20)
+        self.threshold_entry.grid(row=4, column=1, columnspan=2, sticky="ew", pady=4)
+        self.threshold_entry.insert(0, str(self.item_data.get('low_stock_threshold', 3)))
+        
         # Category (select from available or type new)
-        ttk.Label(frame, text="Category:").grid(row=4, column=0, sticky="w", pady=4)
+        ttk.Label(frame, text="Category:").grid(row=5, column=0, sticky="w", pady=4)
         try:
             self.category_var = tk.StringVar(value=self.item_data.get('category', ''))
             self.category_combo = ttk.Combobox(frame, textvariable=self.category_var, values=self.category_options, width=18)
-            self.category_combo.grid(row=4, column=1, columnspan=2, sticky="ew", pady=4)
+            self.category_combo.grid(row=5, column=1, columnspan=2, sticky="ew", pady=4)
             # allow typing new categories
             self.category_combo.configure(state='normal')
         except Exception:
             self.category_entry = ttk.Entry(frame, width=20)
-            self.category_entry.grid(row=4, column=1, columnspan=2, sticky="ew", pady=4)
+            self.category_entry.grid(row=5, column=1, columnspan=2, sticky="ew", pady=4)
             self.category_entry.insert(0, self.item_data.get('category', ''))
         
         # Description
-        ttk.Label(frame, text="Description:").grid(row=5, column=0, sticky="nw", pady=4)
+        ttk.Label(frame, text="Description:").grid(row=6, column=0, sticky="nw", pady=4)
         self.desc_text = tk.Text(frame, width=40, height=3)
-        self.desc_text.grid(row=5, column=1, columnspan=2, sticky="ew", pady=4)
+        self.desc_text.grid(row=6, column=1, columnspan=2, sticky="ew", pady=4)
         self.desc_text.insert('1.0', self.item_data.get('description', ''))
         
         # Image path
-        ttk.Label(frame, text="Image:").grid(row=6, column=0, sticky="w", pady=4)
+        ttk.Label(frame, text="Image:").grid(row=7, column=0, sticky="w", pady=4)
         self.image_entry = ttk.Entry(frame, width=25)
-        self.image_entry.grid(row=6, column=1, sticky="ew", pady=4)
+        self.image_entry.grid(row=7, column=1, sticky="ew", pady=4)
         self.image_entry.insert(0, self.item_data.get('image', ''))
         
         browse_btn = ttk.Button(frame, text="Browse", command=self._browse_image)
-        browse_btn.grid(row=6, column=2, padx=(4, 0), pady=4)
+        browse_btn.grid(row=7, column=2, padx=(4, 0), pady=4)
         # Keep a reference so we can disable it when showing the dialog in restricted modes
         self.browse_btn = browse_btn
         
         # Buttons
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=7, column=0, columnspan=3, sticky="e", pady=(12,0))
+        btn_frame.grid(row=8, column=0, columnspan=3, sticky="e", pady=(12,0))
         
         if self.read_only:
             close_btn = ttk.Button(btn_frame, text="Close", command=self._on_cancel)
@@ -175,10 +181,17 @@ class PriceStockDialog(tk.Toplevel):
             tk.messagebox.showerror("Validation", "Stock must be an integer", parent=self)
             return
         
+        try:
+            threshold = int(self.threshold_entry.get().strip()) if self.threshold_entry.get().strip() else 0
+        except Exception:
+            tk.messagebox.showerror("Validation", "Low stock threshold must be an integer", parent=self)
+            return
+        
         # Return updated item data
         self.result = dict(self.item_data)
         self.result['price'] = price
         self.result['quantity'] = qty
+        self.result['low_stock_threshold'] = threshold
         try:
             if hasattr(self, 'category_var'):
                 self.result['category'] = self.category_var.get().strip()
@@ -341,6 +354,7 @@ Name: {item.get('name', '')}
 Category: {item.get('category', '')}
 Price: ${item.get('price', 0):.2f}
 Quantity: {item.get('quantity', 1)}
+Low Stock Threshold: {item.get('low_stock_threshold', 3)}
 Image: {item.get('image', '(none)')}
 Description: {item.get('description', '')}"""
                 self.preview_text.insert('1.0', preview)
@@ -494,9 +508,9 @@ class CustomizeDialog(tk.Toplevel):
 
 
 class AssignItemsScreen(tk.Frame):
-    """Admin screen presenting an 8x8 grid (64 slots) of assignable items."""
+    """Admin screen presenting a 6x8 grid (48 slots) of assignable items."""
 
-    GRID_ROWS = 8
+    GRID_ROWS = 6
     GRID_COLS = 8
     MAX_SLOTS = GRID_ROWS * GRID_COLS
     SAVE_FILENAME = 'assigned_items.json'
@@ -757,7 +771,8 @@ class AssignItemsScreen(tk.Frame):
                         with open(self._save_path, 'r', encoding='utf-8') as f:
                             data = json.load(f)
                         # Migrate various persisted formats into per-slot 'terms' wrapper
-                        if isinstance(data, list) and len(data) == self.MAX_SLOTS:
+                        if isinstance(data, list) and len(data) >= self.MAX_SLOTS:
+                            data = data[:self.MAX_SLOTS]
                             migrated = []
                             for entry in data:
                                 if entry is None:
@@ -794,12 +809,12 @@ class AssignItemsScreen(tk.Frame):
             self.mode_label.config(text='Preset', foreground='green')
 
     def auto_assign_current_term(self):
-        """Auto-populate all 64 slots with products from current term in assigned_items.json."""
+        """Auto-populate all 48 slots with products from current term in assigned_items.json."""
         term_idx = self.current_term
         
         # Confirm action
         if not tk.messagebox.askyesno("Auto-assign Term", 
-            f"This will populate all 64 slots with products from Term {term_idx+1}.\nContinue?", parent=self):
+            f"This will populate all 48 slots with products from Term {term_idx+1}.\nContinue?", parent=self):
             return
         
         for slot_idx in range(self.MAX_SLOTS):
@@ -819,7 +834,7 @@ class AssignItemsScreen(tk.Frame):
         
         self._publish_assignments()
         tk.messagebox.showinfo("Auto-assign Complete", 
-            f"All 64 slots populated with Term {term_idx+1} products!", parent=self)
+            f"All 48 slots populated with Term {term_idx+1} products!", parent=self)
 
     def edit_slot(self, idx):
         # If this slot appears empty in-memory, try reloading from disk to get latest persisted assignments
@@ -858,7 +873,8 @@ class AssignItemsScreen(tk.Frame):
                     try:
                         with open(p, 'r', encoding='utf-8') as _f:
                             _data = json.load(_f)
-                        if isinstance(_data, list) and len(_data) == self.MAX_SLOTS:
+                        if isinstance(_data, list) and len(_data) >= self.MAX_SLOTS:
+                            _data = _data[:self.MAX_SLOTS]
                             migrated = []
                             for entry in _data:
                                 if entry is None:
@@ -1020,7 +1036,7 @@ class AssignItemsScreen(tk.Frame):
             else:
                 messagebox.showerror(
                     "✗ Motor Test Failed", 
-                    f"Slot {slot_num} did not receive proper confirmation from ESP32\n\nResponse: {result if result else 'No response'}\n\nMake sure:\n- RXTX cable is connected between ESP32 and Raspberry Pi\n- ESP32 firmware is loaded and running\n- Slot number is valid (1-64)",
+                    f"Slot {slot_num} did not receive proper confirmation from ESP32\n\nResponse: {result if result else 'No response'}\n\nMake sure:\n- RXTX cable is connected between ESP32 and Raspberry Pi\n- ESP32 firmware is loaded and running\n- Slot number is valid (1-48)",
                     parent=self
                 )
                 print(f"[TEST MOTOR] FAILED: No valid response from ESP32 for slot {slot_num}. Got: {result}")
@@ -1286,7 +1302,8 @@ class AssignItemsScreen(tk.Frame):
                 with open(self._save_path, 'r') as f:
                     data = json.load(f)
                 # Support multiple persisted formats and migrate to per-slot 'terms' wrapper
-                if isinstance(data, list) and len(data) == self.MAX_SLOTS:
+                if isinstance(data, list) and len(data) >= self.MAX_SLOTS:
+                    data = data[:self.MAX_SLOTS]
                     migrated = []
                     for entry in data:
                         if entry is None:

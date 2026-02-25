@@ -32,15 +32,15 @@
 #include "DHT.h"
 
 // DHT22 sensor configuration
-#define DHTPIN1 35
-#define DHTPIN2 36
+#define DHTPIN1 36
+#define DHTPIN2 39
 #define DHTTYPE DHT22
 DHT dht1(DHTPIN1, DHTTYPE);
 DHT dht2(DHTPIN2, DHTTYPE);
 
 // IR sensor configuration
 #define IRPIN1 34
-#define IRPIN2 39
+#define IRPIN2 35
 
 
 // ============================================================================
@@ -315,10 +315,10 @@ void loop() {
     float t1 = dht1.readTemperature();
     float h2 = dht2.readHumidity();
     float t2 = dht2.readTemperature();
-    Serial.print("DHT1 (GPIO35): ");
+    Serial.print("DHT1 (GPIO36): ");
     Serial.print(t1); Serial.print("C ");
     Serial.print(h1); Serial.println("%");
-    Serial.print("DHT2 (GPIO36): ");
+    Serial.print("DHT2 (GPIO39): ");
     Serial.print(t2); Serial.print("C ");
     Serial.print(h2); Serial.println("%");
 
@@ -327,7 +327,7 @@ void loop() {
     int ir2 = digitalRead(IRPIN2);
     Serial.print("IR1 (GPIO34): ");
     Serial.println(ir1 == LOW ? "BLOCKED" : "CLEAR");
-    Serial.print("IR2 (GPIO39): ");
+    Serial.print("IR2 (GPIO35): ");
     Serial.println(ir2 == LOW ? "BLOCKED" : "CLEAR");
   }
 }

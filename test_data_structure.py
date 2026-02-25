@@ -44,7 +44,7 @@ if errors:
     for err in errors[:10]:  # Show first 10
         print(f"  - {err}")
 else:
-    print(f"[OK] All 64 slots have correct 3-term structure")
+    print(f"[OK] All 48 slots have correct 3-term structure")
 
 # Check image files exist
 import os
@@ -61,6 +61,6 @@ print(f"[OK] Image references checked (missing: {missing_images}/171)")
 # Verify it's compatible with assign_items_screen
 print(f"\n[OK] Data structure ready for assign_items_screen:")
 print(f"     - Total slots: {len(slots_data)}")
-print(f"     - Populated: {sum(1 for s in slots_data if s['terms'][0])}/64")
+print(f"     - Populated: {sum(1 for s in slots_data if s['terms'][0])}/48")
 print(f"     - Terms per slot: 3")
 print(f"     - Sample Slot 1 Term 1: {slots_data[0]['terms'][0].get('code')} - {slots_data[0]['terms'][0].get('name')[:30]}...")

@@ -194,11 +194,11 @@ class CoinHopper:
         return (num_five, num_one)
 
     def dispense_change(self, amount, timeout_ms=30000, callback=None):
-        """Dispense specified amount of change using minimum coins.
+        """Dispense specified amount of change using only 5- and 1-peso coins.
         
         Args:
             amount: Amount to dispense in pesos
-            timeout_ms: Timeout for dispensing in milliseconds
+            timeout_ms: Timeout for dispensing in milliseconds (per denomination)
             callback: Optional function to call with status updates
             
         Returns:
@@ -211,35 +211,29 @@ class CoinHopper:
             return (False, 0, "Serial connection not open")
         
         try:
-            # Send command to Arduino
-            cmd = f"DISPENSE_AMOUNT {amount} {timeout_ms}"
+            num_five, num_one = self.calculate_change(int(amount))
             if callback:
-                callback(f"Sending: {cmd}")
+                callback(f"Change plan: {num_five} x ₱5, {num_one} x ₱1")
             
-            response = self.send_command(cmd)
+            dispensed_total = 0
             
-            if not response:
-                return (False, 0, "No response from Arduino")
+            if num_five > 0:
+                if callback:
+                    callback(f"Dispensing ₱5 coins: {num_five}")
+                ok, dispensed, msg = self.dispense_coins(5, num_five, timeout_ms=timeout_ms, callback=callback)
+                if not ok:
+                    return (False, dispensed_total + dispensed * 5, f"Failed to dispense ₱5 coins: {msg}")
+                dispensed_total += dispensed * 5
             
-            # Parse responses
-            if "OK" in response or "DONE" in response:
-                # Extract dispensed amount from response if available
-                # Expected format: "DONE FIVE 4" or "DONE ONE 3"
-                if "DONE" in response:
-                    if callback:
-                        callback(f"Dispensing complete: {response}")
-                    return (True, amount, "Change dispensed successfully")
-                else:
-                    return (True, amount, response)
-            elif "ERR" in response or "TIMEOUT" in response:
-                # Try to extract how many coins were dispensed
-                match = re.search(r'dispensed:(\d+)', response)
-                dispensed = int(match.group(1)) if match else 0
-                return (False, dispensed, f"Dispensing failed: {response}")
-            else:
-                # Unknown response - log it and return failure
-                print(f"[CoinHopper] Unknown DISPENSE_AMOUNT response: {response}")
-                return (False, 0, f"Unknown response from coin hopper: {response}")
+            if num_one > 0:
+                if callback:
+                    callback(f"Dispensing ₱1 coins: {num_one}")
+                ok, dispensed, msg = self.dispense_coins(1, num_one, timeout_ms=timeout_ms, callback=callback)
+                if not ok:
+                    return (False, dispensed_total + dispensed, f"Failed to dispense ₱1 coins: {msg}")
+                dispensed_total += dispensed
+            
+            return (True, dispensed_total, "Change dispensed successfully")
                 
         except Exception as e:
             error_msg = f"Error dispensing change: {str(e)}"

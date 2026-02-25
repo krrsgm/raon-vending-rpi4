@@ -16,7 +16,7 @@ print()
 
 # Check image paths
 print(f'Sample image paths (Term 1):')
-for i in [0, 8, 16, 32, 63]:
+for i in [0, 8, 16, 32, 47]:
     slot_num = i + 1
     term_data = data[i]['terms'][0]
     if term_data:
@@ -32,4 +32,4 @@ populated = 0
 for slot in data:
     if slot['terms'][0]:
         populated += 1
-print(f'Populated slots (Term 1): {populated}/64')
+print(f'Populated slots (Term 1): {populated}/48')

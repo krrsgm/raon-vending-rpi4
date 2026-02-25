@@ -120,8 +120,8 @@ class IRSensor:
             return self.item_present
 
 
-class ESP32SerialReader(threading.Thread):
-    """Background thread to read IR sensor states from serial."""
+class SerialIRReader(threading.Thread):
+    """Background thread to read IR sensor states from Arduino serial."""
     
     def __init__(self, port, baudrate=115200):
         super().__init__(daemon=True)
@@ -184,8 +184,8 @@ class ESP32SerialReader(threading.Thread):
             self.ser.close()
 
 
-def autodetect_esp32_port():
-    """Auto-detect ESP32 serial port."""
+def autodetect_serial_port():
+    """Auto-detect Arduino serial port."""
     if not SERIAL_AVAILABLE:
         return None
     ports = list(serial.tools.list_ports.comports())
@@ -196,6 +196,11 @@ def autodetect_esp32_port():
         if any(kw in desc or kw in mfg for kw in keywords):
             return p.device
     return ports[0].device if ports else None
+
+
+# Backwards-compatible aliases
+ESP32SerialReader = SerialIRReader
+autodetect_esp32_port = autodetect_serial_port
 
 
 class ItemDispenseMonitor:
@@ -236,14 +241,14 @@ class ItemDispenseMonitor:
         # ESP32 serial reader if needed
         self.esp32_reader = None
         if use_esp32_serial:
-            port = autodetect_esp32_port()
+            port = autodetect_serial_port()
             if port and get_shared_serial_reader:
                 self.esp32_reader = get_shared_serial_reader(port, 115200)
             elif port:
-                self.esp32_reader = ESP32SerialReader(port)
+                self.esp32_reader = SerialIRReader(port)
                 self.esp32_reader.start()
             else:
-                print("[ItemDispenseMonitor] WARNING: serial requested but port not found")
+                print("[ItemDispenseMonitor] WARNING: Arduino serial requested but port not found")
         
         # Initialize IR sensors
         self.sensors = {}

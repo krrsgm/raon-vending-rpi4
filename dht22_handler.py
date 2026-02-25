@@ -24,7 +24,7 @@ except ImportError:
 
 
 class SharedSerialReader(threading.Thread):
-    """Background reader for DHT22/IR/coin/bill values printed over serial."""
+    """Background reader for DHT22/IR/coin/bill values printed over Arduino serial."""
     def __init__(self, port, baudrate=115200):
         super().__init__(daemon=True)
         self.port = port
@@ -169,7 +169,7 @@ class SharedSerialReader(threading.Thread):
             self.ser.close()
 
 
-def _autodetect_esp32_port():
+def _autodetect_serial_port():
     if not SERIAL_AVAILABLE:
         return None
     ports = list(serial.tools.list_ports.comports())
@@ -182,13 +182,17 @@ def _autodetect_esp32_port():
     return ports[0].device if ports else None
 
 
+# Backwards-compatible alias (legacy naming)
+_autodetect_esp32_port = _autodetect_serial_port
+
+
 def get_shared_serial_reader(port=None, baudrate=115200):
     """Return a shared serial reader instance for DHT/IR."""
     if not hasattr(get_shared_serial_reader, "_readers"):
         get_shared_serial_reader._readers = {}
         get_shared_serial_reader._lock = threading.Lock()
     if not port:
-        port = _autodetect_esp32_port()
+        port = _autodetect_serial_port()
     if not port:
         return None
     key = f"{port}:{int(baudrate)}"
@@ -239,7 +243,7 @@ class DHT22Sensor:
                     # Default mapping: pin order -> DHT1/DHT2
                     self.esp32_label = "DHT1" if pin == 27 else "DHT2"
             else:
-                print("[DHT22Sensor] WARNING: serial requested but port not found")
+                print("[DHT22Sensor] WARNING: Arduino serial requested but port not found")
         elif DHT_AVAILABLE and platform.system() == "Linux":
             try:
                 # Map BCM pin numbers to board pins for RPi4

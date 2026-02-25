@@ -1001,6 +1001,13 @@ class MainApp(tk.Tk):
                             print(f'[VEND] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')
                         else:
                             print(f'[VEND] ERROR: ESP32 did not confirm pulse for slot {slot_number}. Response: {result}')
+                        # Ensure the pulse completes before issuing the next one.
+                        # Without this, back-to-back PULSE commands extend a single
+                        # ON window on the ESP32 instead of creating distinct pulses.
+                        try:
+                            time.sleep(max(0.0, float(pulse_ms) / 1000.0))
+                        except Exception:
+                            pass
                     except Exception as e:
                         print(f'[VEND] CRITICAL ERROR: Failed to send pulse for slot {slot_number}: {e}')
                         print(f'[VEND]   Slot: {slot_number}')
@@ -1175,6 +1182,12 @@ class MainApp(tk.Tk):
                                 print(f'[VEND-ORG] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')
                             else:
                                 print(f'[VEND-ORG] ERROR: ESP32 did not confirm pulse for slot {slot_number}. Response: {result}')
+                            # Ensure the pulse completes before issuing the next one.
+                            # Without this, repeated PULSE commands collapse into one.
+                            try:
+                                time.sleep(max(0.0, float(pulse_ms) / 1000.0))
+                            except Exception:
+                                pass
                         except Exception as e:
                             print(f'[VEND-ORG] CRITICAL ERROR: Failed to send pulse for slot {slot_number}: {e}')
                             import traceback

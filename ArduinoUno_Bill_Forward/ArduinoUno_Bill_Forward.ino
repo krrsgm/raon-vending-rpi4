@@ -19,10 +19,17 @@
 
   Adjust `ONE_MOTOR_PIN`, `FIVE_MOTOR_PIN`, `ONE_SENSOR_PIN`, `FIVE_SENSOR_PIN`,
   and `pulsePin` to match wiring. This build uses USB Serial only (no RX/TX Serial2).
+
+  Added shared Arduino Uno sensor bridge:
+  - Coin acceptor on D3
+  - DHT22 on D4/D5
+  - IR sensors on D6/D7
+  - TEC relay on D8
 */
 
 // Include Arduino and C++ helpers
 #include <Arduino.h>
+#include <DHT.h>
 
 // --- Bill Acceptor Pin Configuration ---
 volatile int pulseCount = 0;
@@ -34,6 +41,35 @@ const unsigned long timeout = 2000; // 2 seconds (increased to allow complete bi
 volatile bool waitingForBill = false;
 volatile bool billProcessed = false;
 const unsigned long pulseDebounceMs = 60; // debounce interval in ms (INCREASED from 20ms to filter noise)
+
+// --- Coin Acceptor (Allan 123A-Pro) ---
+const int COIN_ACCEPTOR_PIN = 3; // D3 (external interrupt)
+volatile unsigned long coinPulseStartUs = 0;
+volatile unsigned long coinPulseWidthUs = 0;
+volatile bool coinPulseReady = false;
+volatile bool coinPulseLow = false;
+unsigned long lastCoinValidMs = 0;
+const unsigned long coinDebounceMs = 80;      // 80ms debounce (matches Pi handler)
+const unsigned long coinMinPulseUs = 15000;   // 15ms
+const unsigned long coinMaxPulseUs = 250000;  // 250ms
+float coin_total = 0.0;
+
+// --- Shared Sensor Bridge Pins ---
+const int DHT1_PIN = 4; // D4
+const int DHT2_PIN = 5; // D5
+const int IR1_PIN = 6;  // D6
+const int IR2_PIN = 7;  // D7
+const int TEC_RELAY_PIN = 8; // D8
+
+#define DHTTYPE DHT22
+DHT dht1(DHT1_PIN, DHTTYPE);
+DHT dht2(DHT2_PIN, DHTTYPE);
+unsigned long lastDhtMs = 0;
+const unsigned long DHT_INTERVAL_MS = 2000;
+int last_ir1_state = HIGH;
+int last_ir2_state = HIGH;
+unsigned long last_motor_active_ms = 0;
+const unsigned long IR_ARM_DELAY_MS = 800; // wait after motors stop before reporting IR
 
 // --- Coin Hopper Pin Configuration ---
 // The dispenser wiring uses digital pins 9/10 for the 1p/5p motors and 11/12 for
@@ -79,6 +115,14 @@ const int RELAY_INACTIVE_LEVEL = (RELAY_ACTIVE_LEVEL == HIGH) ? LOW : HIGH;
 
 void start_motor(int pin) { digitalWrite(pin, RELAY_ACTIVE_LEVEL); }
 void stop_motor(int pin) { digitalWrite(pin, RELAY_INACTIVE_LEVEL); }
+
+void tec_on() { digitalWrite(TEC_RELAY_PIN, HIGH); }
+void tec_off() { digitalWrite(TEC_RELAY_PIN, LOW); }
+
+void report_tec_state(Stream &out) {
+  out.print("TEC: ");
+  out.println(digitalRead(TEC_RELAY_PIN) == HIGH ? "ON" : "OFF");
+}
 
 // --- Coin Hopper Functions ---
 void start_dispense_denon(int denom, unsigned int count, unsigned long timeout_ms);
@@ -131,6 +175,41 @@ void report_status(Stream &out) {
 
 void report_status() {
   report_status(Serial);
+}
+
+void report_balance(Stream &out) {
+  out.print("BALANCE: ");
+  out.println(coin_total, 2);
+}
+
+void report_balance() {
+  report_balance(Serial);
+}
+
+void report_ir_state(Stream &out) {
+  bool ir1_blocked = (digitalRead(IR1_PIN) == LOW);
+  bool ir2_blocked = (digitalRead(IR2_PIN) == LOW);
+  out.print("IR1: ");
+  out.println(ir1_blocked ? "BLOCKED" : "CLEAR");
+  out.print("IR2: ");
+  out.println(ir2_blocked ? "BLOCKED" : "CLEAR");
+}
+
+void report_dht_readings(Stream &out, float t1, float h1, float t2, float h2) {
+  if (!isnan(t1) && !isnan(h1)) {
+    out.print("DHT1: ");
+    out.print(t1, 1);
+    out.print("C ");
+    out.print(h1, 1);
+    out.println("%");
+  }
+  if (!isnan(t2) && !isnan(h2)) {
+    out.print("DHT2: ");
+    out.print(t2, 1);
+    out.print("C ");
+    out.print(h2, 1);
+    out.println("%");
+  }
 }
 
 void processLine(String line, Stream &out) {
@@ -206,8 +285,32 @@ void processLine(String line, Stream &out) {
     }
   } else if (cmd == "STATUS"){
     report_status(out);
+    report_balance(out);
+    report_tec_state(out);
+    report_ir_state(out);
   } else if (cmd == "STOP"){
     stop_all_jobs("user", out);
+  } else if (cmd == "TEC"){
+    if (partCount >= 2) {
+      String state = parts[1];
+      state.toUpperCase();
+      if (state == "ON") {
+        tec_on();
+        out.println("OK TEC ON");
+      } else if (state == "OFF") {
+        tec_off();
+        out.println("OK TEC OFF");
+      } else {
+        out.println("ERR bad TEC state");
+      }
+    } else {
+      out.println("ERR missing TEC state");
+    }
+  } else if (cmd == "GET_BALANCE"){
+    report_balance(out);
+  } else if (cmd == "RESET_BALANCE"){
+    coin_total = 0.0;
+    out.println("OK RESET_BALANCE");
   } else {
     out.println("ERR unknown command");
   }
@@ -235,6 +338,61 @@ int mapPulsesToPesos(int pulses) {
   }
 }
 
+int mapCoinPulseWidthToValueUs(unsigned long width_us) {
+  // Allan 123A-Pro calibration (same as Raspberry Pi handler)
+  if (width_us >= 50000) return 1;          // >=50ms
+  if (width_us >= 35000) return 5;          // 35-50ms
+  if (width_us >= coinMinPulseUs) return 10; // 15-35ms
+  return 0;
+}
+
+void countCoinPulse() {
+  // Capture pulse width using CHANGE interrupt (active-low pulse)
+  bool isLow = (digitalRead(COIN_ACCEPTOR_PIN) == LOW);
+  unsigned long nowUs = micros();
+  if (isLow) {
+    coinPulseStartUs = nowUs;
+    coinPulseLow = true;
+  } else {
+    if (coinPulseLow) {
+      coinPulseWidthUs = nowUs - coinPulseStartUs;
+      coinPulseReady = true;
+      coinPulseLow = false;
+    }
+  }
+}
+
+// --- TEC Control (simple range + humidity trigger) ---
+const float TARGET_TEMP_MIN = 20.0;
+const float TARGET_TEMP_MAX = 25.0;
+const float HUMIDITY_THRESHOLD = 60.0;
+
+void update_tec_control(float t1, float h1, float t2, float h2) {
+  float temp_sum = 0.0;
+  float humid_sum = 0.0;
+  int temp_count = 0;
+  int humid_count = 0;
+
+  if (!isnan(t1)) { temp_sum += t1; temp_count++; }
+  if (!isnan(t2)) { temp_sum += t2; temp_count++; }
+  if (!isnan(h1)) { humid_sum += h1; humid_count++; }
+  if (!isnan(h2)) { humid_sum += h2; humid_count++; }
+
+  if (temp_count == 0) return;
+  float avg_temp = temp_sum / temp_count;
+  float avg_humid = (humid_count > 0) ? (humid_sum / humid_count) : NAN;
+
+  bool need_on = false;
+  if (avg_temp > TARGET_TEMP_MAX) need_on = true;
+  if (!isnan(avg_humid) && avg_humid > HUMIDITY_THRESHOLD) need_on = true;
+
+  if (need_on) {
+    tec_on();
+  } else if (avg_temp < TARGET_TEMP_MIN && (isnan(avg_humid) || avg_humid <= HUMIDITY_THRESHOLD)) {
+    tec_off();
+  }
+}
+
 void setup(){
   // Initialize coin hopper pins
   pinMode(ONE_MOTOR_PIN, OUTPUT);
@@ -247,6 +405,18 @@ void setup(){
   // Initialize bill acceptor pins
   pinMode(pulsePin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(pulsePin), countPulse, FALLING);
+
+  // Initialize coin acceptor
+  pinMode(COIN_ACCEPTOR_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(COIN_ACCEPTOR_PIN), countCoinPulse, CHANGE);
+
+  // Initialize shared sensor pins
+  pinMode(IR1_PIN, INPUT_PULLUP);
+  pinMode(IR2_PIN, INPUT_PULLUP);
+  pinMode(TEC_RELAY_PIN, OUTPUT);
+  digitalWrite(TEC_RELAY_PIN, LOW);
+  dht1.begin();
+  dht2.begin();
   
   Serial.begin(BAUD_RATE);
   
@@ -329,6 +499,58 @@ void loop(){
   last_one_state = one_state;
   last_five_state = five_state;
 
+  // --- Coin Acceptor Processing ---
+  if (coinPulseReady) {
+    unsigned long widthUs;
+    noInterrupts();
+    widthUs = coinPulseWidthUs;
+    coinPulseReady = false;
+    interrupts();
+
+    if (widthUs >= coinMinPulseUs && widthUs <= coinMaxPulseUs) {
+      unsigned long nowMs = millis();
+      if (nowMs - lastCoinValidMs >= coinDebounceMs) {
+        int value = mapCoinPulseWidthToValueUs(widthUs);
+        if (value > 0) {
+          coin_total += (float)value;
+          lastCoinValidMs = nowMs;
+          Serial.print("[COIN] Value: ");
+          Serial.print(value);
+          Serial.print(" Total: ");
+          Serial.println(coin_total, 2);
+        } else {
+          Serial.print("[COIN] Unknown pulse width (us): ");
+          Serial.println(widthUs);
+        }
+      }
+    }
+  }
+
+  // --- DHT22 / IR Status Reporting ---
+  unsigned long now_ms = millis();
+  if (now_ms - lastDhtMs >= DHT_INTERVAL_MS) {
+    lastDhtMs = now_ms;
+    float h1 = dht1.readHumidity();
+    float t1 = dht1.readTemperature();
+    float h2 = dht2.readHumidity();
+    float t2 = dht2.readTemperature();
+    report_dht_readings(Serial, t1, h1, t2, h2);
+    report_tec_state(Serial);
+  }
+
+  int ir1_state = digitalRead(IR1_PIN);
+  int ir2_state = digitalRead(IR2_PIN);
+  if (ir1_state != last_ir1_state) {
+    Serial.print("IR1: ");
+    Serial.println(ir1_state == LOW ? "BLOCKED" : "CLEAR");
+    last_ir1_state = ir1_state;
+  }
+  if (ir2_state != last_ir2_state) {
+    Serial.print("IR2: ");
+    Serial.println(ir2_state == LOW ? "BLOCKED" : "CLEAR");
+    last_ir2_state = ir2_state;
+  }
+
   // --- Serial Command Processing ---
   while (Serial.available()){
     char c = (char) Serial.read();
@@ -358,4 +580,38 @@ void loop(){
   }
 
   if (sequence_active && !job_five.active && !job_one.active){ if (job_one.target > 0 && one_count < job_one.target){ start_dispense_denon(1, job_one.target, sequence_timeout_ms); } }
+
+  // Track motor activity for IR suppression
+  if (job_one.active || job_five.active) {
+    last_motor_active_ms = millis();
+  }
+
+  // --- DHT22 / IR Status Reporting ---
+  unsigned long now_ms = millis();
+  if (now_ms - lastDhtMs >= DHT_INTERVAL_MS) {
+    lastDhtMs = now_ms;
+    float h1 = dht1.readHumidity();
+    float t1 = dht1.readTemperature();
+    float h2 = dht2.readHumidity();
+    float t2 = dht2.readTemperature();
+    report_dht_readings(Serial, t1, h1, t2, h2);
+    update_tec_control(t1, h1, t2, h2);
+    report_tec_state(Serial);
+  }
+
+  // Suppress IR reporting while motors are active and for a short settle period after
+  if (now_ms - last_motor_active_ms >= IR_ARM_DELAY_MS) {
+    int ir1_state = digitalRead(IR1_PIN);
+    int ir2_state = digitalRead(IR2_PIN);
+    if (ir1_state != last_ir1_state) {
+      Serial.print("IR1: ");
+      Serial.println(ir1_state == LOW ? "BLOCKED" : "CLEAR");
+      last_ir1_state = ir1_state;
+    }
+    if (ir2_state != last_ir2_state) {
+      Serial.print("IR2: ");
+      Serial.println(ir2_state == LOW ? "BLOCKED" : "CLEAR");
+      last_ir2_state = ir2_state;
+    }
+  }
 }

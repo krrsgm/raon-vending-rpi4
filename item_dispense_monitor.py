@@ -32,6 +32,11 @@ import re
 from threading import Thread, Lock
 from queue import Queue
 
+try:
+    from dht22_handler import get_shared_serial_reader
+except Exception:
+    get_shared_serial_reader = None
+
 
 class IRSensor:
     """
@@ -116,7 +121,7 @@ class IRSensor:
 
 
 class ESP32SerialReader(threading.Thread):
-    """Background thread to read IR sensor states from ESP32 serial."""
+    """Background thread to read IR sensor states from serial."""
     
     def __init__(self, port, baudrate=115200):
         super().__init__(daemon=True)
@@ -232,11 +237,13 @@ class ItemDispenseMonitor:
         self.esp32_reader = None
         if use_esp32_serial:
             port = autodetect_esp32_port()
-            if port:
+            if port and get_shared_serial_reader:
+                self.esp32_reader = get_shared_serial_reader(port, 115200)
+            elif port:
                 self.esp32_reader = ESP32SerialReader(port)
                 self.esp32_reader.start()
             else:
-                print("[ItemDispenseMonitor] WARNING: ESP32 serial requested but port not found")
+                print("[ItemDispenseMonitor] WARNING: serial requested but port not found")
         
         # Initialize IR sensors
         self.sensors = {}

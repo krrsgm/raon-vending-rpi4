@@ -23,8 +23,8 @@ except ImportError:
     from rpi_gpio_mock import GPIO
 
 
-class ESP32DHTReader(threading.Thread):
-    """Background reader for DHT22 values printed by ESP32 over serial."""
+class SharedSerialReader(threading.Thread):
+    """Background reader for DHT22/IR values printed over serial."""
     def __init__(self, port, baudrate=115200):
         super().__init__(daemon=True)
         self.port = port
@@ -37,9 +37,12 @@ class ESP32DHTReader(threading.Thread):
             'DHT1': {'temp': None, 'humidity': None},
             'DHT2': {'temp': None, 'humidity': None},
         }
+        self.ir_states = {'IR1': None, 'IR2': None}
         self.connected = False
-        # Match lines like: "DHT1 (GPIO36): 25.0C 60%"
+        # Match lines like: "DHT1: 25.0C 60%"
         self.pattern = re.compile(r"(DHT1|DHT2).*?:\s*([\-0-9.]+)\s*C\s*([\-0-9.]+)\s*%?", re.IGNORECASE)
+        self.ir1_pattern = re.compile(r"IR1.*?:\s*(BLOCKED|CLEAR)", re.IGNORECASE)
+        self.ir2_pattern = re.compile(r"IR2.*?:\s*(BLOCKED|CLEAR)", re.IGNORECASE)
 
     def run(self):
         try:
@@ -69,6 +72,19 @@ class ESP32DHTReader(threading.Thread):
                             if label in self.readings:
                                 self.readings[label]['temp'] = temp
                                 self.readings[label]['humidity'] = humid
+                        continue
+                    m1 = self.ir1_pattern.search(line)
+                    if m1:
+                        state = m1.group(1).upper() == "BLOCKED"
+                        with self._lock:
+                            self.ir_states['IR1'] = state
+                        continue
+                    m2 = self.ir2_pattern.search(line)
+                    if m2:
+                        state = m2.group(1).upper() == "BLOCKED"
+                        with self._lock:
+                            self.ir_states['IR2'] = state
+                        continue
             except Exception as e:
                 print(f"[ESP32DHTReader] Read error: {e}")
                 continue
@@ -77,6 +93,10 @@ class ESP32DHTReader(threading.Thread):
         with self._lock:
             data = self.readings.get(label.upper(), {})
             return data.get('humidity'), data.get('temp')
+
+    def get_ir_state(self, label):
+        with self._lock:
+            return self.ir_states.get(label.upper(), None)
 
     def stop(self):
         self.running = False
@@ -95,6 +115,25 @@ def _autodetect_esp32_port():
         if any(kw in desc or kw in mfg for kw in keywords):
             return p.device
     return ports[0].device if ports else None
+
+
+def get_shared_serial_reader(port=None, baudrate=115200):
+    """Return a shared serial reader instance for DHT/IR."""
+    if not hasattr(get_shared_serial_reader, "_readers"):
+        get_shared_serial_reader._readers = {}
+        get_shared_serial_reader._lock = threading.Lock()
+    if not port:
+        port = _autodetect_esp32_port()
+    if not port:
+        return None
+    key = f"{port}:{int(baudrate)}"
+    with get_shared_serial_reader._lock:
+        reader = get_shared_serial_reader._readers.get(key)
+        if not reader:
+            reader = SharedSerialReader(port, baudrate)
+            reader.start()
+            get_shared_serial_reader._readers[key] = reader
+        return reader
 
 
 class DHT22Sensor:
@@ -128,26 +167,14 @@ class DHT22Sensor:
             DHT22Sensor._cache_lock = threading.Lock()
         
         if self.use_esp32_serial:
-            # Use shared ESP32 reader (class-level cache)
-            if not hasattr(DHT22Sensor, '_esp32_readers'):
-                DHT22Sensor._esp32_readers = {}
-            if not hasattr(DHT22Sensor, '_esp32_lock'):
-                DHT22Sensor._esp32_lock = threading.Lock()
-            port = esp32_port or _autodetect_esp32_port()
-            if port:
-                key = f"{port}:{esp32_baud}"
-                with DHT22Sensor._esp32_lock:
-                    reader = DHT22Sensor._esp32_readers.get(key)
-                    if not reader:
-                        reader = ESP32DHTReader(port, esp32_baud)
-                        reader.start()
-                        DHT22Sensor._esp32_readers[key] = reader
+            reader = get_shared_serial_reader(esp32_port, esp32_baud)
+            if reader:
                 self.sensor = reader
                 if not self.esp32_label:
                     # Default mapping: pin order -> DHT1/DHT2
                     self.esp32_label = "DHT1" if pin == 27 else "DHT2"
             else:
-                print("[DHT22Sensor] WARNING: ESP32 serial requested but port not found")
+                print("[DHT22Sensor] WARNING: serial requested but port not found")
         elif DHT_AVAILABLE and platform.system() == "Linux":
             try:
                 # Map BCM pin numbers to board pins for RPi4

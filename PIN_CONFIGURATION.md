@@ -7,18 +7,27 @@ Complete pinout documentation for RAON Vending Machine hardware (Raspberry Pi 4,
 ### Raspberry Pi 4 (BCM GPIO)
 | Component | Pin | Pin Name | Purpose |
 |-----------|-----|----------|---------|
-| DHT22 Sensor 1 (ESP32) | GPIO 36 | ADC1_CH0 | Temperature/Humidity monitor |
-| DHT22 Sensor 2 (ESP32) | GPIO 39 | ADC1_CH3 | Temperature/Humidity monitor |
-| TEC Relay Control | GPIO 26 | BCM 26 | Peltier cooling module ON/OFF |
-| IR Sensor 1 (Bin, ESP32) | GPIO 34 | ADC1_CH6 | Item detection in bin |
-| IR Sensor 2 (Bin, ESP32) | GPIO 35 | ADC1_CH7 | Item detection in bin |
-| Coin Acceptor | GPIO 17 | BCM 17 | Coin detection input |
 | Serial UART TX | GPIO 14 | TXD | Communicate with ESP32 (RXTX cable) |
 | Serial UART RX | GPIO 15 | RXD | Communicate with ESP32 (RXTX cable) |
 
+### Arduino Uno (Shared Sensor Bridge + Bill/Hopper)
+| Component | Pin | Pin Name | Purpose |
+|-----------|-----|----------|---------|
+| Bill Acceptor Pulse | D2 | D2 | Bill acceptor pulse input |
+| Coin Acceptor | D3 | D3 | Coin detection input (Allan 123A-Pro) |
+| DHT22 Sensor 1 | D4 | D4 | Temperature/Humidity monitor |
+| DHT22 Sensor 2 | D5 | D5 | Temperature/Humidity monitor |
+| IR Sensor 1 (Bin) | D6 | D6 | Item detection in bin |
+| IR Sensor 2 (Bin) | D7 | D7 | Item detection in bin |
+| TEC Relay Control | D8 | D8 | Peltier cooling module ON/OFF |
+| 1-Peso Hopper Motor | D9 | D9 | Hopper motor relay |
+| 5-Peso Hopper Motor | D10 | D10 | Hopper motor relay |
+| 1-Peso Hopper Sensor | D11 | D11 | Coin sensor input |
+| 5-Peso Hopper Sensor | D12 | D12 | Coin sensor input |
+
 ---
 
-## ESP32 - Bill Acceptor & Coin Hopper (`esp32_bill_forward.ino`)
+## Arduino Uno - Bill Acceptor & Coin Hopper (`ArduinoUno_Bill_Forward.ino`)
 
 ### Hardware Connections
 - **USB Serial**: 115200 baud (primary communication)
@@ -55,11 +64,17 @@ Commands:
 
 ### Arduino Code Reference
 ```cpp
-const int pulsePin = 2;       // Bill acceptor interrupt
-const int ONE_MOTOR_PIN = 9;  // 1-peso hopper motor
+const int pulsePin = 2;        // Bill acceptor interrupt
+const int COIN_ACCEPTOR_PIN = 3; // Coin acceptor input
+const int DHT1_PIN = 4;        // DHT22 sensor 1
+const int DHT2_PIN = 5;        // DHT22 sensor 2
+const int IR1_PIN = 6;         // IR sensor 1
+const int IR2_PIN = 7;         // IR sensor 2
+const int TEC_RELAY_PIN = 8;   // TEC relay
+const int ONE_MOTOR_PIN = 9;   // 1-peso hopper motor
 const int FIVE_MOTOR_PIN = 10; // 5-peso hopper motor
-const int ONE_SENSOR_PIN = 14; // 1-peso sensor
-const int FIVE_SENSOR_PIN = 15; // 5-peso sensor
+const int ONE_SENSOR_PIN = 11; // 1-peso sensor
+const int FIVE_SENSOR_PIN = 12; // 5-peso sensor
 ```
 
 ---
@@ -108,12 +123,13 @@ const int COUNTER_PIN = 18;     // Counter feedback (optional)
 │ GPIO 15 (RX) ────RXTX Cable──── ESP32 GPIO 1 (TX2)  │
 │                (115200 baud, RS485)                 │
 │                                                      │
-│ GPIO 27 ← DHT22 Sensor 1 (Temperature/Humidity)     │
-│ GPIO 22 ← DHT22 Sensor 2 (Temperature/Humidity)     │
-│ GPIO 26 → TEC Relay (Cooling on/off)                │
-│ GPIO 24 ← IR Sensor 1 (Item detection)              │
-│ GPIO 25 ← IR Sensor 2 (Item detection)              │
-│ GPIO 17 ← Coin Acceptor (Coin detection)            │
+│ D4 ← DHT22 Sensor 1 (Temperature/Humidity)          │
+│ D5 ← DHT22 Sensor 2 (Temperature/Humidity)          │
+│ D8 → TEC Relay (Cooling on/off)                     │
+│ D6 ← IR Sensor 1 (Item detection)                   │
+│ D7 ← IR Sensor 2 (Item detection)                   │
+│ D3 ← Coin Acceptor (Coin detection)                 │
+│ D2 ← Bill Acceptor (Pulse input)                    │
 └─────────────────────────────────────────────────────┘
 │
 ├──→ ESP32-Bill-Forward (USB Serial 115200)
@@ -148,13 +164,13 @@ Raspberry Pi GPIO 26 ──→ TEC Relay (tec_controller.py)
 Raspberry Pi GPIO 14/15 ─UART─→ ESP32-Vending-Controller (GPIO 19 PWM)
                                 └→ Drives motor to dispense items
 
-ESP32 GPIO 34/35 ← IR Sensors in catch bin
-                        └→ Detects successful dispensing
+Arduino Uno D6/D7 ← IR Sensors in catch bin
+                   └→ Detects successful dispensing
 ```
 
 ### Payment & Change
 ```
-Raspberry Pi GPIO 17 ← Coin Acceptor input
+Arduino Uno D3 ← Coin Acceptor input
 
 Raspberry Pi GPIO 14/15 ─USB/UART─→ ESP32-Bill-Forward
                          ├─ GPIO 2:  Bill acceptor pulses
@@ -172,36 +188,36 @@ Raspberry Pi GPIO 14/15 ─USB/UART─→ ESP32-Bill-Forward
 - [ ] GND → GND (common ground)
 - [ ] Power: 5V from USB (both devices)
 
-### Raspberry Pi → Temperature Sensors (DHT22)
-- [ ] GPIO 27 → DHT22 Sensor 1 data pin
-- [ ] GPIO 22 → DHT22 Sensor 2 data pin
+### Arduino Uno → Temperature Sensors (DHT22)
+- [ ] D4 → DHT22 Sensor 1 data pin
+- [ ] D5 → DHT22 Sensor 2 data pin
 - [ ] 5V → DHT22 power pins
 - [ ] GND → DHT22 ground pins
 
-### Raspberry Pi → TEC Relay
-- [ ] GPIO 26 → Relay module control input
+### Arduino Uno → TEC Relay
+- [ ] D8 → Relay module control input
 - [ ] 5V → Relay module power
 - [ ] GND → Relay module ground
 - [ ] Relay NO contact → Peltier + (with diode protection)
 - [ ] Relay NC contact → Peltier - 
 
-### Raspberry Pi → IR Sensors (Bin Detection)
-- [ ] GPIO 24 → IR Sensor 1
-- [ ] GPIO 25 → IR Sensor 2
+### Arduino Uno → IR Sensors (Bin Detection)
+- [ ] D6 → IR Sensor 1
+- [ ] D7 → IR Sensor 2
 - [ ] 5V → Sensor power pins
 - [ ] GND → Sensor ground pins
 
-### Raspberry Pi → Coin Acceptor
-- [ ] GPIO 17 → Coin acceptor pulse input
+### Arduino Uno → Coin Acceptor
+- [ ] D3 → Coin acceptor pulse input
 - [ ] 5V → Coin acceptor power
 - [ ] GND → Coin acceptor ground
 
-### ESP32-Bill-Forward (USB)
+### ArduinoUno_Bill_Forward (USB)
 - [ ] GPIO 2 → Bill acceptor pulse input
-- [ ] GPIO 12 → 1-peso hopper relay (through relay module)
-- [ ] GPIO 13 → 5-peso hopper relay (through relay module)
-- [ ] GPIO 14 → 1-peso coin sensor
-- [ ] GPIO 15 → 5-peso coin sensor
+- [ ] GPIO 9 → 1-peso hopper relay (through relay module)
+- [ ] GPIO 10 → 5-peso hopper relay (through relay module)
+- [ ] GPIO 11 → 1-peso coin sensor
+- [ ] GPIO 12 → 5-peso coin sensor
 - [ ] USB → Raspberry Pi USB port
 - [ ] GND → Common ground with all devices
 
@@ -221,13 +237,11 @@ Raspberry Pi GPIO 14/15 ─USB/UART─→ ESP32-Bill-Forward
 ```json
 {
   "hardware": {
-    "dht22_sensors": {"sensor_1": {"enabled": true, "gpio_pin": 36}, "sensor_2": {"enabled": true, "gpio_pin": 39}, "use_esp32_serial": true},
-    "tec_relay": {
-      "enabled": true,
-      "gpio_pin": 26,
-      "target_temp": 10.0
-    },
-    "ir_sensors": {"sensor_1": {"enabled": true, "gpio_pin": 34}, "sensor_2": {"enabled": true, "gpio_pin": 35}, "use_esp32_serial": true}
+    "dht22_sensors": {"sensor_1": {"enabled": true, "gpio_pin": 4}, "sensor_2": {"enabled": true, "gpio_pin": 5}, "use_esp32_serial": true},
+    "tec_relay": {"enabled": true, "gpio_pin": 8, "target_temp_min": 20.0, "target_temp_max": 25.0},
+    "ir_sensors": {"sensor_1": {"enabled": true, "gpio_pin": 6}, "sensor_2": {"enabled": true, "gpio_pin": 7}, "use_esp32_serial": true},
+    "coin_acceptor": {"enabled": true, "gpio_pin": 3, "use_gpio": false},
+    "bill_acceptor": {"enabled": true, "serial_port": "/dev/ttyUSB0"}
   }
 }
 ```
@@ -277,6 +291,6 @@ const int PWM_PIN = 19;         // Motor control PWM
   - `tec_controller.py` - Temperature control
   - `coin_hopper.py` - Change dispensing
   - `item_dispense_monitor.py` - Item detection
-  - `esp32_bill_forward/esp32_bill_forward.ino` - Bill & hopper control
+  - `ArduinoUno_Bill_Forward/ArduinoUno_Bill_Forward.ino` - Bill & hopper control
   - `vending_controller/vending_controller.ino` - Motor control
 

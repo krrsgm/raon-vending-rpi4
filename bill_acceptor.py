@@ -27,7 +27,8 @@ class BillAcceptor:
     ACCEPTED_DENOMINATIONS = [20, 50, 100]
     
     def __init__(self, port='/dev/ttyUSB1', baudrate=9600, timeout=1.0,
-                 esp32_mode=False, esp32_serial_port=None, esp32_host=None, esp32_port=5000):
+                 esp32_mode=False, esp32_serial_port=None, esp32_host=None, esp32_port=5000,
+                 shared_reader=None):
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
@@ -57,6 +58,13 @@ class BillAcceptor:
         self._dispatch_running = True
         self._dispatcher_thread = threading.Thread(target=self._dispatch_loop, daemon=True)
         self._dispatcher_thread.start()
+        self._shared_reader = shared_reader
+        if self._shared_reader:
+            try:
+                self._shared_reader.add_bill_callback(self._on_shared_bill_total)
+                self.received_amount = float(self._shared_reader.get_bill_total() or 0.0)
+            except Exception:
+                pass
 
 
     def _choose_stopbits_for_port(self, port_name: str):
@@ -67,6 +75,8 @@ class BillAcceptor:
         return serial.STOPBITS_TWO
 
     def connect(self):
+        if self._shared_reader:
+            return True
         target = self.esp32_serial_port if (self.esp32_mode and self.esp32_serial_port) else self.port
         try:
             stopbits = self._choose_stopbits_for_port(target)
@@ -130,6 +140,8 @@ class BillAcceptor:
             pass
 
     def start_reading(self):
+        if self._shared_reader:
+            return True
         if not self.serial_conn:
             print("Serial connection not open; call connect() first")
             return False
@@ -142,6 +154,8 @@ class BillAcceptor:
         return True
 
     def stop_reading(self):
+        if self._shared_reader:
+            return
         self.is_running = False
         if self.read_thread:
             self.read_thread.join(timeout=1.0)
@@ -385,6 +399,13 @@ class BillAcceptor:
         except Exception:
             pass
         self.disconnect()
+
+    def _on_shared_bill_total(self, total):
+        try:
+            with self._lock:
+                self.received_amount = float(total)
+        except Exception:
+            pass
 
 
 class MockBillAcceptor(BillAcceptor):

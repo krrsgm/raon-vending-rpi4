@@ -11,6 +11,11 @@ except ImportError:
     BillAcceptor = None
 
 try:
+    from dht22_handler import get_shared_serial_reader
+except Exception:
+    get_shared_serial_reader = None
+
+try:
     from coin_handler import CoinAcceptor
 except ImportError:
     CoinAcceptor = None
@@ -40,6 +45,18 @@ class PaymentHandler:
             use_gpio_coin (bool): If True, use GPIO-based coin acceptor (Raspberry Pi)
             coin_gpio_pin (int): GPIO pin for coin acceptor (default 17)
         """
+        # Shared serial reader for Arduino Uno (DHT/IR/coin/bill) if enabled.
+        shared_reader = None
+        try:
+            hw_cfg = config.get('hardware', {}) if isinstance(config, dict) else {}
+            dht_cfg = hw_cfg.get('dht22_sensors', {})
+            ir_cfg = hw_cfg.get('ir_sensors', {})
+            use_shared = bool(dht_cfg.get('use_esp32_serial', False) or ir_cfg.get('use_esp32_serial', False))
+            if use_shared and get_shared_serial_reader:
+                shared_reader = get_shared_serial_reader(port=coin_port or bill_port, baudrate=coin_baud or 115200)
+        except Exception:
+            shared_reader = None
+
         # Setup coin acceptor - prefer GPIO-based on Raspberry Pi, fallback to ESP32
         self.coin_acceptor = None
         self.use_gpio_coin = use_gpio_coin and (platform.system() == 'Linux' or CoinAcceptor is not None)
@@ -66,7 +83,7 @@ class PaymentHandler:
         # Fallback to ESP32-based coin acceptor if GPIO failed
         if not self.coin_acceptor and not self.use_gpio_coin:
             try:
-                self.coin_acceptor = CoinAcceptorESP32(port=coin_port, baudrate=coin_baud)
+                self.coin_acceptor = CoinAcceptorESP32(port=coin_port, baudrate=coin_baud, shared_reader=shared_reader)
                 print(f"DEBUG: ESP32 coin acceptor initialized")
                 logger.info("ESP32 coin acceptor initialized")
             except Exception as e:
@@ -107,7 +124,8 @@ class PaymentHandler:
                     esp32_mode=bill_esp32_mode,
                     esp32_serial_port=bill_esp32_serial_port,
                     esp32_host=bill_esp32_host,
-                    esp32_port=bill_esp32_port
+                    esp32_port=bill_esp32_port,
+                    shared_reader=shared_reader
                 )
                 print(f"DEBUG: BillAcceptor created (before connect)")
                 if self.bill_acceptor.connect():

@@ -24,7 +24,7 @@ except ImportError:
 
 
 class SharedSerialReader(threading.Thread):
-    """Background reader for DHT22/IR values printed over serial."""
+    """Background reader for DHT22/IR/coin/bill values printed over serial."""
     def __init__(self, port, baudrate=115200):
         super().__init__(daemon=True)
         self.port = port
@@ -38,11 +38,18 @@ class SharedSerialReader(threading.Thread):
             'DHT2': {'temp': None, 'humidity': None},
         }
         self.ir_states = {'IR1': None, 'IR2': None}
+        self.coin_total = 0.0
+        self.bill_total = 0.0
+        self._coin_callbacks = []
+        self._bill_callbacks = []
         self.connected = False
         # Match lines like: "DHT1: 25.0C 60%"
         self.pattern = re.compile(r"(DHT1|DHT2).*?:\s*([\-0-9.]+)\s*C\s*([\-0-9.]+)\s*%?", re.IGNORECASE)
         self.ir1_pattern = re.compile(r"IR1.*?:\s*(BLOCKED|CLEAR)", re.IGNORECASE)
         self.ir2_pattern = re.compile(r"IR2.*?:\s*(BLOCKED|CLEAR)", re.IGNORECASE)
+        self.coin_pattern = re.compile(r"\[COIN\].*?Value:\s*[^\d-]*([-\d.]+).*?Total:\s*[^\d-]*([-\d.]+)", re.IGNORECASE)
+        self.balance_pattern = re.compile(r"BALANCE:\s*[^\d-]*([-\d.]+)", re.IGNORECASE)
+        self.bill_pattern = re.compile(r"(?:BILL\s+INSERTED|BILL)[:\s]*[\u20B1â‚±]?\s*(\d+)", re.IGNORECASE)
 
     def run(self):
         try:
@@ -85,6 +92,48 @@ class SharedSerialReader(threading.Thread):
                         with self._lock:
                             self.ir_states['IR2'] = state
                         continue
+                    m3 = self.coin_pattern.search(line)
+                    if m3:
+                        try:
+                            total = float(m3.group(2))
+                        except Exception:
+                            total = None
+                        if total is not None:
+                            with self._lock:
+                                self.coin_total = total
+                            callbacks = list(self._coin_callbacks)
+                            for cb in callbacks:
+                                try:
+                                    cb(total)
+                                except Exception:
+                                    pass
+                        continue
+                    m4 = self.balance_pattern.search(line)
+                    if m4:
+                        try:
+                            total = float(m4.group(1))
+                        except Exception:
+                            total = None
+                        if total is not None:
+                            with self._lock:
+                                self.coin_total = total
+                        continue
+                    m5 = self.bill_pattern.search(line)
+                    if m5:
+                        try:
+                            amount = float(m5.group(1))
+                        except Exception:
+                            amount = None
+                        if amount is not None:
+                            with self._lock:
+                                self.bill_total += amount
+                            callbacks = list(self._bill_callbacks)
+                            for cb in callbacks:
+                                try:
+                                    cb(self.bill_total)
+                                except Exception:
+                                    pass
+                        continue
             except Exception as e:
                 print(f"[ESP32DHTReader] Read error: {e}")
                 continue
@@ -97,6 +146,22 @@ class SharedSerialReader(threading.Thread):
     def get_ir_state(self, label):
         with self._lock:
             return self.ir_states.get(label.upper(), None)
+
+    def add_coin_callback(self, callback):
+        if callback and callback not in self._coin_callbacks:
+            self._coin_callbacks.append(callback)
+
+    def add_bill_callback(self, callback):
+        if callback and callback not in self._bill_callbacks:
+            self._bill_callbacks.append(callback)
+
+    def get_coin_total(self):
+        with self._lock:
+            return self.coin_total
+
+    def get_bill_total(self):
+        with self._lock:
+            return self.bill_total
 
     def stop(self):
         self.running = False

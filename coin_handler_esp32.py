@@ -33,7 +33,7 @@ class CoinAcceptorESP32:
         6: {'value': 10.0, 'description': 'New 10 Peso Coin'}
     }
     
-    def __init__(self, port=None, baudrate=115200, timeout=1.0):
+    def __init__(self, port=None, baudrate=115200, timeout=1.0, shared_reader=None):
         """
         Initialize ESP32 coin acceptor
         
@@ -53,9 +53,17 @@ class CoinAcceptorESP32:
         self._lock = threading.Lock()
         self._last_status_time = 0
         self._status_interval = 2.0  # Poll balance every 2 seconds
-        
-        self.connect()
-        self.start()
+        self._shared_reader = shared_reader
+
+        if self._shared_reader:
+            try:
+                self._shared_reader.add_coin_callback(self._on_shared_coin)
+                self.received_amount = float(self._shared_reader.get_coin_total() or 0.0)
+            except Exception:
+                pass
+        else:
+            self.connect()
+            self.start()
     
     def _choose_stopbits_for_port(self, port_name: str):
         if not port_name:
@@ -191,11 +199,20 @@ class CoinAcceptorESP32:
     
     def get_received_amount(self):
         """Get the total amount received (thread-safe)"""
+        if self._shared_reader:
+            try:
+                return float(self._shared_reader.get_coin_total())
+            except Exception:
+                return 0.0
         with self._lock:
             return self.received_amount
     
     def reset_amount(self):
         """Reset the received amount to zero"""
+        if self._shared_reader:
+            with self._lock:
+                self.received_amount = 0.0
+            return
         if not self.serial_conn:
             logger.warning("[CoinAcceptor] Serial connection not available")
             return
@@ -207,6 +224,13 @@ class CoinAcceptorESP32:
             logger.info("[CoinAcceptor] Balance reset")
         except Exception as e:
             logger.error(f"[CoinAcceptor] Error resetting balance: {e}")
+
+    def _on_shared_coin(self, total):
+        try:
+            with self._lock:
+                self.received_amount = float(total)
+        except Exception:
+            pass
     
     def set_coin_value(self, output: int, value: float):
         """

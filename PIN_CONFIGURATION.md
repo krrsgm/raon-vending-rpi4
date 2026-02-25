@@ -34,12 +34,12 @@ Complete pinout documentation for RAON Vending Machine hardware (Raspberry Pi 4,
 | Bill Pulse Input | GPIO 2 | D2 | INPUT_PULLUP | Detects bill insertion (external interrupt) |
 | | | | | |
 | **COIN HOPPER - 1-Peso** | | | | |
-| Motor Relay | GPIO 12 | D12 | OUTPUT | Controls 1-peso hopper motor |
-| Coin Sensor | GPIO 14 | D14 | INPUT | Detects falling 1-peso coins |
+| Motor Relay | GPIO 9 | D9 | OUTPUT | Controls 1-peso hopper motor |
+| Coin Sensor | GPIO 11 | D11 | INPUT | Detects falling 1-peso coins |
 | | | | | |
 | **COIN HOPPER - 5-Peso** | | | | |
-| Motor Relay | GPIO 13 | D13 | OUTPUT | Controls 5-peso hopper motor |
-| Coin Sensor | GPIO 15 | D15 | INPUT | Detects falling 5-peso coins |
+| Motor Relay | GPIO 10 | D10 | OUTPUT | Controls 5-peso hopper motor |
+| Coin Sensor | GPIO 12 | D12 | INPUT | Detects falling 5-peso coins |
 
 ### Communication Protocol
 ```
@@ -56,8 +56,8 @@ Commands:
 ### Arduino Code Reference
 ```cpp
 const int pulsePin = 2;       // Bill acceptor interrupt
-const int ONE_MOTOR_PIN = 12; // 1-peso hopper motor
-const int FIVE_MOTOR_PIN = 13; // 5-peso hopper motor
+const int ONE_MOTOR_PIN = 9;  // 1-peso hopper motor
+const int FIVE_MOTOR_PIN = 10; // 5-peso hopper motor
 const int ONE_SENSOR_PIN = 14; // 1-peso sensor
 const int FIVE_SENSOR_PIN = 15; // 5-peso sensor
 ```

@@ -314,11 +314,6 @@
                 <div class="stat-label">Items Sold</div>
                 <div class="stat-value" id="itemsSold">0</div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon">⚠️</div>
-                <div class="stat-label">Low Stock Alerts</div>
-                <div class="stat-value" id="lowStock">0</div>
-            </div>
         </div>
         
         <!-- Low Stock Alerts Section -->
@@ -573,11 +568,9 @@
                 
                 const container = document.getElementById('alertsContainer');
                 const section = document.getElementById('alertsSection');
-                const lowStockBadge = document.getElementById('lowStock');
                 
                 if (data.alerts && data.alerts.length > 0) {
                     section.style.display = 'block';
-                    lowStockBadge.textContent = data.alerts.length;
                     
                     container.innerHTML = data.alerts.map(alert => `
                         <div class="alert-item ${alert.severity}">
@@ -593,7 +586,6 @@
                     `).join('');
                 } else {
                     section.style.display = 'none';
-                    lowStockBadge.textContent = '0';
                 }
             } catch (error) {
                 console.error('Error loading low stock alerts:', error);
@@ -818,10 +810,6 @@
                 document.getElementById('todaySales').textContent = '₱' + logsData.total_sales.toFixed(2);
                 document.getElementById('transactions').textContent = logsData.total_transactions;
                 document.getElementById('itemsSold').textContent = Object.values(logsData.items_sold || {}).reduce((a, b) => a + b, 0);
-                
-                let lowStockCount = 0;
-                statusData.forEach(m => lowStockCount += m.low_stock_count);
-                document.getElementById('lowStock').textContent = lowStockCount;
                 
                 // Update machines grid
                 const grid = document.getElementById('machinesGrid');

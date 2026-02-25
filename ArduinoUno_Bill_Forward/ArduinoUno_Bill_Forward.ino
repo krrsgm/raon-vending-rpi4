@@ -526,31 +526,6 @@ void loop(){
     }
   }
 
-  // --- DHT22 / IR Status Reporting ---
-  unsigned long now_ms = millis();
-  if (now_ms - lastDhtMs >= DHT_INTERVAL_MS) {
-    lastDhtMs = now_ms;
-    float h1 = dht1.readHumidity();
-    float t1 = dht1.readTemperature();
-    float h2 = dht2.readHumidity();
-    float t2 = dht2.readTemperature();
-    report_dht_readings(Serial, t1, h1, t2, h2);
-    report_tec_state(Serial);
-  }
-
-  int ir1_state = digitalRead(IR1_PIN);
-  int ir2_state = digitalRead(IR2_PIN);
-  if (ir1_state != last_ir1_state) {
-    Serial.print("IR1: ");
-    Serial.println(ir1_state == LOW ? "BLOCKED" : "CLEAR");
-    last_ir1_state = ir1_state;
-  }
-  if (ir2_state != last_ir2_state) {
-    Serial.print("IR2: ");
-    Serial.println(ir2_state == LOW ? "BLOCKED" : "CLEAR");
-    last_ir2_state = ir2_state;
-  }
-
   // --- Serial Command Processing ---
   while (Serial.available()){
     char c = (char) Serial.read();

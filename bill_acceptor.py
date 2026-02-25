@@ -175,7 +175,9 @@ class BillAcceptor:
                             line = line.strip()
                             if not line:
                                 continue
-                            print(f"DEBUG: Received serial line: '{line}'")
+                            # Avoid spamming logs with sensor chatter (IR/DHT/etc).
+                            if ("BILL" in line.upper()) or ("PULSES" in line.upper()) or ("₱" in line) or ("\u20B1" in line):
+                                print(f"DEBUG: Received serial line: '{line}'")
                             self._process_esp32_line(line)
                     except Exception:
                         self._process_raw_bytes(data)

@@ -36,21 +36,13 @@ volatile bool billProcessed = false;
 const unsigned long pulseDebounceMs = 60; // debounce interval in ms (INCREASED from 20ms to filter noise)
 
 // --- Coin Hopper Pin Configuration ---
-// Default pins are for ESP32. For Arduino Uno/Nano, an AVR macro will switch to
-// safer Uno-compatible pins (motor outputs on 9/10, sensors on 11/12).
-#if defined(ARDUINO_AVR_UNO) || defined(ARDUINO_AVR_NANO)
-const int ONE_MOTOR_PIN = 9;   // 1-peso motor control (Uno digital pin 9)
-const int FIVE_MOTOR_PIN = 10; // 5-peso motor control (Uno digital pin 10)
+// The dispenser wiring uses digital pins 9/10 for the 1p/5p motors and 11/12 for
+// the corresponding sensors, so we hardcode those lines for consistency.
+const int ONE_MOTOR_PIN = 9;   // 1-peso motor control
+const int FIVE_MOTOR_PIN = 10; // 5-peso motor control
 
-const int ONE_SENSOR_PIN = 11; // 1-peso sensor input (Uno digital pin 11)
-const int FIVE_SENSOR_PIN = 12; // 5-peso sensor input (Uno digital pin 12)
-#else
-const int ONE_MOTOR_PIN = 12;   // 1-peso motor control (ESP32 GPIO 12)
-const int FIVE_MOTOR_PIN = 13;  // 5-peso motor control (ESP32 GPIO 13)
-
-const int ONE_SENSOR_PIN = 14;  // 1-peso sensor input (ESP32 GPIO 14)
-const int FIVE_SENSOR_PIN = 15; // 5-peso sensor input (ESP32 GPIO 15)
-#endif
+const int ONE_SENSOR_PIN = 11;  // 1-peso sensor input
+const int FIVE_SENSOR_PIN = 12; // 5-peso sensor input
 
 const unsigned long BAUD_RATE = 115200;
 

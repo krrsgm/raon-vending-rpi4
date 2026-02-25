@@ -19,9 +19,9 @@ class CoinHopper:
     Commands sent to Arduino:
     - DISPENSE_AMOUNT <amount> [timeout_ms] : Auto-calculate and dispense coins
     - DISPENSE_DENOM <denom> <count> [timeout_ms] : Dispense exact coin count
-    - COIN_OPEN <denom> : Open hopper manually
-    - COIN_CLOSE <denom> : Close hopper manually
-    - COIN_STATUS : Check hopper status
+    - OPEN <denom> : Open hopper manually
+    - CLOSE <denom> : Close hopper manually
+    - STATUS : Check hopper status
     - RELAY_ON : Turn on relays
     - RELAY_OFF : Turn off relays
     """
@@ -298,7 +298,7 @@ class CoinHopper:
         if not self.serial_conn or not self.serial_conn.is_open:
             return None
         
-        response = self.send_command("COIN_STATUS")
+        response = self.send_command("STATUS")
         return response
 
     def open_hopper(self, denomination):
@@ -313,7 +313,7 @@ class CoinHopper:
         if denomination not in (1, 5):
             return False
         
-        response = self.send_command(f"COIN_OPEN {denomination}")
+        response = self.send_command(f"OPEN {denomination}")
         return response and "OK" in response
 
     def close_hopper(self, denomination):
@@ -328,7 +328,7 @@ class CoinHopper:
         if denomination not in (1, 5):
             return False
         
-        response = self.send_command(f"COIN_CLOSE {denomination}")
+        response = self.send_command(f"CLOSE {denomination}")
         return response and "OK" in response
 
     def disconnect(self):

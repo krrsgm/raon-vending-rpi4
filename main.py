@@ -195,6 +195,11 @@ class MainApp(tk.Tk):
             use_esp32_dht = dht22_config.get('use_esp32_serial', True)
             esp32_dht_port = dht22_config.get('esp32_port')
             esp32_dht_baud = dht22_config.get('esp32_baud', 115200)
+            tec_via_arduino = tec_config.get('control_via_arduino', True)
+
+            if tec_via_arduino:
+                print("[MainApp] TEC control is delegated to Arduino; skipping local TECController init")
+                return
             
             relay_pin = tec_config.get('gpio_pin', 26)
             average_sensors = tec_config.get('average_sensors', True)
@@ -272,13 +277,17 @@ class MainApp(tk.Tk):
             detection_mode = ir_config.get('detection_mode', 'any')  # 'any', 'all', or 'first'
             simulate_detection = ir_config.get('simulate_detection', False)  # For testing
             use_esp32_ir = ir_config.get('use_esp32_serial', True)
+            serial_port = ir_config.get('esp32_port') or hardware_config.get('bill_acceptor', {}).get('serial_port')
+            serial_baud = ir_config.get('esp32_baud', 115200)
             
             self.dispense_monitor = ItemDispenseMonitor(
                 ir_sensor_pins=ir_pins,
                 default_timeout=timeout,
                 detection_mode=detection_mode,
                 simulate_detection=simulate_detection,
-                use_esp32_serial=use_esp32_ir
+                use_esp32_serial=use_esp32_ir,
+                serial_port=serial_port,
+                serial_baud=serial_baud
             )
             
             # Register callbacks for UI alerts

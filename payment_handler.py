@@ -46,12 +46,17 @@ class PaymentHandler:
             coin_gpio_pin (int): GPIO pin for coin acceptor (default 17)
         """
         # Shared serial reader for Arduino Uno (DHT/IR/coin/bill) if enabled.
+        # This avoids multiple consumers opening the same USB serial port.
         shared_reader = None
         try:
             hw_cfg = config.get('hardware', {}) if isinstance(config, dict) else {}
             dht_cfg = hw_cfg.get('dht22_sensors', {})
             ir_cfg = hw_cfg.get('ir_sensors', {})
-            use_shared = bool(dht_cfg.get('use_esp32_serial', False) or ir_cfg.get('use_esp32_serial', False))
+            use_shared = bool(
+                dht_cfg.get('use_esp32_serial', False)
+                or ir_cfg.get('use_esp32_serial', False)
+                or (not use_gpio_coin)
+            )
             if use_shared and get_shared_serial_reader:
                 shared_reader = get_shared_serial_reader(port=coin_port or bill_port, baudrate=coin_baud or 115200)
         except Exception:
@@ -213,7 +218,7 @@ class PaymentHandler:
             self.bill_acceptor.reset_amount()
         return True
 
-    def _on_bill_update(self, bill_total_amount):
+    def _on_bill_update(self, bill_total_amount, prompt_msg=None):
         """Internal callback invoked when bill acceptor reports an update.
 
         We forward combined total (coins + bills) to the UI callback if set.

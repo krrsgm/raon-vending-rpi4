@@ -28,14 +28,18 @@ class CartScreen(tk.Frame):
         # It connects via USB at /dev/ttyACM0
         esp32_mode = False  # Disabled: TB74 is on Arduino USB, not ESP32
         
-        # Get coin acceptor config (prefer GPIO on Raspberry Pi)
+        # Get coin acceptor config
         coin_cfg = controller.config.get('hardware', {}).get('coin_acceptor', {}) if isinstance(controller.config, dict) else {}
-        use_gpio_coin = coin_cfg.get('use_gpio', True)  # Default to GPIO on RPi
+        # Default to serial because coin/bill are on Arduino Uno in this wiring layout.
+        use_gpio_coin = coin_cfg.get('use_gpio', False)
         coin_gpio_pin = coin_cfg.get('gpio_pin', 17)  # Default GPIO 17
-        
+        hopper_cfg = controller.config.get('hardware', {}).get('coin_hopper', {}) if isinstance(controller.config, dict) else {}
+        hopper_serial = hopper_cfg.get('serial_port', bill_serial)
+        hopper_baud = hopper_cfg.get('baudrate', 115200)
+
         self.payment_handler = PaymentHandler(
             controller.config,
-            coin_port=None,  # Auto-detect ESP32 USB serial port (fallback)
+            coin_port=bill_serial,
             coin_baud=115200,
             bill_port=bill_serial,
             bill_baud=bill_baud,
@@ -43,9 +47,11 @@ class CartScreen(tk.Frame):
             bill_esp32_serial_port=None,
             bill_esp32_host=None,
             bill_esp32_port=5000,
+            coin_hopper_port=hopper_serial,
+            coin_hopper_baud=hopper_baud,
             use_gpio_coin=use_gpio_coin,
             coin_gpio_pin=coin_gpio_pin
-        )  # Using GPIO coin acceptor on RPi
+        )  # Coin/bill/hopper are expected on Arduino Uno serial by default
         self.payment_in_progress = False
         self.payment_received = 0.0
         self.payment_required = 0.0

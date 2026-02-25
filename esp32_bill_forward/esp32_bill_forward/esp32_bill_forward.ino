@@ -57,10 +57,11 @@ struct DispenseJob {
   unsigned int target;
   unsigned long start_ms;
   unsigned long timeout_ms;
+  unsigned long last_coin_ms;
 };
 
-DispenseJob job_one = {false, 0, 0, 30000};
-DispenseJob job_five = {false, 0, 0, 30000};
+DispenseJob job_one = {false, 0, 0, 30000, 0};
+DispenseJob job_five = {false, 0, 0, 30000, 0};
 
 bool sequence_active = false;
 unsigned long sequence_timeout_ms = 30000;
@@ -89,6 +90,7 @@ void start_dispense_denon(int denom, unsigned int count, unsigned long timeout_m
     job_five.target = count;
     job_five.start_ms = millis();
     job_five.timeout_ms = timeout_ms;
+    job_five.last_coin_ms = millis();
     start_motor(FIVE_MOTOR_PIN);
     out.println("OK START FIVE");
   } else {
@@ -97,6 +99,7 @@ void start_dispense_denon(int denom, unsigned int count, unsigned long timeout_m
     job_one.target = count;
     job_one.start_ms = millis();
     job_one.timeout_ms = timeout_ms;
+    job_one.last_coin_ms = millis();
     start_motor(ONE_MOTOR_PIN);
     out.println("OK START ONE");
   }
@@ -208,6 +211,7 @@ void processLine(String line, Stream &out) {
   } else {
     out.println("ERR unknown command");
   }
+}
 
 // --- Bill Acceptor Functions ---
 void countPulse() {
@@ -314,10 +318,12 @@ void loop(){
   
   if (last_one_state == HIGH && one_state == LOW) {
     one_count++;
+    job_one.last_coin_ms = millis();
   }
   
   if (last_five_state == HIGH && five_state == LOW) {
     five_count++;
+    job_five.last_coin_ms = millis();
   }
   
   last_one_state = one_state;
@@ -327,7 +333,7 @@ void loop(){
   while (Serial.available()){
     char c = (char) Serial.read();
     if (c == '\n'){
-      if (inputBuffer.length() > 0){ Serial.print("CMD: "); Serial.println(inputBuffer); processLine(inputBuffer); inputBuffer = ""; }
+    if (inputBuffer.length() > 0){ Serial.print("CMD: "); Serial.println(inputBuffer); processLine(inputBuffer, Serial); inputBuffer = ""; }
     } else if (c != '\r'){
       inputBuffer += c;
       if (inputBuffer.length() > 256) inputBuffer = inputBuffer.substring(inputBuffer.length()-256);
@@ -338,14 +344,17 @@ void loop(){
 
   // --- Coin Hopper Job Management ---
   unsigned long now = millis();
+  const unsigned long COIN_TIMEOUT_MS = 5000;
   if (job_five.active){
     if (five_count >= job_five.target){ stop_motor(FIVE_MOTOR_PIN); job_five.active = false; Serial.print("DONE FIVE "); Serial.println(five_count); if (sequence_active && job_one.target > 0 && !job_one.active){ if (job_one.target > 0){ start_dispense_denon(1, job_one.target, sequence_timeout_ms); } } }
     else if (now - job_five.start_ms > job_five.timeout_ms){ stop_motor(FIVE_MOTOR_PIN); job_five.active = false; Serial.print("ERR TIMEOUT FIVE dispensed:"); Serial.println(five_count); }
+    else if (now - job_five.last_coin_ms > COIN_TIMEOUT_MS){ stop_motor(FIVE_MOTOR_PIN); job_five.active = false; Serial.print("ERR NO COIN FIVE timeout"); Serial.println(five_count); }
   }
 
   if (job_one.active){
     if (one_count >= job_one.target){ stop_motor(ONE_MOTOR_PIN); job_one.active = false; Serial.print("DONE ONE "); Serial.println(one_count); sequence_active = false; }
     else if (now - job_one.start_ms > job_one.timeout_ms){ stop_motor(ONE_MOTOR_PIN); job_one.active = false; Serial.print("ERR TIMEOUT ONE dispensed:"); Serial.println(one_count); sequence_active = false; }
+    else if (now - job_one.last_coin_ms > COIN_TIMEOUT_MS){ stop_motor(ONE_MOTOR_PIN); job_one.active = false; Serial.print("ERR NO COIN ONE timeout"); Serial.println(one_count); sequence_active = false; }
   }
 
   if (sequence_active && !job_five.active && !job_one.active){ if (job_one.target > 0 && one_count < job_one.target){ start_dispense_denon(1, job_one.target, sequence_timeout_ms); } }

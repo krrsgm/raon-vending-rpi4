@@ -622,7 +622,8 @@ class CartScreen(tk.Frame):
             f"Total paid: ₱{received:.2f}\n"
             f"\nYour items will now be dispensed."
         )
-        
+
+        self._destroy_payment_window()
         messagebox.showinfo("Payment Complete", status_text)
         
         # Log the transaction to daily sales log
@@ -670,11 +671,20 @@ class CartScreen(tk.Frame):
             except Exception as e:
                 print(f"[CartScreen] Error recording sales in stock tracker: {e}")
         
-        # Clean up and return to main screen
-        self.payment_window.destroy()
+        # Clear cart and return to kiosk screen
         self.controller.clear_cart()
         self.controller.show_frame("KioskFrame")
-        
+
+    def _destroy_payment_window(self):
+        """Safely destroy the payment status window."""
+        if hasattr(self, 'payment_window') and self.payment_window:
+            try:
+                self.payment_window.destroy()
+            except Exception:
+                pass
+            finally:
+                self.payment_window = None
+
     def cancel_payment(self, event=None):
         """Cancel the current payment session.
 
@@ -714,15 +724,7 @@ class CartScreen(tk.Frame):
             self.payment_in_progress = False
 
         # Ensure the payment window is closed and return to kiosk
-        try:
-            if hasattr(self, 'payment_window') and self.payment_window:
-                try:
-                    print("DEBUG: Destroying payment window from cancel_payment")
-                except Exception:
-                    pass
-                self.payment_window.destroy()
-        except Exception:
-            pass
+        self._destroy_payment_window()
 
         # Return to kiosk screen regardless of payment state
         try:

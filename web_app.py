@@ -440,31 +440,35 @@ def api_stock_alerts():
     try:
         alerts = []
         machines = Machine.query.filter_by(is_active=True).all()
-        
+        assigned_items = aggregate_assigned_inventory()
+
         for machine in machines:
-            items = Item.query.filter_by(machine_id=machine.id).all()
-            
-            for item in items:
+            for item in assigned_items:
+                qty = item.get('quantity', 0)
+                threshold = item.get('threshold', 0)
                 alert_type = None
-                if item.quantity <= 0:
+
+                if qty <= 0:
                     alert_type = 'out_of_stock'
-                elif item.quantity <= item.low_stock_threshold:
+                elif threshold and qty <= threshold:
                     alert_type = 'low_stock'
                 
-                if alert_type:
-                    alerts.append({
-                        'machine_id': machine.machine_id,
-                        'machine_name': machine.name,
-                        'item_id': item.id,
-                        'item_name': item.name,
-                        'category': item.category,
-                        'current_quantity': item.quantity,
-                        'threshold': item.low_stock_threshold,
-                        'price': item.price,
-                        'slots': item.slots,
-                        'alert_type': alert_type,
-                        'timestamp': datetime.utcnow().isoformat()
-                    })
+                if not alert_type:
+                    continue
+
+                alerts.append({
+                    'machine_id': machine.machine_id,
+                    'machine_name': machine.name,
+                    'item_id': None,
+                    'item_name': item.get('name'),
+                    'category': item.get('category', ''),
+                    'current_quantity': qty,
+                    'threshold': threshold,
+                    'price': item.get('price', 0.0),
+                    'slots': ','.join(str(s) for s in item.get('slots', [])),
+                    'alert_type': alert_type,
+                    'timestamp': datetime.utcnow().isoformat()
+                })
         
         # Sort by alert type (out_of_stock first) then by machine and item name
         alerts.sort(key=lambda x: (0 if x['alert_type'] == 'out_of_stock' else 1, x['machine_id'], x['item_name']))
@@ -769,16 +773,21 @@ def get_realtime_status():
     try:
         machines = Machine.query.all()
         result = []
+        assigned_inventory = aggregate_assigned_inventory()
+        total_items_available = sum(item.get('quantity', 0) for item in assigned_inventory)
+        low_stock_entries = []
+        for item in assigned_inventory:
+            qty = item.get('quantity', 0)
+            threshold = item.get('threshold', 0)
+            if qty <= 0:
+                low_stock_entries.append(item.get('name'))
+            elif threshold and qty <= threshold:
+                low_stock_entries.append(item.get('name'))
         
         for machine in machines:
             items = Item.query.filter_by(machine_id=machine.id).all()
             
             # Calculate low stock items
-            low_stock_items = [
-                item.name for item in items 
-                if item.quantity <= item.low_stock_threshold
-            ]
-            
             # Calculate today's sales
             today = datetime.date.today()
             today_sales_sum = db.session.query(func.sum(Sale.coin_amount + Sale.bill_amount)).filter(
@@ -802,10 +811,10 @@ def get_realtime_status():
                 "id": machine.id,
                 "name": machine.name,
                 "is_active": True,
-                "total_items": sum(item.quantity for item in items),
+                "total_items": total_items_available,
                 "today_sales": today_sales_sum,
-                "low_stock_count": len(low_stock_items),
-                "low_stock_items": low_stock_items,
+                "low_stock_count": len(low_stock_entries),
+                "low_stock_items": low_stock_entries,
                 "items_sold_today": items_sold_today
             })
         
@@ -893,6 +902,117 @@ def load_assigned_items():
     except Exception as e:
         logger.warning(f"Could not load assigned items: {e}")
         return {}
+
+
+def _safe_int(value, default=0):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _extract_slots_from_assigned(assigned_data):
+    if isinstance(assigned_data, list):
+        return assigned_data
+    if not isinstance(assigned_data, dict):
+        return []
+
+    for key in ('slots', 'data', 'items', 'assigned'):
+        maybe = assigned_data.get(key)
+        if isinstance(maybe, list):
+            return maybe
+
+    if 'terms' in assigned_data:
+        return [assigned_data]
+
+    return []
+
+
+def _select_term_entry(slot_data, term_idx=0):
+    if not isinstance(slot_data, dict):
+        return None
+
+    terms = slot_data.get('terms')
+    if isinstance(terms, list):
+        if 0 <= term_idx < len(terms):
+            entry = terms[term_idx]
+            if isinstance(entry, dict) and entry.get('name'):
+                return entry
+        # fallback to first non-empty term
+        for entry in terms:
+            if isinstance(entry, dict) and entry.get('name'):
+                return entry
+
+    if isinstance(terms, dict):
+        for key in (str(term_idx + 1), str(term_idx), term_idx):
+            entry = terms.get(key)
+            if isinstance(entry, dict) and entry.get('name'):
+                return entry
+
+    if slot_data.get('name'):
+        return slot_data
+
+    return None
+
+
+def aggregate_assigned_inventory(term_idx=0, machine_id=None):
+    assigned = load_assigned_items()
+    if isinstance(assigned, dict):
+        assigned_machine = assigned.get('machine_id')
+        if machine_id and assigned_machine and assigned_machine != machine_id:
+            return []
+
+    slots = _extract_slots_from_assigned(assigned)
+    summary = {}
+
+    for slot_idx, slot in enumerate(slots):
+        term_entry = _select_term_entry(slot, term_idx)
+        if not term_entry:
+            continue
+
+        name = term_entry.get('name') or slot.get('name')
+        if not name:
+            continue
+
+        quantity = _safe_int(term_entry.get('quantity', slot.get('quantity')))
+        threshold = _safe_int(term_entry.get('low_stock_threshold', slot.get('low_stock_threshold')), 0)
+        price = _safe_float(term_entry.get('price', slot.get('price')))
+        category = term_entry.get('category') or slot.get('category') or ''
+        image_url = term_entry.get('image') or slot.get('image') or ''
+        key = name.strip()
+
+        entry = summary.setdefault(key, {
+            'name': name,
+            'quantity': 0,
+            'threshold': threshold,
+            'price': price,
+            'category': category,
+            'image_url': image_url,
+            'slots': []
+        })
+
+        entry['quantity'] += quantity
+        if threshold > entry.get('threshold', 0):
+            entry['threshold'] = threshold
+        if price:
+            entry['price'] = price
+        if category:
+            entry['category'] = category
+        if image_url:
+            entry['image_url'] = image_url
+
+        slot_number = slot_idx + 1
+        if slot_number not in entry['slots']:
+            entry['slots'].append(slot_number)
+
+    return list(summary.values())
 
 
 @app.route('/admin/init', methods=['POST'])

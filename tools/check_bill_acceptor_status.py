@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 import argparse
 import sys
 from pathlib import Path
@@ -11,7 +11,7 @@ from payment_handler import PaymentHandler
 
 def main():
     parser = argparse.ArgumentParser(description="Check bill acceptor status (Arduino serial)")
-    parser.add_argument("--port", default="/dev/ttyACM0", help="Bill acceptor serial port")
+    parser.add_argument("--port", default="/dev/ttyUSB0", help="Bill acceptor serial port")
     parser.add_argument("--baud", type=int, default=115200, help="Bill acceptor baud rate")
     args = parser.parse_args()
 
@@ -44,3 +44,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

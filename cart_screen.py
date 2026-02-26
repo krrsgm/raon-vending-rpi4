@@ -1,4 +1,4 @@
-import tkinter as tk
+﻿import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox
 from payment_handler import PaymentHandler
@@ -56,6 +56,7 @@ class CartScreen(tk.Frame):
         self.payment_received = 0.0
         self.payment_required = 0.0
         self.change_label = None  # Will be created in the payment window
+        self.change_alert_shown = False  # Prevent duplicate hopper timeout alerts
         self.coin_received = 0.0  # Track coins separately
         self.bill_received = 0.0  # Track bills separately
         
@@ -273,7 +274,7 @@ class CartScreen(tk.Frame):
             # Delete button
             delete_btn = tk.Button(
                 controls_frame,
-                text="✕",
+                text="âœ•",
                 font=self.fonts["qty_btn"],
                 bg="white",
                 fg="#e74c3c",
@@ -299,13 +300,14 @@ class CartScreen(tk.Frame):
             from tkinter import messagebox
             messagebox.showinfo(
                 "Insert Payment",
-                f"Amount due: ₱{total_amount:.2f}\n\n"
-                "Change will be dispensed using ₱1 and ₱5 coins only.",
+                f"Amount due: â‚±{total_amount:.2f}\n\n"
+                "Change will be dispensed using â‚±1 and â‚±5 coins only.",
             )
             # Start payment session
             self.payment_in_progress = True
             self.payment_required = total_amount
             self.payment_received = 0.0
+            self.change_alert_shown = False
             # Start payment session and register callbacks for immediate updates
             # Pass UI change-status callback so dispensing progress can be shown
             try:
@@ -374,7 +376,7 @@ class CartScreen(tk.Frame):
             
             tk.Label(
                 amount_frame,
-                text=f"₱{total_amount:.2f}",
+                text=f"â‚±{total_amount:.2f}",
                 font=self.fonts["header"],
                 bg=self.colors["payment_bg"],
                 fg=self.colors["payment_fg"]
@@ -386,7 +388,7 @@ class CartScreen(tk.Frame):
             
             self.payment_status = tk.Label(
                 status_frame,
-                text="Coins: ₱0.00 | Bills: ₱0.00\nTotal Received: ₱0.00\nRemaining: ₱{:.2f}".format(total_amount),
+                text="Coins: â‚±0.00 | Bills: â‚±0.00\nTotal Received: â‚±0.00\nRemaining: â‚±{:.2f}".format(total_amount),
                 font=tkfont.Font(family="Helvetica", size=11),
                 bg=self.colors["payment_bg"],
                 fg=self.colors["payment_fg"],
@@ -416,9 +418,9 @@ class CartScreen(tk.Frame):
             ).pack(pady=(20,5))
             
             coins_text = (
-                "Coins: • ₱1 • ₱5 • ₱10 (Old and New)\n"
-                "Bills: • ₱20 • ₱50 • ₱100\n\n"
-                "Change is dispensed using ₱1 and ₱5 coins only."
+                "Coins: â€¢ â‚±1 â€¢ â‚±5 â€¢ â‚±10 (Old and New)\n"
+                "Bills: â€¢ â‚±20 â€¢ â‚±50 â€¢ â‚±100\n\n"
+                "Change is dispensed using â‚±1 and â‚±5 coins only."
             )
             
             tk.Label(
@@ -479,13 +481,13 @@ class CartScreen(tk.Frame):
                 remaining = total_amount - received
                 
                 if remaining >= 0:
-                    remaining_text = f"Remaining: ₱{remaining:.2f}"
+                    remaining_text = f"Remaining: â‚±{remaining:.2f}"
                 else:
-                    remaining_text = f"Change Due: ₱{abs(remaining):.2f}"
+                    remaining_text = f"Change Due: â‚±{abs(remaining):.2f}"
                 
                 status_text = (
-                    f"Coins: ₱{coin_amount:.2f} | Bills: ₱{bill_amount:.2f}\n"
-                    f"Total Received: ₱{received:.2f}\n"
+                    f"Coins: â‚±{coin_amount:.2f} | Bills: â‚±{bill_amount:.2f}\n"
+                    f"Total Received: â‚±{received:.2f}\n"
                     f"{remaining_text}"
                 )
                 
@@ -530,13 +532,13 @@ class CartScreen(tk.Frame):
         remaining = self.payment_required - amount
 
         if remaining >= 0:
-            remaining_text = f"Remaining: ₱{remaining:.2f}"
+            remaining_text = f"Remaining: â‚±{remaining:.2f}"
         else:
-            remaining_text = f"Change Due: ₱{abs(remaining):.2f}"
+            remaining_text = f"Change Due: â‚±{abs(remaining):.2f}"
 
         status_text = (
-            f"Coins: ₱{coin_amount:.2f} | Bills: ₱{bill_amount:.2f}\n"
-            f"Total Received: ₱{amount:.2f}\n"
+            f"Coins: â‚±{coin_amount:.2f} | Bills: â‚±{bill_amount:.2f}\n"
+            f"Total Received: â‚±{amount:.2f}\n"
             f"{remaining_text}"
         )
 
@@ -567,6 +569,15 @@ class CartScreen(tk.Frame):
             self.change_label.config(text=message)
             self.change_label.pack()  # Make visible
             self.payment_window.update()
+        # Show explicit alert when hopper reports no-coin timeout.
+        if message and not self.change_alert_shown:
+            upper = message.upper()
+            if "NO COIN" in upper and "TIMEOUT" in upper:
+                self.change_alert_shown = True
+                try:
+                    messagebox.showwarning("Change Hopper Alert", message)
+                except Exception:
+                    pass
 
     def complete_payment(self):
         """Complete the payment process and dispense items & change"""
@@ -620,14 +631,29 @@ class CartScreen(tk.Frame):
         except Exception as e:
             print(f"[CartScreen] Error applying stock deductions: {e}")
 
-        # Show final status
+                # Show final status
+        change_due = max(0.0, float(received) - float(self.payment_required))
         status_text = (
             f"Thank you!\n\n"
-            f"Coins received: ₱{coin_amount:.2f}\n"
-            f"Bills received: ₱{bill_amount:.2f}\n"
-            f"Total paid: ₱{received:.2f}\n"
+            f"Coins received: â‚±{coin_amount:.2f}\n"
+            f"Bills received: â‚±{bill_amount:.2f}\n"
+            f"Total paid: â‚±{received:.2f}\n"
             f"\nYour items will now be dispensed."
         )
+        if change_due > 0:
+            status_text += (
+                f"\n\nChange due: â‚±{change_due:.2f}\n"
+                f"Change dispensed: â‚±{float(change_dispensed):.2f}"
+            )
+            if change_status:
+                status_text += f"\n{change_status}"
+                upper = str(change_status).upper()
+                if (not self.change_alert_shown) and ("NO COIN" in upper and "TIMEOUT" in upper):
+                    self.change_alert_shown = True
+                    try:
+                        messagebox.showwarning("Change Hopper Alert", change_status)
+                    except Exception:
+                        pass
 
         self._destroy_payment_window()
         messagebox.showinfo("Payment Complete", status_text)
@@ -671,7 +697,7 @@ class CartScreen(tk.Frame):
                         # Show low stock alert to user
                         alert_msg = result['alert'].get('message', 'Stock low')
                         print(f"[CartScreen] STOCK ALERT: {alert_msg}")
-                        messagebox.showwarning('⚠️ Stock Alert', alert_msg)
+                        messagebox.showwarning('âš ï¸ Stock Alert', alert_msg)
                     else:
                         print(f"[CartScreen] Sale recorded for {item_name} (qty: {qty})")
             except Exception as e:
@@ -723,7 +749,7 @@ class CartScreen(tk.Frame):
                     messagebox.showwarning(
                         "Payment Cancelled",
                         f"Payment cancelled.\n"
-                        f"Please collect your money: ₱{total_received:.2f}"
+                        f"Please collect your money: â‚±{total_received:.2f}"
                     )
         finally:
             # Always reset the flag
@@ -742,3 +768,4 @@ class CartScreen(tk.Frame):
         """Handle cleanup when closing"""
         if hasattr(self, 'payment_handler'):
             self.payment_handler.cleanup()
+

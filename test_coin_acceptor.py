@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Coin acceptor test utility.
 
@@ -7,7 +7,7 @@ ArduinoUno_Bill_Forward.ino in this project.
 
 Usage examples:
   python3 test_coin_acceptor.py
-  python3 test_coin_acceptor.py --mode serial --port /dev/ttyACM0
+  python3 test_coin_acceptor.py --mode serial --port /dev/ttyUSB0
   python3 test_coin_acceptor.py --mode gpio --gpio-pin 17
 """
 
@@ -194,3 +194,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

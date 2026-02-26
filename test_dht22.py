@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Arduino Uno DHT22 serial test.
 
@@ -32,7 +32,7 @@ def autodetect_port():
 
 def main():
     parser = argparse.ArgumentParser(description="Arduino DHT22 serial test")
-    parser.add_argument("--port", default="/dev/ttyACM0", help="Serial port or 'auto'")
+    parser.add_argument("--port", default="/dev/ttyUSB0", help="Serial port or 'auto'")
     parser.add_argument("--baud", type=int, default=115200)
     args = parser.parse_args()
 
@@ -71,3 +71,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

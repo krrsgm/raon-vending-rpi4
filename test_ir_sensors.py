@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 IR Sensor Test - Arduino Uno serial first (with optional Raspberry Pi GPIO mode).
 
@@ -60,7 +60,7 @@ def read_from_esp32(port, duration=30):
         print(f"[ERROR] Could not open serial port {port}: {e}")
         return
 
-    print(f"✓ Reading IR sensor states from ESP32 on {port} for {duration}s")
+    print(f"âœ“ Reading IR sensor states from ESP32 on {port} for {duration}s")
     print(f"{'Time (s)':>8} | {'IR1 (GPIO34)':>15} | {'IR2 (GPIO35)':>15}")
     print('-' * 48)
 
@@ -111,7 +111,7 @@ def read_from_gpio(duration=30, interval=0.5):
         print(f"[ERROR] Failed to initialize GPIO: {e}")
         return
 
-    print(f"✓ GPIO initialized (GPIO_AVAILABLE={GPIO_AVAILABLE})")
+    print(f"âœ“ GPIO initialized (GPIO_AVAILABLE={GPIO_AVAILABLE})")
     print(f"Reading IR sensors on GPIO {SENSOR_1_PIN} and {SENSOR_2_PIN} for {duration}s")
     print(f"{'Time (s)':>8} | {'Sensor 1':>18} | {'Sensor 2':>18}")
     print('-' * 54)
@@ -131,7 +131,7 @@ def read_from_gpio(duration=30, interval=0.5):
     finally:
         try:
             GPIO.cleanup()
-            print("\n✓ GPIO cleaned up")
+            print("\nâœ“ GPIO cleaned up")
         except Exception as e:
             print(f"\n[WARNING] Error during cleanup: {e}")
 
@@ -139,7 +139,7 @@ def read_from_gpio(duration=30, interval=0.5):
 def main():
     parser = argparse.ArgumentParser(description="IR sensor test utility")
     parser.add_argument("--mode", choices=["serial", "gpio"], default="serial")
-    parser.add_argument("--port", default="/dev/ttyACM0", help="Arduino serial port or 'auto'")
+    parser.add_argument("--port", default="/dev/ttyUSB0", help="Arduino serial port or 'auto'")
     parser.add_argument("--duration", type=int, default=30, help="Test duration in seconds")
     args = parser.parse_args()
 
@@ -159,3 +159,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

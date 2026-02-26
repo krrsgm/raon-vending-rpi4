@@ -186,10 +186,21 @@ def _filter_dashboard_sales_logs(raw_lines):
 
 def _resolve_sale_item_name(sale):
     """Resolve display name for a sale row, preferring persisted sale.item_name."""
+    placeholder_names = {
+        'unknown',
+        'unknown item',
+        'n/a',
+        'na',
+        'none',
+        'null',
+        '-',
+        '--',
+    }
+
     try:
         if getattr(sale, 'item_name', None):
             name = str(sale.item_name).strip()
-            if name:
+            if name and name.lower() not in placeholder_names:
                 return name
     except Exception:
         pass

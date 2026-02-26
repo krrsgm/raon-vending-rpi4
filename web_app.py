@@ -184,6 +184,27 @@ def _filter_dashboard_sales_logs(raw_lines):
     return filtered
 
 
+def _resolve_sale_item_name(sale):
+    """Resolve display name for a sale row, preferring persisted sale.item_name."""
+    try:
+        if getattr(sale, 'item_name', None):
+            name = str(sale.item_name).strip()
+            if name:
+                return name
+    except Exception:
+        pass
+
+    try:
+        if getattr(sale, 'item_id', None):
+            item = Item.query.get(sale.item_id)
+            if item and item.name:
+                return item.name
+    except Exception:
+        pass
+
+    return "Unknown Item"
+
+
 # ============================================================================
 # ROUTES - INVENTORY DASHBOARD (Multi-Machine)
 # ============================================================================
@@ -837,14 +858,14 @@ def get_realtime_status():
             # Count items sold today
             items_sold_today = {}
             sales = Sale.query.filter(
-                Sale.item_id.in_([i.id for i in items]),
+                Sale.machine_id == machine.id,
                 func.date(Sale.timestamp) == today
             ).all()
             
             for sale in sales:
-                item = Item.query.get(sale.item_id)
-                if item:
-                    items_sold_today[item.name] = items_sold_today.get(item.name, 0) + 1
+                item_name = _resolve_sale_item_name(sale)
+                qty = sale.quantity if getattr(sale, 'quantity', None) and sale.quantity > 0 else 1
+                items_sold_today[item_name] = items_sold_today.get(item_name, 0) + qty
             
             result.append({
                 "id": machine.id,
@@ -875,9 +896,9 @@ def get_today_sales():
         items_sold = {}
         
         for sale in sales:
-            item = Item.query.get(sale.item_id)
-            if item:
-                items_sold[item.name] = items_sold.get(item.name, 0) + 1
+            item_name = _resolve_sale_item_name(sale)
+            qty = sale.quantity if getattr(sale, 'quantity', None) and sale.quantity > 0 else 1
+            items_sold[item_name] = items_sold.get(item_name, 0) + qty
         
         return jsonify({
             "total_sales": total_sales,

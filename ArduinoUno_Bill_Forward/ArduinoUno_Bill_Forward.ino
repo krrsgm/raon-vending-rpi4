@@ -45,9 +45,25 @@ const unsigned long pulseDebounceMs = 60; // debounce interval in ms (INCREASED 
 // --- Coin Acceptor (Allan 123A-Pro) ---
 const int COIN_ACCEPTOR_PIN = 3; // D3 (external interrupt)
 volatile unsigned long coinPulseStartUs = 0;
-volatile unsigned long coinPulseWidthUs = 0;
-volatile bool coinPulseReady = false;
 volatile bool coinPulseLow = false;
+// Queue pulse widths so fast back-to-back pulses are not overwritten.
+const uint8_t COIN_WIDTH_QUEUE_SIZE = 8;
+volatile unsigned long coinWidthQueue[COIN_WIDTH_QUEUE_SIZE];
+volatile uint8_t coinWidthHead = 0;
+volatile uint8_t coinWidthTail = 0;
+volatile unsigned int coinWidthDropped = 0;
+// Optional pulse-count mode (some coin acceptors emit N pulses per coin).
+const uint8_t COIN_MODE_PULSE_WIDTH = 0;
+const uint8_t COIN_MODE_PULSE_COUNT = 1;
+const uint8_t COIN_MODE = COIN_MODE_PULSE_WIDTH; // Set to COIN_MODE_PULSE_COUNT if needed
+volatile unsigned int coinCountPulses = 0;
+volatile unsigned long coinLastPulseMs = 0;
+volatile bool coinCountActive = false;
+const unsigned long coinGroupGapMs = 180; // group count pulses into one coin event
+// Pulse-count mapping (adjust to your acceptor programming if needed).
+const int COIN_PULSES_FOR_1 = 1;
+const int COIN_PULSES_FOR_5 = 2;
+const int COIN_PULSES_FOR_10 = 3;
 unsigned long lastCoinValidMs = 0;
 const unsigned long coinDebounceMs = 80;      // 80ms debounce (matches Pi handler)
 const unsigned long coinMinPulseUs = 15000;   // 15ms
@@ -346,17 +362,57 @@ int mapCoinPulseWidthToValueUs(unsigned long width_us) {
   return 0;
 }
 
+int mapCoinPulseCountToValue(int pulses) {
+  if (pulses == COIN_PULSES_FOR_1) return 1;
+  if (pulses == COIN_PULSES_FOR_5) return 5;
+  if (pulses == COIN_PULSES_FOR_10) return 10;
+  return 0;
+}
+
+void enqueueCoinWidth(unsigned long widthUs) {
+  uint8_t nextHead = (coinWidthHead + 1) % COIN_WIDTH_QUEUE_SIZE;
+  if (nextHead == coinWidthTail) {
+    coinWidthDropped++;
+    return;
+  }
+  coinWidthQueue[coinWidthHead] = widthUs;
+  coinWidthHead = nextHead;
+}
+
+bool dequeueCoinWidth(unsigned long &widthUs) {
+  bool ok = false;
+  noInterrupts();
+  if (coinWidthTail != coinWidthHead) {
+    widthUs = coinWidthQueue[coinWidthTail];
+    coinWidthTail = (coinWidthTail + 1) % COIN_WIDTH_QUEUE_SIZE;
+    ok = true;
+  }
+  interrupts();
+  return ok;
+}
+
 void countCoinPulse() {
-  // Capture pulse width using CHANGE interrupt (active-low pulse)
+  // Capture pulse width or count pulses using CHANGE interrupt (active-low pulse)
   bool isLow = (digitalRead(COIN_ACCEPTOR_PIN) == LOW);
   unsigned long nowUs = micros();
+  unsigned long nowMs = millis();
   if (isLow) {
-    coinPulseStartUs = nowUs;
-    coinPulseLow = true;
+    if (COIN_MODE == COIN_MODE_PULSE_COUNT) {
+      // Count mode: each falling edge increments pulse count.
+      if ((nowMs - coinLastPulseMs) > coinGroupGapMs) {
+        coinCountPulses = 0;
+      }
+      coinCountPulses++;
+      coinLastPulseMs = nowMs;
+      coinCountActive = true;
+    } else {
+      coinPulseStartUs = nowUs;
+      coinPulseLow = true;
+    }
   } else {
-    if (coinPulseLow) {
-      coinPulseWidthUs = nowUs - coinPulseStartUs;
-      coinPulseReady = true;
+    if (COIN_MODE == COIN_MODE_PULSE_WIDTH && coinPulseLow) {
+      unsigned long widthUs = nowUs - coinPulseStartUs;
+      enqueueCoinWidth(widthUs);
       coinPulseLow = false;
     }
   }
@@ -500,17 +556,44 @@ void loop(){
   last_five_state = five_state;
 
   // --- Coin Acceptor Processing ---
-  if (coinPulseReady) {
-    unsigned long widthUs;
+  if (COIN_MODE == COIN_MODE_PULSE_WIDTH) {
+    unsigned long widthUs = 0;
+    while (dequeueCoinWidth(widthUs)) {
+      if (widthUs >= coinMinPulseUs && widthUs <= coinMaxPulseUs) {
+        unsigned long nowMs = millis();
+        if (nowMs - lastCoinValidMs >= coinDebounceMs) {
+          int value = mapCoinPulseWidthToValueUs(widthUs);
+          if (value > 0) {
+            coin_total += (float)value;
+            lastCoinValidMs = nowMs;
+            Serial.print("[COIN] Value: ");
+            Serial.print(value);
+            Serial.print(" Total: ");
+            Serial.println(coin_total, 2);
+          } else {
+            Serial.print("[COIN] Unknown pulse width (us): ");
+            Serial.println(widthUs);
+          }
+        }
+      }
+    }
+  } else {
+    // Pulse-count mode: finalize a coin event when pulse train is idle.
+    bool finalize = false;
+    unsigned int pulses = 0;
     noInterrupts();
-    widthUs = coinPulseWidthUs;
-    coinPulseReady = false;
+    if (coinCountActive && (millis() - coinLastPulseMs > coinGroupGapMs)) {
+      pulses = coinCountPulses;
+      coinCountPulses = 0;
+      coinCountActive = false;
+      finalize = true;
+    }
     interrupts();
 
-    if (widthUs >= coinMinPulseUs && widthUs <= coinMaxPulseUs) {
+    if (finalize && pulses > 0) {
       unsigned long nowMs = millis();
       if (nowMs - lastCoinValidMs >= coinDebounceMs) {
-        int value = mapCoinPulseWidthToValueUs(widthUs);
+        int value = mapCoinPulseCountToValue((int)pulses);
         if (value > 0) {
           coin_total += (float)value;
           lastCoinValidMs = nowMs;
@@ -519,8 +602,8 @@ void loop(){
           Serial.print(" Total: ");
           Serial.println(coin_total, 2);
         } else {
-          Serial.print("[COIN] Unknown pulse width (us): ");
-          Serial.println(widthUs);
+          Serial.print("[COIN] Unknown pulse count: ");
+          Serial.println(pulses);
         }
       }
     }

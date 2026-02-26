@@ -59,6 +59,8 @@ class CartScreen(tk.Frame):
         self.change_label = None  # Will be created in the payment window
         self.change_alert_shown = False  # Prevent duplicate hopper timeout alerts
         self.last_change_status = None  # Deduplicate noisy hopper status messages
+        self.payment_completion_scheduled = False
+        self._complete_after_id = None
         self.coin_received = 0.0  # Track coins separately
         self.bill_received = 0.0  # Track bills separately
         
@@ -310,6 +312,8 @@ class CartScreen(tk.Frame):
             self.payment_required = total_amount
             self.payment_received = 0.0
             self.change_alert_shown = False
+            self.payment_completion_scheduled = False
+            self._complete_after_id = None
             # Start payment session and register callbacks for immediate updates
             # Pass UI change-status callback so dispensing progress can be shown
             try:
@@ -496,11 +500,27 @@ class CartScreen(tk.Frame):
                 self.payment_status.config(text=status_text)
                 
                 if received >= total_amount:
-                    self.complete_payment()
+                    self._schedule_complete_payment()
                     return
                     
             # Update every 100ms while payment is in progress
             self.after(100, lambda: self.update_payment_status(total_amount))
+
+    def _schedule_complete_payment(self, delay_ms=350):
+        """Schedule payment completion once, allowing UI to show the final inserted amount."""
+        if self.payment_completion_scheduled or not self.payment_in_progress:
+            return
+        self.payment_completion_scheduled = True
+
+        def _run_complete():
+            self._complete_after_id = None
+            if self.payment_in_progress:
+                self.complete_payment()
+
+        try:
+            self._complete_after_id = self.after(delay_ms, _run_complete)
+        except Exception:
+            _run_complete()
 
     def _on_payment_update(self, amount):
         """Callback invoked by PaymentHandler when coins/bills change (push notification).
@@ -554,11 +574,8 @@ class CartScreen(tk.Frame):
                 print(f"[PAYMENT] Error updating UI: {e}")
 
             if amount >= self.payment_required:
-                print(f"[PAYMENT] Payment complete: {amount} >= {self.payment_required}")
-                try:
-                    self.complete_payment()
-                except Exception as e:
-                    print(f"[PAYMENT] Error completing payment: {e}")
+                print(f"[PAYMENT] Payment complete threshold reached: {amount} >= {self.payment_required}")
+                self._schedule_complete_payment()
 
         try:
             self.after(0, _apply_update)
@@ -596,8 +613,15 @@ class CartScreen(tk.Frame):
         """Complete the payment process and dispense items & change"""
         if not self.payment_in_progress:
             return
-            
+             
         self.payment_in_progress = False
+        self.payment_completion_scheduled = False
+        if self._complete_after_id:
+            try:
+                self.after_cancel(self._complete_after_id)
+            except Exception:
+                pass
+            self._complete_after_id = None
         
         # Stop payment session and dispense change if needed
         received, change_dispensed, change_status = self.payment_handler.stop_payment_session(
@@ -764,6 +788,13 @@ class CartScreen(tk.Frame):
 
         # Ensure payment flag is reset even if exception occurs
         try:
+            self.payment_completion_scheduled = False
+            if self._complete_after_id:
+                try:
+                    self.after_cancel(self._complete_after_id)
+                except Exception:
+                    pass
+                self._complete_after_id = None
             # If a payment was in progress, stop it and handle returned tuple
             if self.payment_in_progress:
                 try:

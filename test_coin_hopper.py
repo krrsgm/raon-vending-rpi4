@@ -31,6 +31,7 @@ def parse_args():
     p.add_argument("--mode", choices=["relay","dispense"], default="relay", help="Test mode: 'relay' toggles hopper open/close; 'dispense' requests dispensing")
     p.add_argument("--interval", type=float, default=0.6, help="Seconds between relay on/off cycles or between dispense requests")
     p.add_argument("--simulate", action="store_true", help="Run in simulation mode (no serial) to validate logic)")
+    p.add_argument("--stay-open", action="store_true", help="Keep serial connection open after test (for manual monitoring)")
     return p.parse_args()
 
 
@@ -48,14 +49,14 @@ def relay_test(hopper: CoinHopper, denom: int, count: int, interval: float):
     """Toggle hopper open/close for specified denom and verify status."""
     for i in range(count):
         print(f"[{i+1}/{count}] Opening hopper for {denom}-peso")
-        resp = hopper.send_command(f"COIN_OPEN {denom}")
+        resp = hopper.send_command(f"OPEN {denom}")
         print("  ->", resp)
         time.sleep(interval)
         status = hopper.get_status()
         print("  status:", status)
 
         print(f"[{i+1}/{count}] Closing hopper for {denom}-peso")
-        resp2 = hopper.send_command(f"COIN_CLOSE {denom}")
+        resp2 = hopper.send_command(f"CLOSE {denom}")
         print("  ->", resp2)
         time.sleep(interval)
         status2 = hopper.get_status()
@@ -109,6 +110,13 @@ def main():
         else:
             dispense_test(hopper, args.denom, args.count, args.interval)
     finally:
+        if args.stay_open:
+            print("Leaving serial connection open (--stay-open). Press Ctrl+C to exit.")
+            try:
+                while True:
+                    time.sleep(1.0)
+            except KeyboardInterrupt:
+                pass
         hopper.disconnect()
 
 

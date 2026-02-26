@@ -293,10 +293,9 @@ class CoinHopper:
 
                     if not line:
                         continue
-                    if callback:
-                        callback(f"Hopper: {line}")
-
                     upper = line.upper()
+                    if callback and (upper.startswith("DONE ") or upper.startswith("ERR ") or upper.startswith("OK START")):
+                        callback(f"Hopper: {line}")
                     # Success terminal line: DONE ONE <count> / DONE FIVE <count>
                     if upper.startswith("DONE ") and denom_label in upper:
                         m = re.search(r'DONE\s+\w+\s+(\d+)', upper)

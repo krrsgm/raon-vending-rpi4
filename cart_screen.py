@@ -58,6 +58,7 @@ class CartScreen(tk.Frame):
         self.payment_required = 0.0
         self.change_label = None  # Will be created in the payment window
         self.change_alert_shown = False  # Prevent duplicate hopper timeout alerts
+        self.last_change_status = None  # Deduplicate noisy hopper status messages
         self.coin_received = 0.0  # Track coins separately
         self.bill_received = 0.0  # Track bills separately
         
@@ -566,19 +567,30 @@ class CartScreen(tk.Frame):
 
     def update_change_status(self, message):
         """Update the change dispensing status display."""
-        if self.change_label:
-            self.change_label.config(text=message)
-            self.change_label.pack()  # Make visible
-            self.payment_window.update()
-        # Show explicit alert when hopper reports no-coin timeout.
-        if message and not self.change_alert_shown:
-            upper = message.upper()
-            if "NO COIN" in upper and "TIMEOUT" in upper:
-                self.change_alert_shown = True
-                try:
-                    messagebox.showwarning("Change Hopper Alert", message)
-                except Exception:
-                    pass
+        def _apply_change_status():
+            # Ignore repeated identical messages to avoid UI flicker.
+            if message == self.last_change_status:
+                return
+            self.last_change_status = message
+
+            if self.change_label:
+                self.change_label.config(text=message)
+                self.change_label.pack()  # Make visible
+
+            # Show explicit alert when hopper reports no-coin timeout.
+            if message and not self.change_alert_shown:
+                upper = message.upper()
+                if "NO COIN" in upper and "TIMEOUT" in upper:
+                    self.change_alert_shown = True
+                    try:
+                        messagebox.showwarning("Change Hopper Alert", message)
+                    except Exception:
+                        pass
+
+        try:
+            self.after(0, _apply_change_status)
+        except Exception:
+            _apply_change_status()
 
     def complete_payment(self):
         """Complete the payment process and dispense items & change"""

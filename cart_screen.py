@@ -673,13 +673,7 @@ class CartScreen(tk.Frame):
         except Exception:
             pass
 
-        # Apply stock deductions only after payment is complete
-        try:
-            self.controller.apply_cart_stock_deductions(self.controller.cart)
-        except Exception as e:
-            print(f"[CartScreen] Error applying stock deductions: {e}")
-
-                # Show final status
+        # Show final status immediately after payment/change processing.
         change_due = max(0.0, float(received) - float(self.payment_required))
         status_text = (
             f"Thank you!\n\n"
@@ -705,6 +699,11 @@ class CartScreen(tk.Frame):
 
         self._destroy_payment_window()
         messagebox.showinfo("Payment Complete", status_text)
+        # Apply stock deductions after popup so completion UI is not delayed.
+        try:
+            self.controller.apply_cart_stock_deductions(self.controller.cart)
+        except Exception as e:
+            print(f"[CartScreen] Error applying stock deductions: {e}")
 
         def _extract_cart_entry_name_and_qty(entry):
             """Normalize cart entry shapes to (item_name, quantity)."""

@@ -79,6 +79,8 @@ const int FIVE_MOTOR_PIN = 10; // 5-peso motor control
 
 const int ONE_SENSOR_PIN = 11;  // 1-peso sensor input
 const int FIVE_SENSOR_PIN = 12; // 5-peso sensor input
+const int HOPPER_SENSOR_ACTIVE_LEVEL = LOW; // Most IR/open-collector sensors go LOW on coin pass
+const unsigned long HOPPER_SENSOR_DEBOUNCE_MS = 25;
 
 const unsigned long BAUD_RATE = 115200;
 
@@ -87,6 +89,8 @@ unsigned int one_count = 0;
 unsigned int five_count = 0;
 int last_one_state = HIGH;  // Track previous state for edge detection
 int last_five_state = HIGH;
+unsigned long last_one_edge_ms = 0;
+unsigned long last_five_edge_ms = 0;
 
 struct DispenseJob {
   bool active;
@@ -251,9 +255,12 @@ void processLine(String line, Stream &out) {
       if (amount <= 0){ out.println("ERR bad amount"); return; }
       int five_needed = amount / 5;
       int one_needed = amount % 5;
-      sequence_active = true;
+      // Reset sequence/job state before starting a new amount request.
+      sequence_active = (one_needed > 0);
       sequence_timeout_ms = tmo;
       five_count = 0; one_count = 0;
+      job_five.target = 0;
+      job_one.target = 0;
       if (five_needed > 0){ start_dispense_denon(5, five_needed, tmo); }
       else if (one_needed > 0) { start_dispense_denon(1, one_needed, tmo); }
       else { out.println("OK NOTHING_TO_DO"); }
@@ -267,6 +274,12 @@ void processLine(String line, Stream &out) {
       if (partCount >= 4) tmo = (unsigned long) parts[3].toInt();
       if (denom != 1 && denom != 5){ out.println("ERR bad denom"); return; }
       if (count <= 0){ out.println("ERR bad count"); return; }
+      // Exact denomination dispense should never chain into sequence logic.
+      sequence_active = false;
+      job_one.target = 0;
+      job_five.target = 0;
+      one_count = 0;
+      five_count = 0;
       start_dispense_denon(denom, count, tmo, out);
       out.println("OK DISPENSE_DENOM STARTED");
     }
@@ -412,8 +425,10 @@ void setup(){
   pinMode(FIVE_MOTOR_PIN, OUTPUT);
   digitalWrite(ONE_MOTOR_PIN, RELAY_INACTIVE_LEVEL);
   digitalWrite(FIVE_MOTOR_PIN, RELAY_INACTIVE_LEVEL);
-  pinMode(ONE_SENSOR_PIN, INPUT);
-  pinMode(FIVE_SENSOR_PIN, INPUT);
+  pinMode(ONE_SENSOR_PIN, INPUT_PULLUP);
+  pinMode(FIVE_SENSOR_PIN, INPUT_PULLUP);
+  last_one_state = digitalRead(ONE_SENSOR_PIN);
+  last_five_state = digitalRead(FIVE_SENSOR_PIN);
   
   // Initialize bill acceptor pins
   pinMode(pulsePin, INPUT_PULLUP);
@@ -499,14 +514,25 @@ void loop(){
   int one_state = digitalRead(ONE_SENSOR_PIN);
   int five_state = digitalRead(FIVE_SENSOR_PIN);
   
-  if (last_one_state == HIGH && one_state == LOW) {
-    one_count++;
-    job_one.last_coin_ms = millis();
+  unsigned long sensor_now_ms = millis();
+  if (one_state != last_one_state && one_state == HOPPER_SENSOR_ACTIVE_LEVEL) {
+    if (sensor_now_ms - last_one_edge_ms >= HOPPER_SENSOR_DEBOUNCE_MS) {
+      one_count++;
+      job_one.last_coin_ms = sensor_now_ms;
+      last_one_edge_ms = sensor_now_ms;
+      Serial.print("PULSE ONE ");
+      Serial.println(one_count);
+    }
   }
   
-  if (last_five_state == HIGH && five_state == LOW) {
-    five_count++;
-    job_five.last_coin_ms = millis();
+  if (five_state != last_five_state && five_state == HOPPER_SENSOR_ACTIVE_LEVEL) {
+    if (sensor_now_ms - last_five_edge_ms >= HOPPER_SENSOR_DEBOUNCE_MS) {
+      five_count++;
+      job_five.last_coin_ms = sensor_now_ms;
+      last_five_edge_ms = sensor_now_ms;
+      Serial.print("PULSE FIVE ");
+      Serial.println(five_count);
+    }
   }
   
   last_one_state = one_state;
@@ -570,7 +596,13 @@ void loop(){
     else if (now - job_one.last_coin_ms > COIN_TIMEOUT_MS){ stop_motor(ONE_MOTOR_PIN); job_one.active = false; Serial.print("ERR NO COIN ONE timeout"); Serial.println(one_count); sequence_active = false; }
   }
 
-  if (sequence_active && !job_five.active && !job_one.active){ if (job_one.target > 0 && one_count < job_one.target){ start_dispense_denon(1, job_one.target, sequence_timeout_ms); } }
+  if (sequence_active && !job_five.active && !job_one.active){
+    if (job_one.target > 0 && one_count < job_one.target){
+      start_dispense_denon(1, job_one.target, sequence_timeout_ms);
+    } else {
+      sequence_active = false;
+    }
+  }
 
   // Track motor activity for IR suppression
   if (job_one.active || job_five.active) {

@@ -144,6 +144,45 @@ def home():
 # ROUTES - DASHBOARD & MONITORING
 # ============================================================================
 
+def _filter_dashboard_sales_logs(raw_lines):
+    """Keep only sales/payment log entries for dashboard logs view."""
+    if not raw_lines:
+        return []
+
+    excluded_markers = (
+        'temperature',
+        'dht',
+        'tec',
+        'relay',
+        'ir sensor',
+        'ir1',
+        'ir2',
+        'sensor',
+    )
+    included_markers = (
+        'sale',
+        'sold',
+        'payment',
+        'coin',
+        'bill',
+        'change',
+        'transaction',
+    )
+
+    filtered = []
+    for line in raw_lines:
+        text = str(line).strip()
+        if not text:
+            continue
+
+        lower = text.lower()
+        if any(marker in lower for marker in excluded_markers):
+            continue
+        if any(marker in lower for marker in included_markers):
+            filtered.append(line)
+
+    return filtered
+
 
 # ============================================================================
 # ROUTES - INVENTORY DASHBOARD (Multi-Machine)
@@ -221,7 +260,7 @@ def api_sales_logs():
         logs = []
         try:
             with open(log_file, 'r', encoding='utf-8') as f:
-                logs = f.readlines()
+                logs = _filter_dashboard_sales_logs(f.readlines())
         except Exception as e:
             logger.error(f"Error reading log file: {e}")
         
@@ -260,7 +299,7 @@ def api_sales_previous_day():
         logs = []
         try:
             with open(log_file, 'r', encoding='utf-8') as f:
-                logs = f.readlines()
+                logs = _filter_dashboard_sales_logs(f.readlines())
         except Exception as e:
             logger.error(f"Error reading log file: {e}")
         

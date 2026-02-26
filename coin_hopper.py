@@ -297,9 +297,11 @@ class CoinHopper:
                     if not line:
                         continue
                     upper = line.upper()
-                    last_lines.append(line)
-                    if len(last_lines) > 8:
-                        last_lines.pop(0)
+                    # Keep only hopper-relevant lines to avoid noisy sensor logs in UI errors.
+                    if ("DONE " in upper) or ("ERR " in upper) or ("OK START" in upper) or (pulse_prefix in upper):
+                        last_lines.append(line)
+                        if len(last_lines) > 8:
+                            last_lines.pop(0)
                     if callback and (upper.startswith("DONE ") or upper.startswith("ERR ") or upper.startswith("OK START")):
                         callback(f"Hopper: {line}")
                     # Track pulse events as fallback evidence of dispensing progress.
@@ -327,8 +329,12 @@ class CoinHopper:
                 # If terminal DONE line was missed but pulse count reached target, accept success.
                 if last_pulse_count >= count:
                     return (True, count, f"Dispensed {count} {denomination}-peso coins (inferred from pulses)")
-                tail = " | ".join(last_lines[-3:]) if last_lines else "no serial lines"
-                return (False, max(0, last_pulse_count), f"Dispensing timeout waiting for DONE {denom_label} (last: {tail})")
+                if last_lines:
+                    tail = " | ".join(last_lines[-3:])
+                    msg = f"Dispensing timeout waiting for DONE {denom_label}. {tail}"
+                else:
+                    msg = f"Dispensing timeout waiting for DONE {denom_label}"
+                return (False, max(0, last_pulse_count), msg)
 
         except Exception as e:
             error_msg = f"Error dispensing coins: {str(e)}"

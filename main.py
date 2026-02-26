@@ -40,6 +40,11 @@ except Exception as e:
     DISPENSE_MONITOR_AVAILABLE = False
     print(f"Item Dispense Monitor not available: {e}")
 
+try:
+    from dht22_handler import get_shared_serial_reader
+except Exception:
+    get_shared_serial_reader = None
+
 
 class MainApp(tk.Tk):
     def __init__(self, *args, **kwargs):
@@ -47,6 +52,9 @@ class MainApp(tk.Tk):
         self.cart = []
         self.tec_controller = None  # TEC Peltier module controller
         self.dispense_monitor = None  # Item dispense IR sensor monitor
+        self._arduino_reader = None
+        self._arduino_sensor_bridge_running = False
+        self._arduino_sensor_bridge_thread = None
         self._vend_lock = threading.Lock()  # Ensure only one motor pulse at a time
 
         # Start in fullscreen mode for kiosk display
@@ -95,6 +103,10 @@ class MainApp(tk.Tk):
                 self.after(100, self._init_stock_tracker)
             except Exception:
                 self._init_stock_tracker()
+        try:
+            self.after(120, self._init_arduino_sensor_bridge)
+        except Exception:
+            self._init_arduino_sensor_bridge()
         
         
         # Apply fullscreen and rotation according to config
@@ -252,11 +264,111 @@ class MainApp(tk.Tk):
 
     def _on_closing(self):
         """Handle window closing event - cleanup TEC controller and dispense monitor."""
+        self._arduino_sensor_bridge_running = False
         if self.tec_controller:
             self.tec_controller.cleanup()
         if self.dispense_monitor:
             self.dispense_monitor.cleanup()
         self.destroy()
+
+    def _init_arduino_sensor_bridge(self):
+        """Start a lightweight bridge that feeds DHT/IR/TEC status from Arduino serial into status panels."""
+        if get_shared_serial_reader is None:
+            return
+        if self._arduino_sensor_bridge_running:
+            return
+
+        try:
+            hardware = self.config.get('hardware', {}) if isinstance(self.config, dict) else {}
+            tec_cfg = hardware.get('tec_relay', {})
+            dht_cfg = hardware.get('dht22_sensors', {})
+            ir_cfg = hardware.get('ir_sensors', {})
+            bill_cfg = hardware.get('bill_acceptor', {})
+
+            tec_via_arduino = tec_cfg.get('control_via_arduino', True)
+            dht_via_serial = dht_cfg.get('use_esp32_serial', True)
+            ir_via_serial = ir_cfg.get('use_esp32_serial', True)
+            if not (tec_via_arduino or dht_via_serial or ir_via_serial):
+                return
+
+            serial_port = (
+                dht_cfg.get('esp32_port')
+                or ir_cfg.get('esp32_port')
+                or bill_cfg.get('serial_port')
+                or '/dev/ttyUSB0'
+            )
+            serial_baud = int(
+                dht_cfg.get('esp32_baud')
+                or ir_cfg.get('esp32_baud')
+                or bill_cfg.get('baudrate')
+                or 115200
+            )
+
+            self._arduino_reader = get_shared_serial_reader(serial_port, serial_baud)
+            if not self._arduino_reader:
+                print(f"[MainApp] Arduino sensor bridge: no serial reader on {serial_port}")
+                return
+
+            self._arduino_sensor_bridge_running = True
+            self._arduino_sensor_bridge_thread = threading.Thread(
+                target=self._arduino_sensor_bridge_loop,
+                daemon=True
+            )
+            self._arduino_sensor_bridge_thread.start()
+            print(f"[MainApp] Arduino sensor bridge started on {serial_port} @ {serial_baud}")
+        except Exception as e:
+            print(f"[MainApp] Arduino sensor bridge init failed: {e}")
+
+    def _arduino_sensor_bridge_loop(self):
+        """Poll shared serial reader and push updates to all status panels."""
+        while self._arduino_sensor_bridge_running:
+            try:
+                if not self._arduino_reader:
+                    time.sleep(1)
+                    continue
+
+                h1, t1 = self._arduino_reader.get_reading("DHT1")
+                h2, t2 = self._arduino_reader.get_reading("DHT2")
+                if t1 is not None or h1 is not None:
+                    self._on_dht22_update(1, t1, h1)
+                if t2 is not None or h2 is not None:
+                    self._on_dht22_update(2, t2, h2)
+
+                ir1 = self._arduino_reader.get_ir_state("IR1")
+                ir2 = self._arduino_reader.get_ir_state("IR2")
+                if ir1 is not None or ir2 is not None:
+                    mode = (
+                        self.config.get('hardware', {})
+                        .get('ir_sensors', {})
+                        .get('detection_mode', 'any')
+                        if isinstance(self.config, dict) else 'any'
+                    )
+                    self._on_ir_status_update(ir1, ir2, mode, None)
+
+                tec_active = self._arduino_reader.get_tec_active()
+                if tec_active is not None:
+                    tec_cfg = (
+                        self.config.get('hardware', {}).get('tec_relay', {})
+                        if isinstance(self.config, dict) else {}
+                    )
+                    target_temp = tec_cfg.get('target_temp')
+                    if target_temp is None:
+                        tmin = tec_cfg.get('target_temp_min')
+                        tmax = tec_cfg.get('target_temp_max')
+                        if tmin is not None and tmax is not None:
+                            target_temp = (float(tmin) + float(tmax)) / 2.0
+
+                    current_vals = [v for v in (t1, t2) if v is not None]
+                    current_temp = (sum(current_vals) / len(current_vals)) if current_vals else None
+                    self._on_tec_status_update(
+                        enabled=True,
+                        active=bool(tec_active),
+                        target_temp=target_temp,
+                        current_temp=current_temp
+                    )
+            except Exception:
+                pass
+            time.sleep(1)
 
     def _init_dispense_monitor(self):
         """Initialize Item Dispense Monitor with IR sensors if enabled."""

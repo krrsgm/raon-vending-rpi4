@@ -38,6 +38,7 @@ class SharedSerialReader(threading.Thread):
             'DHT2': {'temp': None, 'humidity': None},
         }
         self.ir_states = {'IR1': None, 'IR2': None}
+        self.tec_active = None
         self.coin_total = 0.0
         self.bill_total = 0.0
         self._coin_callbacks = []
@@ -45,6 +46,8 @@ class SharedSerialReader(threading.Thread):
         self.connected = False
         self._last_balance_poll = 0.0
         self._balance_poll_interval = 1.0
+        self._last_status_poll = 0.0
+        self._status_poll_interval = 2.0
         # Match lines like: "DHT1: 25.0C 60%"
         self.pattern = re.compile(r"(DHT1|DHT2).*?:\s*([\-0-9.]+)\s*C\s*([\-0-9.]+)\s*%?", re.IGNORECASE)
         self.ir1_pattern = re.compile(r"IR1.*?:\s*(BLOCKED|CLEAR)", re.IGNORECASE)
@@ -52,6 +55,7 @@ class SharedSerialReader(threading.Thread):
         self.coin_pattern = re.compile(r"\[COIN\].*?Value:\s*[^\d-]*([-\d.]+)(?:.*?Total:\s*[^\d-]*([-\d.]+))?", re.IGNORECASE)
         self.balance_pattern = re.compile(r"BALANCE:\s*[^\d-]*([-\d.]+)", re.IGNORECASE)
         self.bill_pattern = re.compile(r"(?:BILL\s+INSERTED|BILL)[:\s]*[\u20B1Ã¢â€šÂ±]?\s*(\d+)", re.IGNORECASE)
+        self.tec_pattern = re.compile(r"TEC\s*:\s*(ON|OFF)", re.IGNORECASE)
 
     def run(self):
         try:
@@ -71,6 +75,12 @@ class SharedSerialReader(threading.Thread):
                         try:
                             self.ser.write(b"GET_BALANCE\n")
                             self._last_balance_poll = now
+                        except Exception:
+                            pass
+                    if (now - self._last_status_poll) >= self._status_poll_interval:
+                        try:
+                            self.ser.write(b"STATUS\n")
+                            self._last_status_poll = now
                         except Exception:
                             pass
 
@@ -157,6 +167,11 @@ class SharedSerialReader(threading.Thread):
                                 except Exception:
                                     pass
                         continue
+                    m6 = self.tec_pattern.search(line)
+                    if m6:
+                        with self._lock:
+                            self.tec_active = (m6.group(1).upper() == "ON")
+                        continue
             except Exception as e:
                 print(f"[ESP32DHTReader] Read error: {e}")
                 continue
@@ -169,6 +184,10 @@ class SharedSerialReader(threading.Thread):
     def get_ir_state(self, label):
         with self._lock:
             return self.ir_states.get(label.upper(), None)
+
+    def get_tec_active(self):
+        with self._lock:
+            return self.tec_active
 
     def add_coin_callback(self, callback):
         if callback and callback not in self._coin_callbacks:

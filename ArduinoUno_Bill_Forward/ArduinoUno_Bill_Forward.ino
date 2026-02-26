@@ -79,7 +79,6 @@ const int FIVE_MOTOR_PIN = 10; // 5-peso motor control
 
 const int ONE_SENSOR_PIN = 11;  // 1-peso sensor input
 const int FIVE_SENSOR_PIN = 12; // 5-peso sensor input
-const int HOPPER_SENSOR_ACTIVE_LEVEL = LOW; // Most IR/open-collector sensors go LOW on coin pass
 const unsigned long HOPPER_SENSOR_DEBOUNCE_MS = 25;
 
 const unsigned long BAUD_RATE = 115200;
@@ -89,6 +88,8 @@ unsigned int one_count = 0;
 unsigned int five_count = 0;
 int last_one_state = HIGH;  // Track previous state for edge detection
 int last_five_state = HIGH;
+int one_sensor_active_level = LOW;
+int five_sensor_active_level = LOW;
 unsigned long last_one_edge_ms = 0;
 unsigned long last_five_edge_ms = 0;
 
@@ -429,6 +430,9 @@ void setup(){
   pinMode(FIVE_SENSOR_PIN, INPUT_PULLUP);
   last_one_state = digitalRead(ONE_SENSOR_PIN);
   last_five_state = digitalRead(FIVE_SENSOR_PIN);
+  // Auto-polarity: count coins on transition to opposite of idle level.
+  one_sensor_active_level = (last_one_state == HIGH) ? LOW : HIGH;
+  five_sensor_active_level = (last_five_state == HIGH) ? LOW : HIGH;
   
   // Initialize bill acceptor pins
   pinMode(pulsePin, INPUT_PULLUP);
@@ -515,7 +519,7 @@ void loop(){
   int five_state = digitalRead(FIVE_SENSOR_PIN);
   
   unsigned long sensor_now_ms = millis();
-  if (one_state != last_one_state && one_state == HOPPER_SENSOR_ACTIVE_LEVEL) {
+  if (one_state != last_one_state && one_state == one_sensor_active_level) {
     if (sensor_now_ms - last_one_edge_ms >= HOPPER_SENSOR_DEBOUNCE_MS) {
       one_count++;
       job_one.last_coin_ms = sensor_now_ms;
@@ -525,7 +529,7 @@ void loop(){
     }
   }
   
-  if (five_state != last_five_state && five_state == HOPPER_SENSOR_ACTIVE_LEVEL) {
+  if (five_state != last_five_state && five_state == five_sensor_active_level) {
     if (sensor_now_ms - last_five_edge_ms >= HOPPER_SENSOR_DEBOUNCE_MS) {
       five_count++;
       job_five.last_coin_ms = sensor_now_ms;
@@ -583,7 +587,7 @@ void loop(){
 
   // --- Coin Hopper Job Management ---
   unsigned long now = millis();
-  const unsigned long COIN_TIMEOUT_MS = 5000;
+  const unsigned long COIN_TIMEOUT_MS = 8000;
   if (job_five.active){
     if (five_count >= job_five.target){ stop_motor(FIVE_MOTOR_PIN); job_five.active = false; Serial.print("DONE FIVE "); Serial.println(five_count); if (sequence_active && job_one.target > 0 && !job_one.active){ if (job_one.target > 0){ start_dispense_denon(1, job_one.target, sequence_timeout_ms); } } }
     else if (now - job_five.start_ms > job_five.timeout_ms){ stop_motor(FIVE_MOTOR_PIN); job_five.active = false; Serial.print("ERR TIMEOUT FIVE dispensed:"); Serial.println(five_count); }

@@ -107,6 +107,8 @@ class CoinHopper:
             )
             self.is_running = True
             print(f"[CoinHopper] Connected to {self.serial_port} @ {self.baudrate} baud")
+            # Safety: force hopper relays to idle/off on connect.
+            self.ensure_relays_off()
             return True
         except Exception as e:
             print(f"[CoinHopper] Failed to connect to {self.serial_port}: {e}")
@@ -129,6 +131,8 @@ class CoinHopper:
                         self.is_running = True
                         self.serial_port = autodetected  # Update the port for future reference
                         print(f"[CoinHopper] Auto-detected and connected to {autodetected}")
+                        # Safety: force hopper relays to idle/off on connect.
+                        self.ensure_relays_off()
                         return True
                     except Exception as e2:
                         print(f"[CoinHopper] Auto-detection connection failed: {e2}")
@@ -330,6 +334,20 @@ class CoinHopper:
         
         response = self.send_command(f"CLOSE {denomination}")
         return response and "OK" in response
+
+    def ensure_relays_off(self):
+        """Force hopper motors/relays to OFF/idle state."""
+        if not self.serial_conn or not self.serial_conn.is_open:
+            return False
+        try:
+            # STOP halts any active dispense job; CLOSE commands de-energize each line.
+            self.send_command("STOP")
+            self.send_command("CLOSE 1")
+            self.send_command("CLOSE 5")
+            return True
+        except Exception as e:
+            print(f"[CoinHopper] Error forcing relays off: {e}")
+            return False
 
     def disconnect(self):
         """Close serial connection."""

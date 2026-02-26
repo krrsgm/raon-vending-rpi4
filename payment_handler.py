@@ -224,6 +224,12 @@ class PaymentHandler:
             self.coin_acceptor.reset_amount()
         if self.bill_acceptor:
             self.bill_acceptor.reset_amount()
+        # Safety: hopper relays must be off unless actively dispensing change.
+        if self.coin_hopper:
+            try:
+                self.coin_hopper.ensure_relays_off()
+            except Exception:
+                pass
         return True
 
     def _on_bill_update(self, bill_total_amount, prompt_msg=None):
@@ -315,11 +321,24 @@ class PaymentHandler:
                     change_status = f"Error: {message}"
             else:
                 change_status = "Change dispenser not available"
+        else:
+            # No change needed: ensure hopper relays remain de-energized.
+            if self.coin_hopper:
+                try:
+                    self.coin_hopper.ensure_relays_off()
+                except Exception:
+                    pass
         
         if self.coin_acceptor:
             self.coin_acceptor.reset_amount()
         if self.bill_acceptor:
             self.bill_acceptor.reset_amount()
+        # Always return hopper to safe OFF state after session end.
+        if self.coin_hopper:
+            try:
+                self.coin_hopper.ensure_relays_off()
+            except Exception:
+                pass
         self._callback = None
         self._change_callback = None
         return total_received, change_amount, change_status

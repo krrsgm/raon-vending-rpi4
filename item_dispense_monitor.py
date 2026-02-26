@@ -218,7 +218,8 @@ class ItemDispenseMonitor:
     Success is marked when ANY sensor detects beam obstruction (item falling through).
     """
     
-    def __init__(self, ir_sensor_pins=[6, 5], default_timeout=15.0, detection_mode='any', simulate_detection=False, use_esp32_serial=False):
+    def __init__(self, ir_sensor_pins=[6, 5], default_timeout=15.0, detection_mode='any', simulate_detection=False,
+                 use_esp32_serial=False, serial_port=None, serial_baud=115200):
         """
         Initialize item dispense monitor.
         
@@ -238,14 +239,14 @@ class ItemDispenseMonitor:
         self.simulate_detection = simulate_detection  # For testing without real sensors
         self.use_esp32_serial = use_esp32_serial
         
-        # ESP32 serial reader if needed
+        # Serial reader if needed
         self.esp32_reader = None
         if use_esp32_serial:
-            port = autodetect_serial_port()
+            port = serial_port or autodetect_serial_port()
             if port and get_shared_serial_reader:
-                self.esp32_reader = get_shared_serial_reader(port, 115200)
+                self.esp32_reader = get_shared_serial_reader(port, int(serial_baud))
             elif port:
-                self.esp32_reader = SerialIRReader(port)
+                self.esp32_reader = SerialIRReader(port, int(serial_baud))
                 self.esp32_reader.start()
             else:
                 print("[ItemDispenseMonitor] WARNING: Arduino serial requested but port not found")

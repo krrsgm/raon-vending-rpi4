@@ -19,9 +19,9 @@ class CoinHopper:
     Commands sent to Arduino:
     - DISPENSE_AMOUNT <amount> [timeout_ms] : Auto-calculate and dispense coins
     - DISPENSE_DENOM <denom> <count> [timeout_ms] : Dispense exact coin count
-    - COIN_OPEN <denom> : Open hopper manually
-    - COIN_CLOSE <denom> : Close hopper manually
-    - COIN_STATUS : Check hopper status
+    - OPEN <denom> : Open hopper manually
+    - CLOSE <denom> : Close hopper manually
+    - STATUS : Check hopper status
     - RELAY_ON : Turn on relays
     - RELAY_OFF : Turn off relays
     """
@@ -107,6 +107,8 @@ class CoinHopper:
             )
             self.is_running = True
             print(f"[CoinHopper] Connected to {self.serial_port} @ {self.baudrate} baud")
+            # Safety: force hopper relays to idle/off on connect.
+            self.ensure_relays_off()
             return True
         except Exception as e:
             print(f"[CoinHopper] Failed to connect to {self.serial_port}: {e}")
@@ -129,6 +131,8 @@ class CoinHopper:
                         self.is_running = True
                         self.serial_port = autodetected  # Update the port for future reference
                         print(f"[CoinHopper] Auto-detected and connected to {autodetected}")
+                        # Safety: force hopper relays to idle/off on connect.
+                        self.ensure_relays_off()
                         return True
                     except Exception as e2:
                         print(f"[CoinHopper] Auto-detection connection failed: {e2}")
@@ -263,27 +267,49 @@ class CoinHopper:
         
         try:
             cmd = f"DISPENSE_DENOM {denomination} {count} {timeout_ms}"
+            denom_label = "ONE" if denomination == 1 else "FIVE"
             if callback:
                 callback(f"Sending: {cmd}")
-            
-            response = self.send_command(cmd)
-            
-            if not response:
-                return (False, 0, "No response from Arduino")
-            
-            if "OK" in response or "DONE" in response:
-                if callback:
-                    callback(f"Dispensing complete: {response}")
-                return (True, count, f"Dispensed {count} {denomination}-peso coins")
-            elif "ERR" in response or "TIMEOUT" in response:
-                match = re.search(r'dispensed:(\d+)', response)
-                dispensed = int(match.group(1)) if match else 0
-                return (False, dispensed, f"Dispensing failed: {response}")
-            else:
-                # Unknown response - log it and return failure
-                print(f"[CoinHopper] Unknown DISPENSE_DENOM response: {response}")
-                return (False, 0, f"Unknown response from coin hopper: {response}")
-                
+
+            if not self.serial_conn or not self.serial_conn.is_open:
+                return (False, 0, "Serial connection not open")
+
+            # Send command and wait for terminal result from Arduino.
+            with self._lock:
+                self.serial_conn.reset_input_buffer()
+                self.serial_conn.reset_output_buffer()
+                self.serial_conn.write((cmd + '\n').encode('utf-8'))
+                self.serial_conn.flush()
+
+                deadline = time.time() + max(1.0, (timeout_ms / 1000.0) + 3.0)
+                while time.time() < deadline:
+                    try:
+                        line_raw = self.serial_conn.readline()
+                        if not line_raw:
+                            continue
+                        line = line_raw.decode('utf-8', errors='ignore').strip()
+                    except Exception:
+                        continue
+
+                    if not line:
+                        continue
+                    upper = line.upper()
+                    if callback and (upper.startswith("DONE ") or upper.startswith("ERR ") or upper.startswith("OK START")):
+                        callback(f"Hopper: {line}")
+                    # Success terminal line: DONE ONE <count> / DONE FIVE <count>
+                    if upper.startswith("DONE ") and denom_label in upper:
+                        m = re.search(r'DONE\s+\w+\s+(\d+)', upper)
+                        dispensed = int(m.group(1)) if m else count
+                        return (True, dispensed, f"Dispensed {dispensed} {denomination}-peso coins")
+
+                    # Error terminal lines: ERR TIMEOUT/ERR NO COIN for current denom
+                    if upper.startswith("ERR ") and denom_label in upper:
+                        m = re.search(r'dispensed:\s*(\d+)', line, re.IGNORECASE)
+                        dispensed = int(m.group(1)) if m else 0
+                        return (False, dispensed, f"Dispensing failed: {line}")
+
+                return (False, 0, f"Dispensing timeout waiting for DONE {denom_label}")
+
         except Exception as e:
             error_msg = f"Error dispensing coins: {str(e)}"
             print(f"[CoinHopper] {error_msg}")
@@ -298,7 +324,7 @@ class CoinHopper:
         if not self.serial_conn or not self.serial_conn.is_open:
             return None
         
-        response = self.send_command("COIN_STATUS")
+        response = self.send_command("STATUS")
         return response
 
     def open_hopper(self, denomination):
@@ -313,7 +339,7 @@ class CoinHopper:
         if denomination not in (1, 5):
             return False
         
-        response = self.send_command(f"COIN_OPEN {denomination}")
+        response = self.send_command(f"OPEN {denomination}")
         return response and "OK" in response
 
     def close_hopper(self, denomination):
@@ -328,8 +354,29 @@ class CoinHopper:
         if denomination not in (1, 5):
             return False
         
-        response = self.send_command(f"COIN_CLOSE {denomination}")
+        response = self.send_command(f"CLOSE {denomination}")
         return response and "OK" in response
+
+    def ensure_relays_off(self):
+        """Force hopper motors/relays to OFF/idle state."""
+        if not self.serial_conn or not self.serial_conn.is_open:
+            return False
+        try:
+            # Use fast best-effort writes to avoid blocking UI handoff on slow/missing replies.
+            with self._lock:
+                for cmd in ("STOP", "CLOSE 1", "CLOSE 5"):
+                    try:
+                        self.serial_conn.write((cmd + '\n').encode('utf-8'))
+                    except Exception:
+                        continue
+                try:
+                    self.serial_conn.flush()
+                except Exception:
+                    pass
+            return True
+        except Exception as e:
+            print(f"[CoinHopper] Error forcing relays off: {e}")
+            return False
 
     def disconnect(self):
         """Close serial connection."""

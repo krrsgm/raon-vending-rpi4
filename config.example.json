@@ -55,6 +55,7 @@
   "hardware": {
     "coin_acceptor": {
       "enabled": true,
+      "use_gpio": false,
       "gpio_pin": 17,
       "debounce_ms": 50
     },
@@ -62,10 +63,13 @@
       "enabled": true,
       "serial_port": "/dev/ttyACM0",
       "baudrate": 115200,
-      "proxy_via_esp32": true,
+      "proxy_via_esp32": false,
       "notes": "If using Arduino Uno over USB, /dev/ttyACM0 is typical. If using GPIO UART, set serial_port to /dev/serial0 and disable USB serial."
     },
     "dht22_sensors": {
+      "use_esp32_serial": true,
+      "esp32_port": "/dev/ttyACM0",
+      "esp32_baud": 115200,
       "sensor_1": {
         "enabled": true,
         "gpio_pin": 27
@@ -77,6 +81,9 @@
     },
     "ir_sensors": {
       "enabled": true,
+      "use_esp32_serial": true,
+      "esp32_port": "/dev/ttyACM0",
+      "esp32_baud": 115200,
       "sensor_1": {
         "enabled": true,
         "gpio_pin": 6
@@ -92,6 +99,7 @@
     },
     "tec_relay": {
       "enabled": true,
+      "control_via_arduino": true,
       "gpio_pin": 26,
       "target_temp": 10.0,
       "hysteresis": 1.0,

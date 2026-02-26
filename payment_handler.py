@@ -4,6 +4,7 @@ from coin_hopper import CoinHopper
 import logging
 import platform
 import os
+from arduino_serial_utils import detect_arduino_serial_port
 
 try:
     from bill_acceptor import BillAcceptor
@@ -24,9 +25,9 @@ logger = logging.getLogger(__name__)
 
 class PaymentHandler:
     """Payment handler that manages bill and coin acceptance, plus coin hopper dispensing."""
-    def __init__(self, config, coin_port=None, coin_baud=115200, bill_port='/dev/ttyUSB1',
+    def __init__(self, config, coin_port=None, coin_baud=115200, bill_port=None,
                  bill_baud=None, bill_esp32_mode=False, bill_esp32_serial_port=None, bill_esp32_host=None, bill_esp32_port=5000,
-                 coin_hopper_port='/dev/ttyUSB1', coin_hopper_baud=115200, use_gpio_coin=True, coin_gpio_pin=17):
+                 coin_hopper_port=None, coin_hopper_baud=115200, use_gpio_coin=True, coin_gpio_pin=17):
         """Initialize the payment handler with coin acceptor, bill acceptor, and hoppers.
 
         Args:
@@ -46,16 +47,29 @@ class PaymentHandler:
             coin_gpio_pin (int): GPIO pin for coin acceptor (default 17)
         """
         # Shared serial reader for Arduino Uno (DHT/IR/coin/bill) if enabled.
+        # This avoids multiple consumers opening the same USB serial port.
         shared_reader = None
+        auto_port = detect_arduino_serial_port(preferred_port=coin_port or bill_port or coin_hopper_port)
+        if not coin_port:
+            coin_port = auto_port
+        if not bill_port:
+            bill_port = auto_port
+        if not coin_hopper_port:
+            coin_hopper_port = auto_port
         try:
             hw_cfg = config.get('hardware', {}) if isinstance(config, dict) else {}
             dht_cfg = hw_cfg.get('dht22_sensors', {})
             ir_cfg = hw_cfg.get('ir_sensors', {})
-            use_shared = bool(dht_cfg.get('use_esp32_serial', False) or ir_cfg.get('use_esp32_serial', False))
+            use_shared = bool(
+                dht_cfg.get('use_esp32_serial', False)
+                or ir_cfg.get('use_esp32_serial', False)
+                or (not use_gpio_coin)
+            )
             if use_shared and get_shared_serial_reader:
                 shared_reader = get_shared_serial_reader(port=coin_port or bill_port, baudrate=coin_baud or 115200)
         except Exception:
             shared_reader = None
+        self._shared_reader = shared_reader
 
         # Setup coin acceptor - prefer GPIO-based on Raspberry Pi, fallback to ESP32
         self.coin_acceptor = None
@@ -94,6 +108,13 @@ class PaymentHandler:
         if not self.coin_acceptor:
             print("WARNING: No coin acceptor available (neither GPIO nor ESP32)")
             logger.warning("No coin acceptor available (neither GPIO nor ESP32)")
+        else:
+            # Ensure payment UI receives push updates from coin acceptor in all modes.
+            try:
+                if hasattr(self.coin_acceptor, 'set_callback'):
+                    self.coin_acceptor.set_callback(self._on_coin_update)
+            except Exception:
+                pass
         
         # Setup bill acceptor if available. On non-Linux hosts (e.g., Windows) we
         # prefer to avoid attempting serial/TCP hardware connections unless the
@@ -211,9 +232,15 @@ class PaymentHandler:
             self.coin_acceptor.reset_amount()
         if self.bill_acceptor:
             self.bill_acceptor.reset_amount()
+        # Safety: hopper relays must be off unless actively dispensing change.
+        if self.coin_hopper:
+            try:
+                self.coin_hopper.ensure_relays_off()
+            except Exception:
+                pass
         return True
 
-    def _on_bill_update(self, bill_total_amount):
+    def _on_bill_update(self, bill_total_amount, prompt_msg=None):
         """Internal callback invoked when bill acceptor reports an update.
 
         We forward combined total (coins + bills) to the UI callback if set.
@@ -302,11 +329,16 @@ class PaymentHandler:
                     change_status = f"Error: {message}"
             else:
                 change_status = "Change dispenser not available"
-        
         if self.coin_acceptor:
             self.coin_acceptor.reset_amount()
         if self.bill_acceptor:
             self.bill_acceptor.reset_amount()
+        # Always return hopper to safe OFF state after session end.
+        if self.coin_hopper:
+            try:
+                self.coin_hopper.ensure_relays_off()
+            except Exception:
+                pass
         self._callback = None
         self._change_callback = None
         return total_received, change_amount, change_status

@@ -54,11 +54,14 @@ class CoinAcceptorESP32:
         self._last_status_time = 0
         self._status_interval = 2.0  # Poll balance every 2 seconds
         self._shared_reader = shared_reader
+        self._callback = None
+        self._base_total = 0.0
 
         if self._shared_reader:
             try:
                 self._shared_reader.add_coin_callback(self._on_shared_coin)
-                self.received_amount = float(self._shared_reader.get_coin_total() or 0.0)
+                self._base_total = float(self._shared_reader.get_coin_total() or 0.0)
+                self.received_amount = 0.0
             except Exception:
                 pass
         else:
@@ -201,7 +204,8 @@ class CoinAcceptorESP32:
         """Get the total amount received (thread-safe)"""
         if self._shared_reader:
             try:
-                return float(self._shared_reader.get_coin_total())
+                total = float(self._shared_reader.get_coin_total() or 0.0)
+                return max(0.0, total - self._base_total)
             except Exception:
                 return 0.0
         with self._lock:
@@ -210,6 +214,10 @@ class CoinAcceptorESP32:
     def reset_amount(self):
         """Reset the received amount to zero"""
         if self._shared_reader:
+            try:
+                self._base_total = float(self._shared_reader.get_coin_total() or 0.0)
+            except Exception:
+                pass
             with self._lock:
                 self.received_amount = 0.0
             return
@@ -227,10 +235,19 @@ class CoinAcceptorESP32:
 
     def _on_shared_coin(self, total):
         try:
+            amount = max(0.0, float(total) - self._base_total)
             with self._lock:
-                self.received_amount = float(total)
+                self.received_amount = amount
+            if self._callback:
+                try:
+                    self._callback(amount)
+                except Exception:
+                    pass
         except Exception:
             pass
+
+    def set_callback(self, callback):
+        self._callback = callback
     
     def set_coin_value(self, output: int, value: float):
         """

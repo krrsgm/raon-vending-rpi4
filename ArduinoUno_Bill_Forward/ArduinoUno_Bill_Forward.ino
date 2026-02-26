@@ -44,14 +44,14 @@ const unsigned long pulseDebounceMs = 60; // debounce interval in ms (INCREASED 
 
 // --- Coin Acceptor (Allan 123A-Pro) ---
 const int COIN_ACCEPTOR_PIN = 3; // D3 (external interrupt)
-volatile unsigned long coinPulseStartUs = 0;
-volatile unsigned long coinPulseWidthUs = 0;
-volatile bool coinPulseReady = false;
-volatile bool coinPulseLow = false;
+volatile unsigned int coinPulseCount = 0;
+volatile unsigned long coinLastPulseMs = 0;
+volatile unsigned long coinLastEdgeUs = 0;
+volatile bool coinCountActive = false;
 unsigned long lastCoinValidMs = 0;
-const unsigned long coinDebounceMs = 80;      // 80ms debounce (matches Pi handler)
-const unsigned long coinMinPulseUs = 15000;   // 15ms
-const unsigned long coinMaxPulseUs = 250000;  // 250ms
+const unsigned long coinDebounceMs = 80;      // debounce between recognized coin events
+const unsigned long coinPulseDebounceUs = 5000; // debounce per pulse edge (5ms)
+const unsigned long coinGroupGapMs = 180;     // gap that ends a pulse train for one coin
 float coin_total = 0.0;
 
 // --- Shared Sensor Bridge Pins ---
@@ -79,6 +79,8 @@ const int FIVE_MOTOR_PIN = 10; // 5-peso motor control
 
 const int ONE_SENSOR_PIN = 11;  // 1-peso sensor input
 const int FIVE_SENSOR_PIN = 12; // 5-peso sensor input
+const int HOPPER_SENSOR_ACTIVE_LEVEL = LOW; // Most IR/open-collector sensors go LOW on coin pass
+const unsigned long HOPPER_SENSOR_DEBOUNCE_MS = 25;
 
 const unsigned long BAUD_RATE = 115200;
 
@@ -87,6 +89,8 @@ unsigned int one_count = 0;
 unsigned int five_count = 0;
 int last_one_state = HIGH;  // Track previous state for edge detection
 int last_five_state = HIGH;
+unsigned long last_one_edge_ms = 0;
+unsigned long last_five_edge_ms = 0;
 
 struct DispenseJob {
   bool active;
@@ -110,18 +114,31 @@ String inputBuffer = "";
 //   set RELAY_ACTIVE_LEVEL to HIGH.
 // - If your relay driver is active-low (energized when pin is LOW),
 //   set RELAY_ACTIVE_LEVEL to LOW.
-const int RELAY_ACTIVE_LEVEL = HIGH;
+const int RELAY_ACTIVE_LEVEL = LOW;
 const int RELAY_INACTIVE_LEVEL = (RELAY_ACTIVE_LEVEL == HIGH) ? LOW : HIGH;
 
 void start_motor(int pin) { digitalWrite(pin, RELAY_ACTIVE_LEVEL); }
 void stop_motor(int pin) { digitalWrite(pin, RELAY_INACTIVE_LEVEL); }
 
-void tec_on() { digitalWrite(TEC_RELAY_PIN, HIGH); }
-void tec_off() { digitalWrite(TEC_RELAY_PIN, LOW); }
+void enforce_hopper_output_safety() {
+  // Hard failsafe: hopper outputs are only energized while a dispense job is active.
+  // This prevents latched HIGH outputs from manual/stray commands.
+  digitalWrite(ONE_MOTOR_PIN, job_one.active ? RELAY_ACTIVE_LEVEL : RELAY_INACTIVE_LEVEL);
+  digitalWrite(FIVE_MOTOR_PIN, job_five.active ? RELAY_ACTIVE_LEVEL : RELAY_INACTIVE_LEVEL);
+}
+
+// Configure TEC relay active level:
+// - Active-low relay modules (common): set to LOW
+// - Active-high relay modules: set to HIGH
+const int TEC_RELAY_ACTIVE_LEVEL = HIGH;
+const int TEC_RELAY_INACTIVE_LEVEL = (TEC_RELAY_ACTIVE_LEVEL == HIGH) ? LOW : HIGH;
+
+void tec_on() { digitalWrite(TEC_RELAY_PIN, TEC_RELAY_ACTIVE_LEVEL); }
+void tec_off() { digitalWrite(TEC_RELAY_PIN, TEC_RELAY_INACTIVE_LEVEL); }
 
 void report_tec_state(Stream &out) {
   out.print("TEC: ");
-  out.println(digitalRead(TEC_RELAY_PIN) == HIGH ? "ON" : "OFF");
+  out.println(digitalRead(TEC_RELAY_PIN) == TEC_RELAY_ACTIVE_LEVEL ? "ON" : "OFF");
 }
 
 // --- Coin Hopper Functions ---
@@ -238,9 +255,12 @@ void processLine(String line, Stream &out) {
       if (amount <= 0){ out.println("ERR bad amount"); return; }
       int five_needed = amount / 5;
       int one_needed = amount % 5;
-      sequence_active = true;
+      // Reset sequence/job state before starting a new amount request.
+      sequence_active = (one_needed > 0);
       sequence_timeout_ms = tmo;
       five_count = 0; one_count = 0;
+      job_five.target = 0;
+      job_one.target = 0;
       if (five_needed > 0){ start_dispense_denon(5, five_needed, tmo); }
       else if (one_needed > 0) { start_dispense_denon(1, one_needed, tmo); }
       else { out.println("OK NOTHING_TO_DO"); }
@@ -254,6 +274,12 @@ void processLine(String line, Stream &out) {
       if (partCount >= 4) tmo = (unsigned long) parts[3].toInt();
       if (denom != 1 && denom != 5){ out.println("ERR bad denom"); return; }
       if (count <= 0){ out.println("ERR bad count"); return; }
+      // Exact denomination dispense should never chain into sequence logic.
+      sequence_active = false;
+      job_one.target = 0;
+      job_five.target = 0;
+      one_count = 0;
+      five_count = 0;
       start_dispense_denon(denom, count, tmo, out);
       out.println("OK DISPENSE_DENOM STARTED");
     }
@@ -327,7 +353,7 @@ void countPulse() {
   pulseEvent = true; // set flag; do NOT call Serial from ISR
 }
 
-int mapPulsesToPesos(int pulses) {
+int mapPulsesToPesos(int pulses) {  
   // Allow tolerance range for hardware variability
   if (pulses >= 4 && pulses <= 6) return 50;    // 50 peso bill (accepts 4-6 pulses)
   switch (pulses) {
@@ -338,28 +364,23 @@ int mapPulsesToPesos(int pulses) {
   }
 }
 
-int mapCoinPulseWidthToValueUs(unsigned long width_us) {
-  // Allan 123A-Pro calibration (same as Raspberry Pi handler)
-  if (width_us >= 50000) return 1;          // >=50ms
-  if (width_us >= 35000) return 5;          // 35-50ms
-  if (width_us >= coinMinPulseUs) return 10; // 15-35ms
+int mapCoinPulseCountToValue(int pulses) {
+  // Pulse-count mode mapping:
+  // 1 pulse = 1 peso, 5 pulses = 5 peso, 10 pulses = 10 peso.
+  if (pulses == 1) return 1;
+  if (pulses == 5) return 5;
+  if (pulses == 10) return 10;
   return 0;
 }
 
 void countCoinPulse() {
-  // Capture pulse width using CHANGE interrupt (active-low pulse)
-  bool isLow = (digitalRead(COIN_ACCEPTOR_PIN) == LOW);
+  // Count pulses on falling edges.
   unsigned long nowUs = micros();
-  if (isLow) {
-    coinPulseStartUs = nowUs;
-    coinPulseLow = true;
-  } else {
-    if (coinPulseLow) {
-      coinPulseWidthUs = nowUs - coinPulseStartUs;
-      coinPulseReady = true;
-      coinPulseLow = false;
-    }
-  }
+  if ((nowUs - coinLastEdgeUs) < coinPulseDebounceUs) return;
+  coinLastEdgeUs = nowUs;
+  coinPulseCount++;
+  coinLastPulseMs = millis();
+  coinCountActive = true;
 }
 
 // --- TEC Control (simple range + humidity trigger) ---
@@ -382,14 +403,19 @@ void update_tec_control(float t1, float h1, float t2, float h2) {
   float avg_temp = temp_sum / temp_count;
   float avg_humid = (humid_count > 0) ? (humid_sum / humid_count) : NAN;
 
-  bool need_on = false;
-  if (avg_temp > TARGET_TEMP_MAX) need_on = true;
-  if (!isnan(avg_humid) && avg_humid > HUMIDITY_THRESHOLD) need_on = true;
+  bool temp_in_off_band = (avg_temp >= TARGET_TEMP_MIN && avg_temp <= TARGET_TEMP_MAX);
+  bool humidity_below_threshold = (!isnan(avg_humid) && avg_humid < HUMIDITY_THRESHOLD);
 
-  if (need_on) {
-    tec_on();
-  } else if (avg_temp < TARGET_TEMP_MIN && (isnan(avg_humid) || avg_humid <= HUMIDITY_THRESHOLD)) {
+  // Priority OFF rule:
+  // - Turn OFF when temp is in 20-25C band, OR humidity is below 60%.
+  if (temp_in_off_band || humidity_below_threshold) {
     tec_off();
+    return;
+  }
+
+  // Otherwise turn ON only when above thresholds.
+  if (avg_temp > TARGET_TEMP_MAX || (!isnan(avg_humid) && avg_humid > HUMIDITY_THRESHOLD)) {
+    tec_on();
   }
 }
 
@@ -397,10 +423,12 @@ void setup(){
   // Initialize coin hopper pins
   pinMode(ONE_MOTOR_PIN, OUTPUT);
   pinMode(FIVE_MOTOR_PIN, OUTPUT);
-  digitalWrite(ONE_MOTOR_PIN, LOW);
-  digitalWrite(FIVE_MOTOR_PIN, LOW);
-  pinMode(ONE_SENSOR_PIN, INPUT);
-  pinMode(FIVE_SENSOR_PIN, INPUT);
+  digitalWrite(ONE_MOTOR_PIN, RELAY_INACTIVE_LEVEL);
+  digitalWrite(FIVE_MOTOR_PIN, RELAY_INACTIVE_LEVEL);
+  pinMode(ONE_SENSOR_PIN, INPUT_PULLUP);
+  pinMode(FIVE_SENSOR_PIN, INPUT_PULLUP);
+  last_one_state = digitalRead(ONE_SENSOR_PIN);
+  last_five_state = digitalRead(FIVE_SENSOR_PIN);
   
   // Initialize bill acceptor pins
   pinMode(pulsePin, INPUT_PULLUP);
@@ -408,13 +436,13 @@ void setup(){
 
   // Initialize coin acceptor
   pinMode(COIN_ACCEPTOR_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(COIN_ACCEPTOR_PIN), countCoinPulse, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(COIN_ACCEPTOR_PIN), countCoinPulse, FALLING);
 
   // Initialize shared sensor pins
   pinMode(IR1_PIN, INPUT_PULLUP);
   pinMode(IR2_PIN, INPUT_PULLUP);
   pinMode(TEC_RELAY_PIN, OUTPUT);
-  digitalWrite(TEC_RELAY_PIN, LOW);
+  digitalWrite(TEC_RELAY_PIN, TEC_RELAY_INACTIVE_LEVEL);
   dht1.begin();
   dht2.begin();
   
@@ -486,42 +514,56 @@ void loop(){
   int one_state = digitalRead(ONE_SENSOR_PIN);
   int five_state = digitalRead(FIVE_SENSOR_PIN);
   
-  if (last_one_state == HIGH && one_state == LOW) {
-    one_count++;
-    job_one.last_coin_ms = millis();
+  unsigned long sensor_now_ms = millis();
+  if (one_state != last_one_state && one_state == HOPPER_SENSOR_ACTIVE_LEVEL) {
+    if (sensor_now_ms - last_one_edge_ms >= HOPPER_SENSOR_DEBOUNCE_MS) {
+      one_count++;
+      job_one.last_coin_ms = sensor_now_ms;
+      last_one_edge_ms = sensor_now_ms;
+      Serial.print("PULSE ONE ");
+      Serial.println(one_count);
+    }
   }
   
-  if (last_five_state == HIGH && five_state == LOW) {
-    five_count++;
-    job_five.last_coin_ms = millis();
+  if (five_state != last_five_state && five_state == HOPPER_SENSOR_ACTIVE_LEVEL) {
+    if (sensor_now_ms - last_five_edge_ms >= HOPPER_SENSOR_DEBOUNCE_MS) {
+      five_count++;
+      job_five.last_coin_ms = sensor_now_ms;
+      last_five_edge_ms = sensor_now_ms;
+      Serial.print("PULSE FIVE ");
+      Serial.println(five_count);
+    }
   }
   
   last_one_state = one_state;
   last_five_state = five_state;
 
-  // --- Coin Acceptor Processing ---
-  if (coinPulseReady) {
-    unsigned long widthUs;
-    noInterrupts();
-    widthUs = coinPulseWidthUs;
-    coinPulseReady = false;
-    interrupts();
+  // --- Coin Acceptor Processing (pulse count mode) ---
+  bool finalizeCoin = false;
+  unsigned int pulses = 0;
+  noInterrupts();
+  if (coinCountActive && (millis() - coinLastPulseMs > coinGroupGapMs)) {
+    pulses = coinPulseCount;
+    coinPulseCount = 0;
+    coinCountActive = false;
+    finalizeCoin = true;
+  }
+  interrupts();
 
-    if (widthUs >= coinMinPulseUs && widthUs <= coinMaxPulseUs) {
-      unsigned long nowMs = millis();
-      if (nowMs - lastCoinValidMs >= coinDebounceMs) {
-        int value = mapCoinPulseWidthToValueUs(widthUs);
-        if (value > 0) {
-          coin_total += (float)value;
-          lastCoinValidMs = nowMs;
-          Serial.print("[COIN] Value: ");
-          Serial.print(value);
-          Serial.print(" Total: ");
-          Serial.println(coin_total, 2);
-        } else {
-          Serial.print("[COIN] Unknown pulse width (us): ");
-          Serial.println(widthUs);
-        }
+  if (finalizeCoin && pulses > 0) {
+    unsigned long nowMs = millis();
+    if (nowMs - lastCoinValidMs >= coinDebounceMs) {
+      int value = mapCoinPulseCountToValue((int)pulses);
+      if (value > 0) {
+        coin_total += (float)value;
+        lastCoinValidMs = nowMs;
+        Serial.print("[COIN] Value: ");
+        Serial.print(value);
+        Serial.print(" Total: ");
+        Serial.println(coin_total, 2);
+      } else {
+        Serial.print("[COIN] Unknown pulse count: ");
+        Serial.println(pulses);
       }
     }
   }
@@ -554,7 +596,13 @@ void loop(){
     else if (now - job_one.last_coin_ms > COIN_TIMEOUT_MS){ stop_motor(ONE_MOTOR_PIN); job_one.active = false; Serial.print("ERR NO COIN ONE timeout"); Serial.println(one_count); sequence_active = false; }
   }
 
-  if (sequence_active && !job_five.active && !job_one.active){ if (job_one.target > 0 && one_count < job_one.target){ start_dispense_denon(1, job_one.target, sequence_timeout_ms); } }
+  if (sequence_active && !job_five.active && !job_one.active){
+    if (job_one.target > 0 && one_count < job_one.target){
+      start_dispense_denon(1, job_one.target, sequence_timeout_ms);
+    } else {
+      sequence_active = false;
+    }
+  }
 
   // Track motor activity for IR suppression
   if (job_one.active || job_five.active) {
@@ -589,4 +637,7 @@ void loop(){
       last_ir2_state = ir2_state;
     }
   }
+
+  // Always enforce safe hopper output state each loop.
+  enforce_hopper_output_safety();
 }

@@ -45,6 +45,7 @@ class SystemStatusPanel(tk.Frame):
             'last_detection': None
         }
         self.system_health = 'operational'  # 'operational', 'warning', 'error'
+        self.start_time = time.time()
         
         # Lock for thread-safe updates
         self._lock = threading.Lock()
@@ -52,7 +53,7 @@ class SystemStatusPanel(tk.Frame):
         # Create UI
         self.create_widgets()
         
-        # Start periodic update loop
+        # Start periodic update loop on Tk main thread
         self.update_job = None
         self.start_update_loop()
     
@@ -406,19 +407,17 @@ class SystemStatusPanel(tk.Frame):
             self.system_health = status
     
     def start_update_loop(self):
-        """Start periodic UI update loop."""
-        def update_loop():
-            while True:
-                try:
-                    self.refresh_display()
-                    time.sleep(1)  # Update every second
-                except Exception as e:
-                    print(f"Status panel update error: {e}")
-                    time.sleep(1)
-        
-        # Run in background thread
-        thread = threading.Thread(target=update_loop, daemon=True)
-        thread.start()
+        """Start periodic UI update loop on the Tk thread."""
+        self._schedule_refresh()
+
+    def _schedule_refresh(self):
+        try:
+            self.refresh_display()
+        except Exception as e:
+            print(f"Status panel update error: {e}")
+        finally:
+            # Keep updates alive even after transient UI errors
+            self.update_job = self.after(1000, self._schedule_refresh)
     
     def refresh_display(self):
         """Refresh the display with current status."""
@@ -533,3 +532,17 @@ class SystemStatusPanel(tk.Frame):
             self.health_indicator.config(fg='#e74c3c')
             self.health_label.config(text='Error')
             self.status_indicator.config(fg='#e74c3c')
+
+        # Uptime
+        try:
+            elapsed = int(max(0, time.time() - self.start_time))
+            hours = elapsed // 3600
+            minutes = (elapsed % 3600) // 60
+            seconds = elapsed % 60
+            if hours > 0:
+                uptime_text = f"Uptime: {hours:02d}:{minutes:02d}:{seconds:02d}"
+            else:
+                uptime_text = f"Uptime: {minutes:02d}:{seconds:02d}"
+            self.uptime_label.config(text=uptime_text)
+        except Exception:
+            pass

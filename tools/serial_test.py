@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Simple serial test helper to send BILL: lines to a serial port.
 
 Usage:
-  python3 tools/serial_test.py --port /dev/ttyACM0 --baud 115200
+  python3 tools/serial_test.py --port /dev/ttyUSB0 --baud 115200
 """
 import argparse
 import serial
@@ -31,3 +31,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

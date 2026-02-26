@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Simple USB serial listener for Arduino bill forwarder.
 
 Autodetects a likely Arduino / USB-serial device and prints parsed
@@ -7,7 +7,7 @@ communication and to debug why bills aren't appearing in the kiosk.
 
 Usage:
   python3 tools/usb_bill_listener.py          # autodetect device, use 115200
-  python3 tools/usb_bill_listener.py /dev/ttyACM0 9600
+  python3 tools/usb_bill_listener.py /dev/ttyUSB0 9600
 
 """
 import sys
@@ -37,7 +37,7 @@ def find_usb_serial():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('port', nargs='?', help='Serial port (e.g. /dev/ttyACM0)')
+    ap.add_argument('port', nargs='?', help='Serial port (e.g. /dev/ttyUSB0)')
     ap.add_argument('baud', nargs='?', type=int, default=115200, help='Baud rate (default 115200)')
     ap.add_argument('--only-bill', action='store_true', help='Only print final bill lines (BILL: or Bill inserted)')
     args = ap.parse_args()
@@ -80,7 +80,7 @@ def main():
                     if up.startswith('BILL:'):
                         try:
                             val = int(line.split(':',1)[1])
-                            print(f"  -> Parsed bill: ₱{val}")
+                            print(f"  -> Parsed bill: â‚±{val}")
                         except Exception:
                             print('  -> Unrecognized BILL line')
                 continue
@@ -91,7 +91,7 @@ def main():
             if up.startswith('BILL:'):
                 try:
                     val = int(line.split(':',1)[1])
-                    print(f"  -> Parsed bill: ₱{val}")
+                    print(f"  -> Parsed bill: â‚±{val}")
                 except Exception:
                     print('  -> Unrecognized BILL line')
     except KeyboardInterrupt:
@@ -105,3 +105,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

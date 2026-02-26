@@ -1,4 +1,4 @@
-import tkinter as tk
+﻿import tkinter as tk
 from tkinter import ttk
 import time
 import platform
@@ -38,18 +38,24 @@ class SharedSerialReader(threading.Thread):
             'DHT2': {'temp': None, 'humidity': None},
         }
         self.ir_states = {'IR1': None, 'IR2': None}
+        self.tec_active = None
         self.coin_total = 0.0
         self.bill_total = 0.0
         self._coin_callbacks = []
         self._bill_callbacks = []
         self.connected = False
+        self._last_balance_poll = 0.0
+        self._balance_poll_interval = 1.0
+        self._last_status_poll = 0.0
+        self._status_poll_interval = 2.0
         # Match lines like: "DHT1: 25.0C 60%"
         self.pattern = re.compile(r"(DHT1|DHT2).*?:\s*([\-0-9.]+)\s*C\s*([\-0-9.]+)\s*%?", re.IGNORECASE)
         self.ir1_pattern = re.compile(r"IR1.*?:\s*(BLOCKED|CLEAR)", re.IGNORECASE)
         self.ir2_pattern = re.compile(r"IR2.*?:\s*(BLOCKED|CLEAR)", re.IGNORECASE)
-        self.coin_pattern = re.compile(r"\[COIN\].*?Value:\s*[^\d-]*([-\d.]+).*?Total:\s*[^\d-]*([-\d.]+)", re.IGNORECASE)
+        self.coin_pattern = re.compile(r"\[COIN\].*?Value:\s*[^\d-]*([-\d.]+)(?:.*?Total:\s*[^\d-]*([-\d.]+))?", re.IGNORECASE)
         self.balance_pattern = re.compile(r"BALANCE:\s*[^\d-]*([-\d.]+)", re.IGNORECASE)
-        self.bill_pattern = re.compile(r"(?:BILL\s+INSERTED|BILL)[:\s]*[\u20B1â‚±]?\s*(\d+)", re.IGNORECASE)
+        self.bill_pattern = re.compile(r"(?:BILL\s+INSERTED|BILL)[:\s]*[\u20B1Ã¢â€šÂ±]?\s*(\d+)", re.IGNORECASE)
+        self.tec_pattern = re.compile(r"TEC\s*:\s*(ON|OFF)", re.IGNORECASE)
 
     def run(self):
         try:
@@ -64,6 +70,20 @@ class SharedSerialReader(threading.Thread):
         while self.running:
             try:
                 if self.ser and self.ser.is_open:
+                    now = time.time()
+                    if (now - self._last_balance_poll) >= self._balance_poll_interval:
+                        try:
+                            self.ser.write(b"GET_BALANCE\n")
+                            self._last_balance_poll = now
+                        except Exception:
+                            pass
+                    if (now - self._last_status_poll) >= self._status_poll_interval:
+                        try:
+                            self.ser.write(b"STATUS\n")
+                            self._last_status_poll = now
+                        except Exception:
+                            pass
+
                     line = self.ser.readline().decode(errors="ignore").strip()
                     if not line:
                         continue
@@ -95,18 +115,31 @@ class SharedSerialReader(threading.Thread):
                     m3 = self.coin_pattern.search(line)
                     if m3:
                         try:
-                            total = float(m3.group(2))
+                            value = float(m3.group(1))
+                        except Exception:
+                            value = None
+                        total = None
+                        try:
+                            if m3.group(2) is not None:
+                                total = float(m3.group(2))
                         except Exception:
                             total = None
+
                         if total is not None:
                             with self._lock:
                                 self.coin_total = total
-                            callbacks = list(self._coin_callbacks)
-                            for cb in callbacks:
-                                try:
-                                    cb(total)
-                                except Exception:
-                                    pass
+                        elif value is not None:
+                            with self._lock:
+                                self.coin_total += value
+
+                        with self._lock:
+                            current_total = self.coin_total
+                        callbacks = list(self._coin_callbacks)
+                        for cb in callbacks:
+                            try:
+                                cb(current_total)
+                            except Exception:
+                                pass
                         continue
                     m4 = self.balance_pattern.search(line)
                     if m4:
@@ -134,6 +167,11 @@ class SharedSerialReader(threading.Thread):
                                 except Exception:
                                     pass
                         continue
+                    m6 = self.tec_pattern.search(line)
+                    if m6:
+                        with self._lock:
+                            self.tec_active = (m6.group(1).upper() == "ON")
+                        continue
             except Exception as e:
                 print(f"[ESP32DHTReader] Read error: {e}")
                 continue
@@ -146,6 +184,10 @@ class SharedSerialReader(threading.Thread):
     def get_ir_state(self, label):
         with self._lock:
             return self.ir_states.get(label.upper(), None)
+
+    def get_tec_active(self):
+        with self._lock:
+            return self.tec_active
 
     def add_coin_callback(self, callback):
         if callback and callback not in self._coin_callbacks:
@@ -370,7 +412,7 @@ class DHT22Display(tk.Frame):
         self.temp_frame = ttk.Frame(self.container)
         self.temp_frame.pack(fill='x', pady=2)
         
-        self.temp_icon = ttk.Label(self.temp_frame, text="🌡️", font=('Helvetica', 16))
+        self.temp_icon = ttk.Label(self.temp_frame, text="ðŸŒ¡ï¸", font=('Helvetica', 16))
         self.temp_icon.pack(side='left', padx=5)
         
         self.temp_reading = ttk.Label(
@@ -382,7 +424,7 @@ class DHT22Display(tk.Frame):
         
         self.temp_unit = ttk.Label(
             self.temp_frame,
-            text="°C",
+            text="Â°C",
             style='Unit.TLabel'
         )
         self.temp_unit.pack(side='left')
@@ -391,7 +433,7 @@ class DHT22Display(tk.Frame):
         self.humid_frame = ttk.Frame(self.container)
         self.humid_frame.pack(fill='x', pady=2)
         
-        self.humid_icon = ttk.Label(self.humid_frame, text="💧", font=('Helvetica', 16))
+        self.humid_icon = ttk.Label(self.humid_frame, text="ðŸ’§", font=('Helvetica', 16))
         self.humid_icon.pack(side='left', padx=5)
         
         self.humid_reading = ttk.Label(
@@ -479,3 +521,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

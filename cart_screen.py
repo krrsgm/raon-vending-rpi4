@@ -1,10 +1,11 @@
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox
+import threading
 from payment_handler import PaymentHandler
 from system_status_panel import SystemStatusPanel
 from daily_sales_logger import get_logger
-import threading
+from arduino_serial_utils import detect_arduino_serial_port
 try:
     from stock_tracker import get_tracker
     STOCK_TRACKER_AVAILABLE = True
@@ -21,21 +22,25 @@ class CartScreen(tk.Frame):
         # If TB74 is connected to the ESP32 and the ESP32 forwards bill events,
         # enable esp32 proxy mode and supply the serial port or host from config.
         bill_cfg = controller.config.get('hardware', {}).get('bill_acceptor', {}) if isinstance(controller.config, dict) else {}
-        # Default to /dev/ttyACM0 for USB-connected Arduino Uno; can be overridden in config
-        bill_serial = bill_cfg.get('serial_port', '/dev/ttyACM0')
+        configured_bill_serial = bill_cfg.get('serial_port')
+        bill_serial = detect_arduino_serial_port(preferred_port=configured_bill_serial)
         bill_baud = bill_cfg.get('baudrate') or bill_cfg.get('serial_baud')
         # TB74 is directly connected to Arduino Uno (not proxied through ESP32)
-        # It connects via USB at /dev/ttyACM0
+        # It connects via USB serial (default /dev/ttyUSB0)
         esp32_mode = False  # Disabled: TB74 is on Arduino USB, not ESP32
         
-        # Get coin acceptor config (prefer GPIO on Raspberry Pi)
+        # Get coin acceptor config
         coin_cfg = controller.config.get('hardware', {}).get('coin_acceptor', {}) if isinstance(controller.config, dict) else {}
-        use_gpio_coin = coin_cfg.get('use_gpio', True)  # Default to GPIO on RPi
+        # Default to serial because coin/bill are on Arduino Uno in this wiring layout.
+        use_gpio_coin = coin_cfg.get('use_gpio', False)
         coin_gpio_pin = coin_cfg.get('gpio_pin', 17)  # Default GPIO 17
-        
+        hopper_cfg = controller.config.get('hardware', {}).get('coin_hopper', {}) if isinstance(controller.config, dict) else {}
+        hopper_serial = detect_arduino_serial_port(preferred_port=hopper_cfg.get('serial_port') or bill_serial)
+        hopper_baud = hopper_cfg.get('baudrate', 115200)
+
         self.payment_handler = PaymentHandler(
             controller.config,
-            coin_port=None,  # Auto-detect ESP32 USB serial port (fallback)
+            coin_port=bill_serial,
             coin_baud=115200,
             bill_port=bill_serial,
             bill_baud=bill_baud,
@@ -43,13 +48,19 @@ class CartScreen(tk.Frame):
             bill_esp32_serial_port=None,
             bill_esp32_host=None,
             bill_esp32_port=5000,
+            coin_hopper_port=hopper_serial,
+            coin_hopper_baud=hopper_baud,
             use_gpio_coin=use_gpio_coin,
             coin_gpio_pin=coin_gpio_pin
-        )  # Using GPIO coin acceptor on RPi
+        )  # Coin/bill/hopper are expected on Arduino Uno serial by default
         self.payment_in_progress = False
         self.payment_received = 0.0
         self.payment_required = 0.0
         self.change_label = None  # Will be created in the payment window
+        self.change_alert_shown = False  # Prevent duplicate hopper timeout alerts
+        self.last_change_status = None  # Deduplicate noisy hopper status messages
+        self.payment_completion_scheduled = False
+        self._complete_after_id = None
         self.coin_received = 0.0  # Track coins separately
         self.bill_received = 0.0  # Track bills separately
         
@@ -267,7 +278,7 @@ class CartScreen(tk.Frame):
             # Delete button
             delete_btn = tk.Button(
                 controls_frame,
-                text="✕",
+                text="âœ•",
                 font=self.fonts["qty_btn"],
                 bg="white",
                 fg="#e74c3c",
@@ -300,6 +311,9 @@ class CartScreen(tk.Frame):
             self.payment_in_progress = True
             self.payment_required = total_amount
             self.payment_received = 0.0
+            self.change_alert_shown = False
+            self.payment_completion_scheduled = False
+            self._complete_after_id = None
             # Start payment session and register callbacks for immediate updates
             # Pass UI change-status callback so dispensing progress can be shown
             try:
@@ -410,8 +424,8 @@ class CartScreen(tk.Frame):
             ).pack(pady=(20,5))
             
             coins_text = (
-                "Coins: • ₱1 • ₱5 • ₱10 (Old and New)\n"
-                "Bills: • ₱20 • ₱50 • ₱100\n\n"
+                "Coins: â€¢ ₱1 â€¢ ₱5 â€¢ ₱10 (Old and New)\n"
+                "Bills: â€¢ ₱20 â€¢ ₱50 â€¢ ₱100\n\n"
                 "Change is dispensed using ₱1 and ₱5 coins only."
             )
             
@@ -486,11 +500,27 @@ class CartScreen(tk.Frame):
                 self.payment_status.config(text=status_text)
                 
                 if received >= total_amount:
-                    self.complete_payment()
+                    self._schedule_complete_payment()
                     return
                     
             # Update every 100ms while payment is in progress
             self.after(100, lambda: self.update_payment_status(total_amount))
+
+    def _schedule_complete_payment(self, delay_ms=120):
+        """Schedule payment completion once, allowing UI to show the final inserted amount."""
+        if self.payment_completion_scheduled or not self.payment_in_progress:
+            return
+        self.payment_completion_scheduled = True
+
+        def _run_complete():
+            self._complete_after_id = None
+            if self.payment_in_progress:
+                self.complete_payment()
+
+        try:
+            self._complete_after_id = self.after(delay_ms, _run_complete)
+        except Exception:
+            _run_complete()
 
     def _on_payment_update(self, amount):
         """Callback invoked by PaymentHandler when coins/bills change (push notification).
@@ -544,11 +574,8 @@ class CartScreen(tk.Frame):
                 print(f"[PAYMENT] Error updating UI: {e}")
 
             if amount >= self.payment_required:
-                print(f"[PAYMENT] Payment complete: {amount} >= {self.payment_required}")
-                try:
-                    self.complete_payment()
-                except Exception as e:
-                    print(f"[PAYMENT] Error completing payment: {e}")
+                print(f"[PAYMENT] Payment complete threshold reached: {amount} >= {self.payment_required}")
+                self._schedule_complete_payment()
 
         try:
             self.after(0, _apply_update)
@@ -557,17 +584,55 @@ class CartScreen(tk.Frame):
 
     def update_change_status(self, message):
         """Update the change dispensing status display."""
-        if self.change_label:
-            self.change_label.config(text=message)
-            self.change_label.pack()  # Make visible
-            self.payment_window.update()
+        def _apply_change_status():
+            # Ignore repeated identical messages to avoid UI flicker.
+            if message == self.last_change_status:
+                return
+            self.last_change_status = message
+
+            if self.change_label:
+                self.change_label.config(text=message)
+                self.change_label.pack()  # Make visible
+
+            # Show explicit alert when hopper reports no-coin timeout.
+            if message and not self.change_alert_shown:
+                upper = message.upper()
+                if "NO COIN" in upper and "TIMEOUT" in upper:
+                    self.change_alert_shown = True
+                    try:
+                        messagebox.showwarning("Change Hopper Alert", message)
+                    except Exception:
+                        pass
+            # Force redraw so change status is visible during synchronous dispense loop.
+            try:
+                if self.payment_window and self.payment_window.winfo_exists():
+                    self.payment_window.update_idletasks()
+            except Exception:
+                pass
+
+        try:
+            # If callback runs on UI thread (common during stop_payment_session),
+            # apply immediately so status is not delayed until after window closes.
+            if threading.current_thread() is threading.main_thread():
+                _apply_change_status()
+            else:
+                self.after(0, _apply_change_status)
+        except Exception:
+            _apply_change_status()
 
     def complete_payment(self):
         """Complete the payment process and dispense items & change"""
         if not self.payment_in_progress:
             return
-            
+             
         self.payment_in_progress = False
+        self.payment_completion_scheduled = False
+        if self._complete_after_id:
+            try:
+                self.after_cancel(self._complete_after_id)
+            except Exception:
+                pass
+            self._complete_after_id = None
         
         # Stop payment session and dispense change if needed
         received, change_dispensed, change_status = self.payment_handler.stop_payment_session(
@@ -608,13 +673,8 @@ class CartScreen(tk.Frame):
         except Exception:
             pass
 
-        # Apply stock deductions only after payment is complete
-        try:
-            self.controller.apply_cart_stock_deductions(self.controller.cart)
-        except Exception as e:
-            print(f"[CartScreen] Error applying stock deductions: {e}")
-
-        # Show final status
+        # Show final status immediately after payment/change processing.
+        change_due = max(0.0, float(received) - float(self.payment_required))
         status_text = (
             f"Thank you!\n\n"
             f"Coins received: ₱{coin_amount:.2f}\n"
@@ -622,18 +682,55 @@ class CartScreen(tk.Frame):
             f"Total paid: ₱{received:.2f}\n"
             f"\nYour items will now be dispensed."
         )
+        if change_due > 0:
+            status_text += (
+                f"\n\nChange due: ₱{change_due:.2f}\n"
+                f"Change dispensed: ₱{float(change_dispensed):.2f}"
+            )
+            if change_status:
+                status_text += f"\n{change_status}"
+                upper = str(change_status).upper()
+                if (not self.change_alert_shown) and ("NO COIN" in upper and "TIMEOUT" in upper):
+                    self.change_alert_shown = True
+                    try:
+                        messagebox.showwarning("Change Hopper Alert", change_status)
+                    except Exception:
+                        pass
 
         self._destroy_payment_window()
         messagebox.showinfo("Payment Complete", status_text)
+        # Apply stock deductions after popup so completion UI is not delayed.
+        try:
+            self.controller.apply_cart_stock_deductions(self.controller.cart)
+        except Exception as e:
+            print(f"[CartScreen] Error applying stock deductions: {e}")
+
+        def _extract_cart_entry_name_and_qty(entry):
+            """Normalize cart entry shapes to (item_name, quantity)."""
+            if not isinstance(entry, dict):
+                return "Unknown", 1
+            qty = entry.get('quantity', 1)
+            try:
+                qty = int(qty)
+            except Exception:
+                qty = 1
+            if qty <= 0:
+                qty = 1
+            item_obj = entry.get('item') if isinstance(entry.get('item'), dict) else None
+            item_name = (item_obj or entry).get('name') if isinstance((item_obj or entry), dict) else None
+            if not item_name:
+                item_name = "Unknown"
+            return item_name, qty
         
         # Log the transaction to daily sales log
         try:
             logger = get_logger()
             items_to_log = []
             for item in self.controller.cart:
+                item_name, qty = _extract_cart_entry_name_and_qty(item)
                 items_to_log.append({
-                    'name': item.get('name', 'Unknown'),
-                    'quantity': item.get('quantity', 1)
+                    'name': item_name,
+                    'quantity': qty
                 })
             logger.log_transaction(
                 items_list=items_to_log,
@@ -648,8 +745,7 @@ class CartScreen(tk.Frame):
         if self.stock_tracker:
             try:
                 for item in self.controller.cart:
-                    item_name = item.get('name', 'Unknown')
-                    qty = item.get('quantity', 1)
+                    item_name, qty = _extract_cart_entry_name_and_qty(item)
                     
                     result = self.stock_tracker.record_sale(
                         item_name=item_name,
@@ -665,7 +761,7 @@ class CartScreen(tk.Frame):
                         # Show low stock alert to user
                         alert_msg = result['alert'].get('message', 'Stock low')
                         print(f"[CartScreen] STOCK ALERT: {alert_msg}")
-                        messagebox.showwarning('⚠️ Stock Alert', alert_msg)
+                        messagebox.showwarning('âš ï¸ Stock Alert', alert_msg)
                     else:
                         print(f"[CartScreen] Sale recorded for {item_name} (qty: {qty})")
             except Exception as e:
@@ -702,6 +798,13 @@ class CartScreen(tk.Frame):
 
         # Ensure payment flag is reset even if exception occurs
         try:
+            self.payment_completion_scheduled = False
+            if self._complete_after_id:
+                try:
+                    self.after_cancel(self._complete_after_id)
+                except Exception:
+                    pass
+                self._complete_after_id = None
             # If a payment was in progress, stop it and handle returned tuple
             if self.payment_in_progress:
                 try:
@@ -736,3 +839,4 @@ class CartScreen(tk.Frame):
         """Handle cleanup when closing"""
         if hasattr(self, 'payment_handler'):
             self.payment_handler.cleanup()
+

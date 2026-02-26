@@ -1,17 +1,13 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-IR Sensor Test - compatible with ESP32 or Raspberry Pi
+IR Sensor Test - Arduino Uno serial first (with optional Raspberry Pi GPIO mode).
 
-Behavior:
-- If an ESP32 is detected via serial (auto-detect), the script reads lines
-  from the ESP32 and parses IR sensor states printed by the ESP32 firmware.
-- Otherwise it falls back to direct GPIO reads on Raspberry Pi pins.
-
-ESP32 output format expected (examples):
-  IR1 (GPIO34): BLOCKED
-  IR2 (GPIO35): CLEAR
+Expected Arduino serial output:
+  IR1: BLOCKED|CLEAR
+  IR2: BLOCKED|CLEAR
 """
 
+import argparse
 import time
 import sys
 import re
@@ -64,7 +60,7 @@ def read_from_esp32(port, duration=30):
         print(f"[ERROR] Could not open serial port {port}: {e}")
         return
 
-    print(f"✓ Reading IR sensor states from ESP32 on {port} for {duration}s")
+    print(f"âœ“ Reading IR sensor states from ESP32 on {port} for {duration}s")
     print(f"{'Time (s)':>8} | {'IR1 (GPIO34)':>15} | {'IR2 (GPIO35)':>15}")
     print('-' * 48)
 
@@ -115,7 +111,7 @@ def read_from_gpio(duration=30, interval=0.5):
         print(f"[ERROR] Failed to initialize GPIO: {e}")
         return
 
-    print(f"✓ GPIO initialized (GPIO_AVAILABLE={GPIO_AVAILABLE})")
+    print(f"âœ“ GPIO initialized (GPIO_AVAILABLE={GPIO_AVAILABLE})")
     print(f"Reading IR sensors on GPIO {SENSOR_1_PIN} and {SENSOR_2_PIN} for {duration}s")
     print(f"{'Time (s)':>8} | {'Sensor 1':>18} | {'Sensor 2':>18}")
     print('-' * 54)
@@ -135,23 +131,32 @@ def read_from_gpio(duration=30, interval=0.5):
     finally:
         try:
             GPIO.cleanup()
-            print("\n✓ GPIO cleaned up")
+            print("\nâœ“ GPIO cleaned up")
         except Exception as e:
             print(f"\n[WARNING] Error during cleanup: {e}")
 
 
 def main():
+    parser = argparse.ArgumentParser(description="IR sensor test utility")
+    parser.add_argument("--mode", choices=["serial", "gpio"], default="serial")
+    parser.add_argument("--port", default="/dev/ttyUSB0", help="Arduino serial port or 'auto'")
+    parser.add_argument("--duration", type=int, default=30, help="Test duration in seconds")
+    args = parser.parse_args()
+
     print("=" * 50)
-    print("IR Sensor Test - ESP32 / Raspberry Pi Compatible")
+    print("IR Sensor Test - Arduino / Raspberry Pi")
     print("=" * 50)
 
-    # Prefer ESP32 serial if available
-    port = autodetect_esp32_port() if SERIAL_AVAILABLE else None
-    if port:
-        read_from_esp32(port, duration=30)
+    if args.mode == "serial":
+        port = autodetect_esp32_port() if args.port.lower() == "auto" else args.port
+        if not port:
+            print("[ERROR] No serial port found for Arduino IR stream")
+            sys.exit(1)
+        read_from_esp32(port, duration=args.duration)
     else:
-        read_from_gpio(duration=30)
+        read_from_gpio(duration=args.duration)
 
 
 if __name__ == "__main__":
     main()
+

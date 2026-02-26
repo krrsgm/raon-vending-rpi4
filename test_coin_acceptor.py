@@ -13,12 +13,31 @@ Usage examples:
 
 import argparse
 import time
+import re
+
+
+def _autodetect_port():
+    try:
+        import serial.tools.list_ports
+    except Exception:
+        return None
+    ports = list(serial.tools.list_ports.comports())
+    for p in ports:
+        desc = (p.description or "").lower()
+        mfg = (p.manufacturer or "").lower()
+        if any(k in desc or k in mfg for k in ("arduino", "ch340", "cp210", "usb serial", "silicon labs")):
+            return p.device
+    return ports[0].device if ports else None
+
+
+def _resolve_port(port: str):
+    return _autodetect_port() if port.lower() == "auto" else port
 
 
 def run_serial_mode(port: str, baud: int):
     from coin_handler_esp32 import CoinAcceptorESP32
 
-    selected_port = None if port.lower() == "auto" else port
+    selected_port = _resolve_port(port)
     coin = CoinAcceptorESP32(port=selected_port, baudrate=baud)
     print(f"[TEST] Serial mode started (port={port}, baud={baud})")
     print("[TEST] Insert coins. Press Ctrl+C to stop.")
@@ -68,13 +87,55 @@ def run_gpio_mode(gpio_pin: int):
                 pass
 
 
+def run_serial_debug_mode(port: str, baud: int):
+    import serial
+
+    selected_port = _resolve_port(port)
+    if not selected_port:
+        print("[DEBUG] No serial port found")
+        return
+
+    coin_line = re.compile(r"\[COIN\].*", re.IGNORECASE)
+    balance_line = re.compile(r"BALANCE:\s*([-\d.]+)", re.IGNORECASE)
+    bill_line = re.compile(r"BILL\s+INSERTED.*", re.IGNORECASE)
+
+    print(f"[DEBUG] Serial debug mode started (port={selected_port}, baud={baud})")
+    print("[DEBUG] Reading raw Arduino lines + polling GET_BALANCE every 1s. Ctrl+C to stop.")
+
+    last_poll = 0.0
+    try:
+        with serial.Serial(selected_port, baudrate=baud, timeout=0.2) as ser:
+            while True:
+                now = time.time()
+                if now - last_poll >= 1.0:
+                    ser.write(b"GET_BALANCE\n")
+                    ser.flush()
+                    last_poll = now
+
+                line = ser.readline().decode(errors="ignore").strip()
+                if not line:
+                    continue
+
+                ts = time.strftime("%H:%M:%S")
+                if coin_line.search(line):
+                    print(f"[{ts}] [COIN_EVENT] {line}")
+                elif balance_line.search(line):
+                    print(f"[{ts}] [BALANCE] {line}")
+                elif bill_line.search(line):
+                    print(f"[{ts}] [BILL] {line}")
+                else:
+                    print(f"[{ts}] [RAW] {line}")
+    except KeyboardInterrupt:
+        print("\n[DEBUG] Stopping serial debug test...")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Coin acceptor test utility")
     parser.add_argument(
         "--mode",
-        choices=["serial", "gpio"],
+        choices=["serial", "serial-debug", "gpio"],
         default="serial",
-        help="Input mode: 'serial' (Arduino Uno USB) or 'gpio' (Raspberry Pi GPIO)",
+        help="Input mode: 'serial', 'serial-debug', or 'gpio'",
     )
     parser.add_argument(
         "--port",
@@ -87,6 +148,8 @@ def main():
 
     if args.mode == "serial":
         run_serial_mode(args.port, args.baud)
+    elif args.mode == "serial-debug":
+        run_serial_debug_mode(args.port, args.baud)
     else:
         run_gpio_mode(args.gpio_pin)
 

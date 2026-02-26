@@ -129,27 +129,65 @@ def run_serial_debug_mode(port: str, baud: int):
         print("\n[DEBUG] Stopping serial debug test...")
 
 
+def run_serial_status_mode(port: str, baud: int, heartbeat_sec: float):
+    import serial
+
+    selected_port = _resolve_port(port)
+    if not selected_port:
+        print("[STATUS] No serial port found")
+        return
+
+    print(f"[STATUS] Serial status mode started (port={selected_port}, baud={baud})")
+    print("[STATUS] Sending STATUS every 1s. Ctrl+C to stop.")
+
+    last_status = 0.0
+    last_data = time.time()
+    try:
+        with serial.Serial(selected_port, baudrate=baud, timeout=0.2) as ser:
+            while True:
+                now = time.time()
+                if now - last_status >= 1.0:
+                    ser.write(b"STATUS\n")
+                    ser.flush()
+                    last_status = now
+
+                line = ser.readline().decode(errors="ignore").strip()
+                if line:
+                    last_data = now
+                    ts = time.strftime("%H:%M:%S")
+                    print(f"[{ts}] [SERIAL] {line}")
+                elif (now - last_data) >= heartbeat_sec:
+                    ts = time.strftime("%H:%M:%S")
+                    print(f"[{ts}] [HEARTBEAT] No serial data for {heartbeat_sec:.0f}s")
+                    last_data = now
+    except KeyboardInterrupt:
+        print("\n[STATUS] Stopping serial status test...")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Coin acceptor test utility")
     parser.add_argument(
         "--mode",
-        choices=["serial", "serial-debug", "gpio"],
+        choices=["serial", "serial-debug", "serial-status", "gpio"],
         default="serial",
-        help="Input mode: 'serial', 'serial-debug', or 'gpio'",
+        help="Input mode: 'serial', 'serial-debug', 'serial-status', or 'gpio'",
     )
     parser.add_argument(
         "--port",
-        default="/dev/ttyACM0",
+        default="/dev/ttyUSB0",
         help="Serial port for Arduino Uno coin stream (use 'auto' to auto-detect)",
     )
     parser.add_argument("--baud", type=int, default=115200, help="Serial baud rate")
     parser.add_argument("--gpio-pin", type=int, default=17, help="GPIO pin for gpio mode")
+    parser.add_argument("--heartbeat-sec", type=float, default=5.0, help="No-data heartbeat interval in serial-status mode")
     args = parser.parse_args()
 
     if args.mode == "serial":
         run_serial_mode(args.port, args.baud)
     elif args.mode == "serial-debug":
         run_serial_debug_mode(args.port, args.baud)
+    elif args.mode == "serial-status":
+        run_serial_status_mode(args.port, args.baud, args.heartbeat_sec)
     else:
         run_gpio_mode(args.gpio_pin)
 

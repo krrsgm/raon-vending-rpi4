@@ -1,11 +1,11 @@
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox
+import threading
 from payment_handler import PaymentHandler
 from system_status_panel import SystemStatusPanel
 from daily_sales_logger import get_logger
 from arduino_serial_utils import detect_arduino_serial_port
-import threading
 try:
     from stock_tracker import get_tracker
     STOCK_TRACKER_AVAILABLE = True
@@ -506,7 +506,7 @@ class CartScreen(tk.Frame):
             # Update every 100ms while payment is in progress
             self.after(100, lambda: self.update_payment_status(total_amount))
 
-    def _schedule_complete_payment(self, delay_ms=350):
+    def _schedule_complete_payment(self, delay_ms=120):
         """Schedule payment completion once, allowing UI to show the final inserted amount."""
         if self.payment_completion_scheduled or not self.payment_in_progress:
             return
@@ -603,9 +603,20 @@ class CartScreen(tk.Frame):
                         messagebox.showwarning("Change Hopper Alert", message)
                     except Exception:
                         pass
+            # Force redraw so change status is visible during synchronous dispense loop.
+            try:
+                if self.payment_window and self.payment_window.winfo_exists():
+                    self.payment_window.update_idletasks()
+            except Exception:
+                pass
 
         try:
-            self.after(0, _apply_change_status)
+            # If callback runs on UI thread (common during stop_payment_session),
+            # apply immediately so status is not delayed until after window closes.
+            if threading.current_thread() is threading.main_thread():
+                _apply_change_status()
+            else:
+                self.after(0, _apply_change_status)
         except Exception:
             _apply_change_status()
 

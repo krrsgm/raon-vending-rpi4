@@ -362,10 +362,17 @@ class CoinHopper:
         if not self.serial_conn or not self.serial_conn.is_open:
             return False
         try:
-            # STOP halts any active dispense job; CLOSE commands de-energize each line.
-            self.send_command("STOP")
-            self.send_command("CLOSE 1")
-            self.send_command("CLOSE 5")
+            # Use fast best-effort writes to avoid blocking UI handoff on slow/missing replies.
+            with self._lock:
+                for cmd in ("STOP", "CLOSE 1", "CLOSE 5"):
+                    try:
+                        self.serial_conn.write((cmd + '\n').encode('utf-8'))
+                    except Exception:
+                        continue
+                try:
+                    self.serial_conn.flush()
+                except Exception:
+                    pass
             return True
         except Exception as e:
             print(f"[CoinHopper] Error forcing relays off: {e}")

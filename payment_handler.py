@@ -329,14 +329,6 @@ class PaymentHandler:
                     change_status = f"Error: {message}"
             else:
                 change_status = "Change dispenser not available"
-        else:
-            # No change needed: ensure hopper relays remain de-energized.
-            if self.coin_hopper:
-                try:
-                    self.coin_hopper.ensure_relays_off()
-                except Exception:
-                    pass
-        
         if self.coin_acceptor:
             self.coin_acceptor.reset_amount()
         if self.bill_acceptor:

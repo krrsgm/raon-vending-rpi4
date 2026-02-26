@@ -15,6 +15,7 @@ import subprocess
 import platform
 import os
 import sys
+from arduino_serial_utils import detect_arduino_serial_port
 
 # Stock Tracker for inventory management
 try:
@@ -295,8 +296,8 @@ class MainApp(tk.Tk):
                 dht_cfg.get('esp32_port')
                 or ir_cfg.get('esp32_port')
                 or bill_cfg.get('serial_port')
-                or '/dev/ttyUSB0'
             )
+            serial_port = detect_arduino_serial_port(preferred_port=serial_port)
             serial_baud = int(
                 dht_cfg.get('esp32_baud')
                 or ir_cfg.get('esp32_baud')

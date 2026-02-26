@@ -4,6 +4,7 @@ from tkinter import messagebox
 from payment_handler import PaymentHandler
 from system_status_panel import SystemStatusPanel
 from daily_sales_logger import get_logger
+from arduino_serial_utils import detect_arduino_serial_port
 import threading
 try:
     from stock_tracker import get_tracker
@@ -21,8 +22,8 @@ class CartScreen(tk.Frame):
         # If TB74 is connected to the ESP32 and the ESP32 forwards bill events,
         # enable esp32 proxy mode and supply the serial port or host from config.
         bill_cfg = controller.config.get('hardware', {}).get('bill_acceptor', {}) if isinstance(controller.config, dict) else {}
-        # Default to /dev/ttyUSB0 for USB-connected Arduino Uno; can be overridden in config
-        bill_serial = bill_cfg.get('serial_port', '/dev/ttyUSB0')
+        configured_bill_serial = bill_cfg.get('serial_port')
+        bill_serial = detect_arduino_serial_port(preferred_port=configured_bill_serial)
         bill_baud = bill_cfg.get('baudrate') or bill_cfg.get('serial_baud')
         # TB74 is directly connected to Arduino Uno (not proxied through ESP32)
         # It connects via USB serial (default /dev/ttyUSB0)
@@ -34,7 +35,7 @@ class CartScreen(tk.Frame):
         use_gpio_coin = coin_cfg.get('use_gpio', False)
         coin_gpio_pin = coin_cfg.get('gpio_pin', 17)  # Default GPIO 17
         hopper_cfg = controller.config.get('hardware', {}).get('coin_hopper', {}) if isinstance(controller.config, dict) else {}
-        hopper_serial = hopper_cfg.get('serial_port', bill_serial)
+        hopper_serial = detect_arduino_serial_port(preferred_port=hopper_cfg.get('serial_port') or bill_serial)
         hopper_baud = hopper_cfg.get('baudrate', 115200)
 
         self.payment_handler = PaymentHandler(

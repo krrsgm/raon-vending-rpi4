@@ -4,6 +4,7 @@ from coin_hopper import CoinHopper
 import logging
 import platform
 import os
+from arduino_serial_utils import detect_arduino_serial_port
 
 try:
     from bill_acceptor import BillAcceptor
@@ -24,9 +25,9 @@ logger = logging.getLogger(__name__)
 
 class PaymentHandler:
     """Payment handler that manages bill and coin acceptance, plus coin hopper dispensing."""
-    def __init__(self, config, coin_port=None, coin_baud=115200, bill_port='/dev/ttyUSB0',
+    def __init__(self, config, coin_port=None, coin_baud=115200, bill_port=None,
                  bill_baud=None, bill_esp32_mode=False, bill_esp32_serial_port=None, bill_esp32_host=None, bill_esp32_port=5000,
-                 coin_hopper_port='/dev/ttyUSB0', coin_hopper_baud=115200, use_gpio_coin=True, coin_gpio_pin=17):
+                 coin_hopper_port=None, coin_hopper_baud=115200, use_gpio_coin=True, coin_gpio_pin=17):
         """Initialize the payment handler with coin acceptor, bill acceptor, and hoppers.
 
         Args:
@@ -48,6 +49,13 @@ class PaymentHandler:
         # Shared serial reader for Arduino Uno (DHT/IR/coin/bill) if enabled.
         # This avoids multiple consumers opening the same USB serial port.
         shared_reader = None
+        auto_port = detect_arduino_serial_port(preferred_port=coin_port or bill_port or coin_hopper_port)
+        if not coin_port:
+            coin_port = auto_port
+        if not bill_port:
+            bill_port = auto_port
+        if not coin_hopper_port:
+            coin_hopper_port = auto_port
         try:
             hw_cfg = config.get('hardware', {}) if isinstance(config, dict) else {}
             dht_cfg = hw_cfg.get('dht22_sensors', {})

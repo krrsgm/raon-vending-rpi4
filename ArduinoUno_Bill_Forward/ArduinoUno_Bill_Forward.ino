@@ -119,7 +119,7 @@ void stop_motor(int pin) { digitalWrite(pin, RELAY_INACTIVE_LEVEL); }
 // Configure TEC relay active level:
 // - Active-low relay modules (common): set to LOW
 // - Active-high relay modules: set to HIGH
-const int TEC_RELAY_ACTIVE_LEVEL = LOW;
+const int TEC_RELAY_ACTIVE_LEVEL = HIGH;
 const int TEC_RELAY_INACTIVE_LEVEL = (TEC_RELAY_ACTIVE_LEVEL == HIGH) ? LOW : HIGH;
 
 void tec_on() { digitalWrite(TEC_RELAY_PIN, TEC_RELAY_ACTIVE_LEVEL); }
@@ -366,9 +366,6 @@ void countCoinPulse() {
 // --- TEC Control (simple range + humidity trigger) ---
 const float TARGET_TEMP_MIN = 20.0;
 const float TARGET_TEMP_MAX = 25.0;
-// Turn TEC off once temperature drops below this level.
-// This prevents "always-on" behavior in the mid-range after a prior over-temp event.
-const float TARGET_TEMP_OFF = 24.0;
 const float HUMIDITY_THRESHOLD = 60.0;
 
 void update_tec_control(float t1, float h1, float t2, float h2) {
@@ -386,14 +383,19 @@ void update_tec_control(float t1, float h1, float t2, float h2) {
   float avg_temp = temp_sum / temp_count;
   float avg_humid = (humid_count > 0) ? (humid_sum / humid_count) : NAN;
 
-  bool need_on = false;
-  if (avg_temp > TARGET_TEMP_MAX) need_on = true;
-  if (!isnan(avg_humid) && avg_humid > HUMIDITY_THRESHOLD) need_on = true;
+  bool temp_in_off_band = (avg_temp >= TARGET_TEMP_MIN && avg_temp <= TARGET_TEMP_MAX);
+  bool humidity_below_threshold = (!isnan(avg_humid) && avg_humid < HUMIDITY_THRESHOLD);
 
-  if (need_on) {
-    tec_on();
-  } else if (avg_temp <= TARGET_TEMP_OFF && (isnan(avg_humid) || avg_humid <= HUMIDITY_THRESHOLD)) {
+  // Priority OFF rule:
+  // - Turn OFF when temp is in 20-25C band, OR humidity is below 60%.
+  if (temp_in_off_band || humidity_below_threshold) {
     tec_off();
+    return;
+  }
+
+  // Otherwise turn ON only when above thresholds.
+  if (avg_temp > TARGET_TEMP_MAX || (!isnan(avg_humid) && avg_humid > HUMIDITY_THRESHOLD)) {
+    tec_on();
   }
 }
 

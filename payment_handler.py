@@ -326,6 +326,11 @@ class PaymentHandler:
                     change_amount = dispensed
                     change_status = f"Change dispensed: ₱{dispensed}"
                 else:
+                    # Preserve partial dispense amount so UI reflects actual output.
+                    try:
+                        change_amount = max(0, int(dispensed))
+                    except Exception:
+                        change_amount = 0
                     change_status = f"Error: {message}"
             else:
                 change_status = "Change dispenser not available"

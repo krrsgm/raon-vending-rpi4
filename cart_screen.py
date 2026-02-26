@@ -1,4 +1,4 @@
-﻿import tkinter as tk
+import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox
 from payment_handler import PaymentHandler
@@ -300,8 +300,8 @@ class CartScreen(tk.Frame):
             from tkinter import messagebox
             messagebox.showinfo(
                 "Insert Payment",
-                f"Amount due: â‚±{total_amount:.2f}\n\n"
-                "Change will be dispensed using â‚±1 and â‚±5 coins only.",
+                f"Amount due: ₱{total_amount:.2f}\n\n"
+                "Change will be dispensed using ₱1 and ₱5 coins only.",
             )
             # Start payment session
             self.payment_in_progress = True
@@ -376,7 +376,7 @@ class CartScreen(tk.Frame):
             
             tk.Label(
                 amount_frame,
-                text=f"â‚±{total_amount:.2f}",
+                text=f"₱{total_amount:.2f}",
                 font=self.fonts["header"],
                 bg=self.colors["payment_bg"],
                 fg=self.colors["payment_fg"]
@@ -388,7 +388,7 @@ class CartScreen(tk.Frame):
             
             self.payment_status = tk.Label(
                 status_frame,
-                text="Coins: â‚±0.00 | Bills: â‚±0.00\nTotal Received: â‚±0.00\nRemaining: â‚±{:.2f}".format(total_amount),
+                text="Coins: ₱0.00 | Bills: ₱0.00\nTotal Received: ₱0.00\nRemaining: ₱{:.2f}".format(total_amount),
                 font=tkfont.Font(family="Helvetica", size=11),
                 bg=self.colors["payment_bg"],
                 fg=self.colors["payment_fg"],
@@ -418,9 +418,9 @@ class CartScreen(tk.Frame):
             ).pack(pady=(20,5))
             
             coins_text = (
-                "Coins: â€¢ â‚±1 â€¢ â‚±5 â€¢ â‚±10 (Old and New)\n"
-                "Bills: â€¢ â‚±20 â€¢ â‚±50 â€¢ â‚±100\n\n"
-                "Change is dispensed using â‚±1 and â‚±5 coins only."
+                "Coins: â€¢ ₱1 â€¢ ₱5 â€¢ ₱10 (Old and New)\n"
+                "Bills: â€¢ ₱20 â€¢ ₱50 â€¢ ₱100\n\n"
+                "Change is dispensed using ₱1 and ₱5 coins only."
             )
             
             tk.Label(
@@ -481,13 +481,13 @@ class CartScreen(tk.Frame):
                 remaining = total_amount - received
                 
                 if remaining >= 0:
-                    remaining_text = f"Remaining: â‚±{remaining:.2f}"
+                    remaining_text = f"Remaining: ₱{remaining:.2f}"
                 else:
-                    remaining_text = f"Change Due: â‚±{abs(remaining):.2f}"
+                    remaining_text = f"Change Due: ₱{abs(remaining):.2f}"
                 
                 status_text = (
-                    f"Coins: â‚±{coin_amount:.2f} | Bills: â‚±{bill_amount:.2f}\n"
-                    f"Total Received: â‚±{received:.2f}\n"
+                    f"Coins: ₱{coin_amount:.2f} | Bills: ₱{bill_amount:.2f}\n"
+                    f"Total Received: ₱{received:.2f}\n"
                     f"{remaining_text}"
                 )
                 
@@ -532,13 +532,13 @@ class CartScreen(tk.Frame):
         remaining = self.payment_required - amount
 
         if remaining >= 0:
-            remaining_text = f"Remaining: â‚±{remaining:.2f}"
+            remaining_text = f"Remaining: ₱{remaining:.2f}"
         else:
-            remaining_text = f"Change Due: â‚±{abs(remaining):.2f}"
+            remaining_text = f"Change Due: ₱{abs(remaining):.2f}"
 
         status_text = (
-            f"Coins: â‚±{coin_amount:.2f} | Bills: â‚±{bill_amount:.2f}\n"
-            f"Total Received: â‚±{amount:.2f}\n"
+            f"Coins: ₱{coin_amount:.2f} | Bills: ₱{bill_amount:.2f}\n"
+            f"Total Received: ₱{amount:.2f}\n"
             f"{remaining_text}"
         )
 
@@ -635,15 +635,15 @@ class CartScreen(tk.Frame):
         change_due = max(0.0, float(received) - float(self.payment_required))
         status_text = (
             f"Thank you!\n\n"
-            f"Coins received: â‚±{coin_amount:.2f}\n"
-            f"Bills received: â‚±{bill_amount:.2f}\n"
-            f"Total paid: â‚±{received:.2f}\n"
+            f"Coins received: ₱{coin_amount:.2f}\n"
+            f"Bills received: ₱{bill_amount:.2f}\n"
+            f"Total paid: ₱{received:.2f}\n"
             f"\nYour items will now be dispensed."
         )
         if change_due > 0:
             status_text += (
-                f"\n\nChange due: â‚±{change_due:.2f}\n"
-                f"Change dispensed: â‚±{float(change_dispensed):.2f}"
+                f"\n\nChange due: ₱{change_due:.2f}\n"
+                f"Change dispensed: ₱{float(change_dispensed):.2f}"
             )
             if change_status:
                 status_text += f"\n{change_status}"
@@ -766,7 +766,7 @@ class CartScreen(tk.Frame):
                     messagebox.showwarning(
                         "Payment Cancelled",
                         f"Payment cancelled.\n"
-                        f"Please collect your money: â‚±{total_received:.2f}"
+                        f"Please collect your money: ₱{total_received:.2f}"
                     )
         finally:
             # Always reset the flag

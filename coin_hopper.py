@@ -267,27 +267,50 @@ class CoinHopper:
         
         try:
             cmd = f"DISPENSE_DENOM {denomination} {count} {timeout_ms}"
+            denom_label = "ONE" if denomination == 1 else "FIVE"
             if callback:
                 callback(f"Sending: {cmd}")
-            
-            response = self.send_command(cmd)
-            
-            if not response:
-                return (False, 0, "No response from Arduino")
-            
-            if "OK" in response or "DONE" in response:
-                if callback:
-                    callback(f"Dispensing complete: {response}")
-                return (True, count, f"Dispensed {count} {denomination}-peso coins")
-            elif "ERR" in response or "TIMEOUT" in response:
-                match = re.search(r'dispensed:(\d+)', response)
-                dispensed = int(match.group(1)) if match else 0
-                return (False, dispensed, f"Dispensing failed: {response}")
-            else:
-                # Unknown response - log it and return failure
-                print(f"[CoinHopper] Unknown DISPENSE_DENOM response: {response}")
-                return (False, 0, f"Unknown response from coin hopper: {response}")
-                
+
+            if not self.serial_conn or not self.serial_conn.is_open:
+                return (False, 0, "Serial connection not open")
+
+            # Send command and wait for terminal result from Arduino.
+            with self._lock:
+                self.serial_conn.reset_input_buffer()
+                self.serial_conn.reset_output_buffer()
+                self.serial_conn.write((cmd + '\n').encode('utf-8'))
+                self.serial_conn.flush()
+
+                deadline = time.time() + max(1.0, (timeout_ms / 1000.0) + 3.0)
+                while time.time() < deadline:
+                    try:
+                        line_raw = self.serial_conn.readline()
+                        if not line_raw:
+                            continue
+                        line = line_raw.decode('utf-8', errors='ignore').strip()
+                    except Exception:
+                        continue
+
+                    if not line:
+                        continue
+                    if callback:
+                        callback(f"Hopper: {line}")
+
+                    upper = line.upper()
+                    # Success terminal line: DONE ONE <count> / DONE FIVE <count>
+                    if upper.startswith("DONE ") and denom_label in upper:
+                        m = re.search(r'DONE\s+\w+\s+(\d+)', upper)
+                        dispensed = int(m.group(1)) if m else count
+                        return (True, dispensed, f"Dispensed {dispensed} {denomination}-peso coins")
+
+                    # Error terminal lines: ERR TIMEOUT/ERR NO COIN for current denom
+                    if upper.startswith("ERR ") and denom_label in upper:
+                        m = re.search(r'dispensed:\s*(\d+)', line, re.IGNORECASE)
+                        dispensed = int(m.group(1)) if m else 0
+                        return (False, dispensed, f"Dispensing failed: {line}")
+
+                return (False, 0, f"Dispensing timeout waiting for DONE {denom_label}")
+
         except Exception as e:
             error_msg = f"Error dispensing coins: {str(e)}"
             print(f"[CoinHopper] {error_msg}")

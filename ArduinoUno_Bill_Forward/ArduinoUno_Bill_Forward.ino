@@ -110,11 +110,18 @@ String inputBuffer = "";
 //   set RELAY_ACTIVE_LEVEL to HIGH.
 // - If your relay driver is active-low (energized when pin is LOW),
 //   set RELAY_ACTIVE_LEVEL to LOW.
-const int RELAY_ACTIVE_LEVEL = HIGH;
+const int RELAY_ACTIVE_LEVEL = LOW;
 const int RELAY_INACTIVE_LEVEL = (RELAY_ACTIVE_LEVEL == HIGH) ? LOW : HIGH;
 
 void start_motor(int pin) { digitalWrite(pin, RELAY_ACTIVE_LEVEL); }
 void stop_motor(int pin) { digitalWrite(pin, RELAY_INACTIVE_LEVEL); }
+
+void enforce_hopper_output_safety() {
+  // Hard failsafe: hopper outputs are only energized while a dispense job is active.
+  // This prevents latched HIGH outputs from manual/stray commands.
+  digitalWrite(ONE_MOTOR_PIN, job_one.active ? RELAY_ACTIVE_LEVEL : RELAY_INACTIVE_LEVEL);
+  digitalWrite(FIVE_MOTOR_PIN, job_five.active ? RELAY_ACTIVE_LEVEL : RELAY_INACTIVE_LEVEL);
+}
 
 // Configure TEC relay active level:
 // - Active-low relay modules (common): set to LOW
@@ -333,7 +340,7 @@ void countPulse() {
   pulseEvent = true; // set flag; do NOT call Serial from ISR
 }
 
-int mapPulsesToPesos(int pulses) {
+int mapPulsesToPesos(int pulses) {  
   // Allow tolerance range for hardware variability
   if (pulses >= 4 && pulses <= 6) return 50;    // 50 peso bill (accepts 4-6 pulses)
   switch (pulses) {
@@ -403,8 +410,8 @@ void setup(){
   // Initialize coin hopper pins
   pinMode(ONE_MOTOR_PIN, OUTPUT);
   pinMode(FIVE_MOTOR_PIN, OUTPUT);
-  digitalWrite(ONE_MOTOR_PIN, LOW);
-  digitalWrite(FIVE_MOTOR_PIN, LOW);
+  digitalWrite(ONE_MOTOR_PIN, RELAY_INACTIVE_LEVEL);
+  digitalWrite(FIVE_MOTOR_PIN, RELAY_INACTIVE_LEVEL);
   pinMode(ONE_SENSOR_PIN, INPUT);
   pinMode(FIVE_SENSOR_PIN, INPUT);
   
@@ -598,4 +605,7 @@ void loop(){
       last_ir2_state = ir2_state;
     }
   }
+
+  // Always enforce safe hopper output state each loop.
+  enforce_hopper_output_safety();
 }

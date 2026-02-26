@@ -657,15 +657,33 @@ class CartScreen(tk.Frame):
 
         self._destroy_payment_window()
         messagebox.showinfo("Payment Complete", status_text)
+
+        def _extract_cart_entry_name_and_qty(entry):
+            """Normalize cart entry shapes to (item_name, quantity)."""
+            if not isinstance(entry, dict):
+                return "Unknown", 1
+            qty = entry.get('quantity', 1)
+            try:
+                qty = int(qty)
+            except Exception:
+                qty = 1
+            if qty <= 0:
+                qty = 1
+            item_obj = entry.get('item') if isinstance(entry.get('item'), dict) else None
+            item_name = (item_obj or entry).get('name') if isinstance((item_obj or entry), dict) else None
+            if not item_name:
+                item_name = "Unknown"
+            return item_name, qty
         
         # Log the transaction to daily sales log
         try:
             logger = get_logger()
             items_to_log = []
             for item in self.controller.cart:
+                item_name, qty = _extract_cart_entry_name_and_qty(item)
                 items_to_log.append({
-                    'name': item.get('name', 'Unknown'),
-                    'quantity': item.get('quantity', 1)
+                    'name': item_name,
+                    'quantity': qty
                 })
             logger.log_transaction(
                 items_list=items_to_log,
@@ -680,8 +698,7 @@ class CartScreen(tk.Frame):
         if self.stock_tracker:
             try:
                 for item in self.controller.cart:
-                    item_name = item.get('name', 'Unknown')
-                    qty = item.get('quantity', 1)
+                    item_name, qty = _extract_cart_entry_name_and_qty(item)
                     
                     result = self.stock_tracker.record_sale(
                         item_name=item_name,

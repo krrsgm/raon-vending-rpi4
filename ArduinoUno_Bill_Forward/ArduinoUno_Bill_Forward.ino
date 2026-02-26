@@ -116,12 +116,18 @@ const int RELAY_INACTIVE_LEVEL = (RELAY_ACTIVE_LEVEL == HIGH) ? LOW : HIGH;
 void start_motor(int pin) { digitalWrite(pin, RELAY_ACTIVE_LEVEL); }
 void stop_motor(int pin) { digitalWrite(pin, RELAY_INACTIVE_LEVEL); }
 
-void tec_on() { digitalWrite(TEC_RELAY_PIN, HIGH); }
-void tec_off() { digitalWrite(TEC_RELAY_PIN, LOW); }
+// Configure TEC relay active level:
+// - Active-low relay modules (common): set to LOW
+// - Active-high relay modules: set to HIGH
+const int TEC_RELAY_ACTIVE_LEVEL = LOW;
+const int TEC_RELAY_INACTIVE_LEVEL = (TEC_RELAY_ACTIVE_LEVEL == HIGH) ? LOW : HIGH;
+
+void tec_on() { digitalWrite(TEC_RELAY_PIN, TEC_RELAY_ACTIVE_LEVEL); }
+void tec_off() { digitalWrite(TEC_RELAY_PIN, TEC_RELAY_INACTIVE_LEVEL); }
 
 void report_tec_state(Stream &out) {
   out.print("TEC: ");
-  out.println(digitalRead(TEC_RELAY_PIN) == HIGH ? "ON" : "OFF");
+  out.println(digitalRead(TEC_RELAY_PIN) == TEC_RELAY_ACTIVE_LEVEL ? "ON" : "OFF");
 }
 
 // --- Coin Hopper Functions ---
@@ -360,6 +366,9 @@ void countCoinPulse() {
 // --- TEC Control (simple range + humidity trigger) ---
 const float TARGET_TEMP_MIN = 20.0;
 const float TARGET_TEMP_MAX = 25.0;
+// Turn TEC off once temperature drops below this level.
+// This prevents "always-on" behavior in the mid-range after a prior over-temp event.
+const float TARGET_TEMP_OFF = 24.0;
 const float HUMIDITY_THRESHOLD = 60.0;
 
 void update_tec_control(float t1, float h1, float t2, float h2) {
@@ -383,7 +392,7 @@ void update_tec_control(float t1, float h1, float t2, float h2) {
 
   if (need_on) {
     tec_on();
-  } else if (avg_temp < TARGET_TEMP_MIN && (isnan(avg_humid) || avg_humid <= HUMIDITY_THRESHOLD)) {
+  } else if (avg_temp <= TARGET_TEMP_OFF && (isnan(avg_humid) || avg_humid <= HUMIDITY_THRESHOLD)) {
     tec_off();
   }
 }
@@ -409,7 +418,7 @@ void setup(){
   pinMode(IR1_PIN, INPUT_PULLUP);
   pinMode(IR2_PIN, INPUT_PULLUP);
   pinMode(TEC_RELAY_PIN, OUTPUT);
-  digitalWrite(TEC_RELAY_PIN, LOW);
+  digitalWrite(TEC_RELAY_PIN, TEC_RELAY_INACTIVE_LEVEL);
   dht1.begin();
   dht2.begin();
   

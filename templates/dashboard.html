@@ -382,6 +382,9 @@
                 <div class="chart-container">
                     <canvas id="sensorChart"></canvas>
                 </div>
+                <div class="chart-container" style="margin-top: 20px;">
+                    <canvas id="irSensorChart"></canvas>
+                </div>
                 <div class="sensor-stats-grid" id="todayStatsGrid">
                     <div class="sensor-stat-box">
                         <div class="sensor-stat-label">Avg Temp 1</div>
@@ -405,6 +408,9 @@
             <div id="previous-chart" class="tab-content">
                 <div class="chart-container">
                     <canvas id="sensorChartPrevious"></canvas>
+                </div>
+                <div class="chart-container" style="margin-top: 20px;">
+                    <canvas id="irSensorChartPrevious"></canvas>
                 </div>
                 <div class="sensor-stats-grid" id="previousStatsGrid">
                     <div class="sensor-stat-box">
@@ -431,6 +437,8 @@
     <script>
         let sensorChartInstance = null;
         let sensorChartPreviousInstance = null;
+        let irChartInstance = null;
+        let irChartPreviousInstance = null;
         
         // Tab switching functions
         function switchTab(event, tabName) {
@@ -515,6 +523,8 @@
                 const temp2Data = data.readings.map(r => r.temp2 || null);
                 const humidity1Data = data.readings.map(r => r.humidity1 || null);
                 const humidity2Data = data.readings.map(r => r.humidity2 || null);
+                const ir1Data = data.readings.map(r => parseIRValue(r.ir1));
+                const ir2Data = data.readings.map(r => parseIRValue(r.ir2));
                 
                 // Update stats
                 document.getElementById('avgTemp1').textContent = data.stats.avg_temp1.toFixed(1) + '°C';
@@ -524,6 +534,7 @@
                 
                 // Create chart
                 drawSensorChart('sensorChart', timestamps, temp1Data, temp2Data, humidity1Data, humidity2Data, 'Today');
+                drawIRChart('irSensorChart', timestamps, ir1Data, ir2Data, 'Today');
             } catch (error) {
                 console.error('Error loading sensor readings:', error);
             }
@@ -546,6 +557,8 @@
                 const temp2Data = data.readings.map(r => r.temp2 || null);
                 const humidity1Data = data.readings.map(r => r.humidity1 || null);
                 const humidity2Data = data.readings.map(r => r.humidity2 || null);
+                const ir1Data = data.readings.map(r => parseIRValue(r.ir1));
+                const ir2Data = data.readings.map(r => parseIRValue(r.ir2));
                 
                 // Update stats
                 document.getElementById('avgTemp1Prev').textContent = data.stats.avg_temp1.toFixed(1) + '°C';
@@ -555,9 +568,34 @@
                 
                 // Create chart
                 drawSensorChart('sensorChartPrevious', timestamps, temp1Data, temp2Data, humidity1Data, humidity2Data, 'Previous Day (' + data.date + ')');
+                drawIRChart('irSensorChartPrevious', timestamps, ir1Data, ir2Data, 'Previous Day (' + data.date + ')');
             } catch (error) {
                 console.error('Error loading previous day sensor readings:', error);
             }
+        }
+
+        function parseIRValue(rawValue) {
+            if (rawValue === null || rawValue === undefined) {
+                return null;
+            }
+
+            const value = String(rawValue).trim().toLowerCase();
+            if (value === '') {
+                return null;
+            }
+
+            if (value === '1' || value === 'true' || value === 'detected' || value.includes('detect')) {
+                return 1;
+            }
+            if (value === '0' || value === 'false' || value === 'not detected' || value.includes('clear')) {
+                return 0;
+            }
+
+            const numericValue = Number(value);
+            if (!Number.isNaN(numericValue)) {
+                return numericValue > 0 ? 1 : 0;
+            }
+            return null;
         }
         
         // Load low stock alerts
@@ -710,6 +748,87 @@
                 sensorChartInstance = chart;
             } else if (canvasId === 'sensorChartPrevious') {
                 sensorChartPreviousInstance = chart;
+            }
+        }
+
+        function drawIRChart(canvasId, timestamps, ir1Data, ir2Data, label) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+
+            if (canvasId === 'irSensorChart' && irChartInstance) {
+                irChartInstance.destroy();
+            } else if (canvasId === 'irSensorChartPrevious' && irChartPreviousInstance) {
+                irChartPreviousInstance.destroy();
+            }
+
+            const chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: timestamps,
+                    datasets: [
+                        {
+                            label: 'IR Sensor 1',
+                            data: ir1Data,
+                            borderColor: '#8e44ad',
+                            backgroundColor: 'rgba(142, 68, 173, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.1,
+                            pointRadius: 2
+                        },
+                        {
+                            label: 'IR Sensor 2',
+                            data: ir2Data,
+                            borderColor: '#2ecc71',
+                            backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.1,
+                            pointRadius: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        title: {
+                            display: true,
+                            text: 'IR Sensor Readings - ' + label
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: 1,
+                            ticks: {
+                                stepSize: 1,
+                                callback: function(value) {
+                                    return value === 1 ? 'Detected' : 'Clear';
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Detection'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time (HH:MM)'
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (canvasId === 'irSensorChart') {
+                irChartInstance = chart;
+            } else if (canvasId === 'irSensorChartPrevious') {
+                irChartPreviousInstance = chart;
             }
         }
         
@@ -869,9 +988,6 @@
                     document.getElementById('logsContainer').innerHTML = '<div class="log-line">No sales yet today</div>';
                 }
                 
-                // Load sensor readings
-                loadSensorReadings();
-                
                 // Load low stock alerts
                 loadStockAlerts();
                 
@@ -885,10 +1001,12 @@
         
         // Initial load
         updateStatus();
+        loadSensorReadings();
         loadStockAlerts();
         
-        // Auto-refresh every 5 seconds
+        // Auto-refresh status every 5 seconds; sensor readings every 1 hour
         setInterval(updateStatus, 5000);
+        setInterval(loadSensorReadings, 3600000);
         setInterval(loadStockAlerts, 10000);  // Refresh alerts every 10 seconds
     </script>
 </body>

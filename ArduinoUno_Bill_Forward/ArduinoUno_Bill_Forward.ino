@@ -44,14 +44,14 @@ const unsigned long pulseDebounceMs = 60; // debounce interval in ms (INCREASED 
 
 // --- Coin Acceptor (Allan 123A-Pro) ---
 const int COIN_ACCEPTOR_PIN = 3; // D3 (external interrupt)
-volatile unsigned long coinPulseStartUs = 0;
-volatile unsigned long coinPulseWidthUs = 0;
-volatile bool coinPulseReady = false;
-volatile bool coinPulseLow = false;
+volatile unsigned int coinPulseCount = 0;
+volatile unsigned long coinLastPulseMs = 0;
+volatile unsigned long coinLastEdgeUs = 0;
+volatile bool coinCountActive = false;
 unsigned long lastCoinValidMs = 0;
-const unsigned long coinDebounceMs = 80;      // 80ms debounce (matches Pi handler)
-const unsigned long coinMinPulseUs = 15000;   // 15ms
-const unsigned long coinMaxPulseUs = 250000;  // 250ms
+const unsigned long coinDebounceMs = 80;      // debounce between recognized coin events
+const unsigned long coinPulseDebounceUs = 5000; // debounce per pulse edge (5ms)
+const unsigned long coinGroupGapMs = 180;     // gap that ends a pulse train for one coin
 float coin_total = 0.0;
 
 // --- Shared Sensor Bridge Pins ---
@@ -338,28 +338,23 @@ int mapPulsesToPesos(int pulses) {
   }
 }
 
-int mapCoinPulseWidthToValueUs(unsigned long width_us) {
-  // Allan 123A-Pro calibration (same as Raspberry Pi handler)
-  if (width_us >= 50000) return 1;          // >=50ms
-  if (width_us >= 35000) return 5;          // 35-50ms
-  if (width_us >= coinMinPulseUs) return 10; // 15-35ms
+int mapCoinPulseCountToValue(int pulses) {
+  // Pulse-count mode mapping:
+  // 1 pulse = 1 peso, 5 pulses = 5 peso, 10 pulses = 10 peso.
+  if (pulses == 1) return 1;
+  if (pulses == 5) return 5;
+  if (pulses == 10) return 10;
   return 0;
 }
 
 void countCoinPulse() {
-  // Capture pulse width using CHANGE interrupt (active-low pulse)
-  bool isLow = (digitalRead(COIN_ACCEPTOR_PIN) == LOW);
+  // Count pulses on falling edges.
   unsigned long nowUs = micros();
-  if (isLow) {
-    coinPulseStartUs = nowUs;
-    coinPulseLow = true;
-  } else {
-    if (coinPulseLow) {
-      coinPulseWidthUs = nowUs - coinPulseStartUs;
-      coinPulseReady = true;
-      coinPulseLow = false;
-    }
-  }
+  if ((nowUs - coinLastEdgeUs) < coinPulseDebounceUs) return;
+  coinLastEdgeUs = nowUs;
+  coinPulseCount++;
+  coinLastPulseMs = millis();
+  coinCountActive = true;
 }
 
 // --- TEC Control (simple range + humidity trigger) ---
@@ -408,7 +403,7 @@ void setup(){
 
   // Initialize coin acceptor
   pinMode(COIN_ACCEPTOR_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(COIN_ACCEPTOR_PIN), countCoinPulse, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(COIN_ACCEPTOR_PIN), countCoinPulse, FALLING);
 
   // Initialize shared sensor pins
   pinMode(IR1_PIN, INPUT_PULLUP);
@@ -499,29 +494,32 @@ void loop(){
   last_one_state = one_state;
   last_five_state = five_state;
 
-  // --- Coin Acceptor Processing ---
-  if (coinPulseReady) {
-    unsigned long widthUs;
-    noInterrupts();
-    widthUs = coinPulseWidthUs;
-    coinPulseReady = false;
-    interrupts();
+  // --- Coin Acceptor Processing (pulse count mode) ---
+  bool finalizeCoin = false;
+  unsigned int pulses = 0;
+  noInterrupts();
+  if (coinCountActive && (millis() - coinLastPulseMs > coinGroupGapMs)) {
+    pulses = coinPulseCount;
+    coinPulseCount = 0;
+    coinCountActive = false;
+    finalizeCoin = true;
+  }
+  interrupts();
 
-    if (widthUs >= coinMinPulseUs && widthUs <= coinMaxPulseUs) {
-      unsigned long nowMs = millis();
-      if (nowMs - lastCoinValidMs >= coinDebounceMs) {
-        int value = mapCoinPulseWidthToValueUs(widthUs);
-        if (value > 0) {
-          coin_total += (float)value;
-          lastCoinValidMs = nowMs;
-          Serial.print("[COIN] Value: ");
-          Serial.print(value);
-          Serial.print(" Total: ");
-          Serial.println(coin_total, 2);
-        } else {
-          Serial.print("[COIN] Unknown pulse width (us): ");
-          Serial.println(widthUs);
-        }
+  if (finalizeCoin && pulses > 0) {
+    unsigned long nowMs = millis();
+    if (nowMs - lastCoinValidMs >= coinDebounceMs) {
+      int value = mapCoinPulseCountToValue((int)pulses);
+      if (value > 0) {
+        coin_total += (float)value;
+        lastCoinValidMs = nowMs;
+        Serial.print("[COIN] Value: ");
+        Serial.print(value);
+        Serial.print(" Total: ");
+        Serial.println(coin_total, 2);
+      } else {
+        Serial.print("[COIN] Unknown pulse count: ");
+        Serial.println(pulses);
       }
     }
   }

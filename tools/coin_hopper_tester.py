@@ -15,6 +15,7 @@ Features:
 import argparse
 import time
 import sys
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -65,9 +66,24 @@ def relay_test(hopper: CoinHopper, denom: int, count: int, interval: float):
 
 def dispense_test(hopper: CoinHopper, denom: int, count: int, interval: float):
     """Request DISPENSE_DENOM and poll status."""
+    pulse_one = 0
+    pulse_five = 0
+
+    def on_hopper(msg: str):
+        nonlocal pulse_one, pulse_five
+        print("  [HOPPER]", msg)
+        u = (msg or "").upper()
+        m1 = re.search(r'PULSE\s+ONE\s+(\d+)', u)
+        m5 = re.search(r'PULSE\s+FIVE\s+(\d+)', u)
+        if m1:
+            pulse_one = max(pulse_one, int(m1.group(1)))
+        if m5:
+            pulse_five = max(pulse_five, int(m5.group(1)))
+
     print(f"Requesting {count} coin(s) of {denom}-peso using DISPENSE_DENOM")
-    success, dispensed, msg = hopper.dispense_coins(denom, count, timeout_ms=15000)
+    success, dispensed, msg = hopper.dispense_coins(denom, count, timeout_ms=15000, callback=on_hopper)
     print("Result:", success, dispensed, msg)
+    print(f"Sensor pulses seen (pin11=ONE, pin12=FIVE): pin11={pulse_one}, pin12={pulse_five}")
     # Give hardware a moment then poll status
     time.sleep(interval)
     print("COIN_STATUS ->", hopper.get_status())

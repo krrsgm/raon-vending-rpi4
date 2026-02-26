@@ -21,11 +21,11 @@ class CartScreen(tk.Frame):
         # If TB74 is connected to the ESP32 and the ESP32 forwards bill events,
         # enable esp32 proxy mode and supply the serial port or host from config.
         bill_cfg = controller.config.get('hardware', {}).get('bill_acceptor', {}) if isinstance(controller.config, dict) else {}
-        # Default to /dev/ttyACM0 for USB-connected Arduino Uno; can be overridden in config
-        bill_serial = bill_cfg.get('serial_port', '/dev/ttyACM0')
+        # Default to /dev/ttyUSB0 for USB-connected Arduino Uno; can be overridden in config
+        bill_serial = bill_cfg.get('serial_port', '/dev/ttyUSB0')
         bill_baud = bill_cfg.get('baudrate') or bill_cfg.get('serial_baud')
         # TB74 is directly connected to Arduino Uno (not proxied through ESP32)
-        # It connects via USB at /dev/ttyACM0
+        # It connects via USB serial (default /dev/ttyUSB0)
         esp32_mode = False  # Disabled: TB74 is on Arduino USB, not ESP32
         
         # Get coin acceptor config

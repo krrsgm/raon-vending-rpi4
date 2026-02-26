@@ -24,9 +24,9 @@ logger = logging.getLogger(__name__)
 
 class PaymentHandler:
     """Payment handler that manages bill and coin acceptance, plus coin hopper dispensing."""
-    def __init__(self, config, coin_port=None, coin_baud=115200, bill_port='/dev/ttyUSB1',
+    def __init__(self, config, coin_port=None, coin_baud=115200, bill_port='/dev/ttyUSB0',
                  bill_baud=None, bill_esp32_mode=False, bill_esp32_serial_port=None, bill_esp32_host=None, bill_esp32_port=5000,
-                 coin_hopper_port='/dev/ttyUSB1', coin_hopper_baud=115200, use_gpio_coin=True, coin_gpio_pin=17):
+                 coin_hopper_port='/dev/ttyUSB0', coin_hopper_baud=115200, use_gpio_coin=True, coin_gpio_pin=17):
         """Initialize the payment handler with coin acceptor, bill acceptor, and hoppers.
 
         Args:

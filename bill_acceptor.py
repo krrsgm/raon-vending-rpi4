@@ -59,10 +59,12 @@ class BillAcceptor:
         self._dispatcher_thread = threading.Thread(target=self._dispatch_loop, daemon=True)
         self._dispatcher_thread.start()
         self._shared_reader = shared_reader
+        self._base_total = 0.0
         if self._shared_reader:
             try:
                 self._shared_reader.add_bill_callback(self._on_shared_bill_total)
-                self.received_amount = float(self._shared_reader.get_bill_total() or 0.0)
+                self._base_total = float(self._shared_reader.get_bill_total() or 0.0)
+                self.received_amount = 0.0
             except Exception:
                 pass
 
@@ -350,6 +352,12 @@ class BillAcceptor:
         self._callback = callback
 
     def get_received_amount(self):
+        if self._shared_reader:
+            try:
+                total = float(self._shared_reader.get_bill_total() or 0.0)
+                return max(0.0, total - self._base_total)
+            except Exception:
+                return 0.0
         with self._lock:
             return self.received_amount
 
@@ -365,6 +373,21 @@ class BillAcceptor:
         return bills
 
     def reset_amount(self):
+        if self._shared_reader:
+            try:
+                self._base_total = float(self._shared_reader.get_bill_total() or 0.0)
+            except Exception:
+                pass
+            with self._lock:
+                self.received_amount = 0.0
+                while not self.bill_queue.empty():
+                    try:
+                        self.bill_queue.get_nowait()
+                    except Exception:
+                        break
+            print("Bill acceptor amount reset")
+            return
+
         with self._lock:
             self.received_amount = 0.0
             while not self.bill_queue.empty():
@@ -402,8 +425,18 @@ class BillAcceptor:
 
     def _on_shared_bill_total(self, total):
         try:
+            amount = max(0.0, float(total) - self._base_total)
             with self._lock:
-                self.received_amount = float(total)
+                self.received_amount = amount
+                try:
+                    self.bill_queue.put_nowait(amount)
+                except Exception:
+                    pass
+            if self._callback:
+                try:
+                    self._dispatch_queue.put_nowait((amount, None))
+                except Exception:
+                    pass
         except Exception:
             pass
 

@@ -61,6 +61,7 @@ class PaymentHandler:
                 shared_reader = get_shared_serial_reader(port=coin_port or bill_port, baudrate=coin_baud or 115200)
         except Exception:
             shared_reader = None
+        self._shared_reader = shared_reader
 
         # Setup coin acceptor - prefer GPIO-based on Raspberry Pi, fallback to ESP32
         self.coin_acceptor = None
@@ -99,6 +100,13 @@ class PaymentHandler:
         if not self.coin_acceptor:
             print("WARNING: No coin acceptor available (neither GPIO nor ESP32)")
             logger.warning("No coin acceptor available (neither GPIO nor ESP32)")
+        else:
+            # Ensure payment UI receives push updates from coin acceptor in all modes.
+            try:
+                if hasattr(self.coin_acceptor, 'set_callback'):
+                    self.coin_acceptor.set_callback(self._on_coin_update)
+            except Exception:
+                pass
         
         # Setup bill acceptor if available. On non-Linux hosts (e.g., Windows) we
         # prefer to avoid attempting serial/TCP hardware connections unless the

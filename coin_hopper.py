@@ -268,6 +268,7 @@ class CoinHopper:
         try:
             cmd = f"DISPENSE_DENOM {denomination} {count} {timeout_ms}"
             denom_label = "ONE" if denomination == 1 else "FIVE"
+            pulse_prefix = f"PULSE {denom_label}"
             if callback:
                 callback(f"Sending: {cmd}")
 
@@ -281,7 +282,9 @@ class CoinHopper:
                 self.serial_conn.write((cmd + '\n').encode('utf-8'))
                 self.serial_conn.flush()
 
-                deadline = time.time() + max(1.0, (timeout_ms / 1000.0) + 3.0)
+                deadline = time.time() + max(1.0, (timeout_ms / 1000.0) + 8.0)
+                last_pulse_count = 0
+                last_lines = []
                 while time.time() < deadline:
                     try:
                         line_raw = self.serial_conn.readline()
@@ -294,21 +297,38 @@ class CoinHopper:
                     if not line:
                         continue
                     upper = line.upper()
+                    last_lines.append(line)
+                    if len(last_lines) > 8:
+                        last_lines.pop(0)
                     if callback and (upper.startswith("DONE ") or upper.startswith("ERR ") or upper.startswith("OK START")):
                         callback(f"Hopper: {line}")
+                    # Track pulse events as fallback evidence of dispensing progress.
+                    if pulse_prefix in upper:
+                        m = re.search(rf'{re.escape(pulse_prefix)}\s+(\d+)', upper)
+                        if m:
+                            try:
+                                last_pulse_count = max(last_pulse_count, int(m.group(1)))
+                            except Exception:
+                                pass
+                        if callback:
+                            callback(f"Hopper: {line}")
                     # Success terminal line: DONE ONE <count> / DONE FIVE <count>
-                    if upper.startswith("DONE ") and denom_label in upper:
+                    if "DONE " in upper and denom_label in upper:
                         m = re.search(r'DONE\s+\w+\s+(\d+)', upper)
                         dispensed = int(m.group(1)) if m else count
                         return (True, dispensed, f"Dispensed {dispensed} {denomination}-peso coins")
 
                     # Error terminal lines: ERR TIMEOUT/ERR NO COIN for current denom
-                    if upper.startswith("ERR ") and denom_label in upper:
+                    if "ERR " in upper and denom_label in upper:
                         m = re.search(r'dispensed:\s*(\d+)', line, re.IGNORECASE)
                         dispensed = int(m.group(1)) if m else 0
                         return (False, dispensed, f"Dispensing failed: {line}")
 
-                return (False, 0, f"Dispensing timeout waiting for DONE {denom_label}")
+                # If terminal DONE line was missed but pulse count reached target, accept success.
+                if last_pulse_count >= count:
+                    return (True, count, f"Dispensed {count} {denomination}-peso coins (inferred from pulses)")
+                tail = " | ".join(last_lines[-3:]) if last_lines else "no serial lines"
+                return (False, max(0, last_pulse_count), f"Dispensing timeout waiting for DONE {denom_label} (last: {tail})")
 
         except Exception as e:
             error_msg = f"Error dispensing coins: {str(e)}"

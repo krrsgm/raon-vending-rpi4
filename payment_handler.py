@@ -340,6 +340,13 @@ class PaymentHandler:
             if change_int <= 0:
                 change_int = 0
             if change_int > 0 and self.coin_hopper:
+                shared_suspended = False
+                if self._shared_reader and hasattr(self._shared_reader, "suspend"):
+                    try:
+                        self._shared_reader.suspend()
+                        shared_suspended = True
+                    except Exception:
+                        shared_suspended = False
                 if self._change_callback:
                     try:
                         self._change_callback(f"Dispensing change: ₱{change_int}")
@@ -347,11 +354,18 @@ class PaymentHandler:
                         pass
                 # Keep UI responsive: short fallback timeout if serial DONE/ERR lines
                 # are missed even when coins were physically dispensed.
-                success, dispensed, message = self.coin_hopper.dispense_change(
-                    change_int,
-                    timeout_ms=3000,
-                    callback=self._change_callback
-                )
+                try:
+                    success, dispensed, message = self.coin_hopper.dispense_change(
+                        change_int,
+                        timeout_ms=8000,
+                        callback=self._change_callback
+                    )
+                finally:
+                    if shared_suspended and hasattr(self._shared_reader, "resume"):
+                        try:
+                            self._shared_reader.resume()
+                        except Exception:
+                            pass
                 if success:
                     change_amount = dispensed
                     change_status = f"Change dispensed: ₱{dispensed}"

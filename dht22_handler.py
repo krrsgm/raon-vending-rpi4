@@ -48,6 +48,7 @@ class SharedSerialReader(threading.Thread):
         self._balance_poll_interval = 1.0
         self._last_status_poll = 0.0
         self._status_poll_interval = 2.0
+        self.suspended = False
         # Match lines like: "DHT1: 25.0C 60%"
         self.pattern = re.compile(r"(DHT1|DHT2).*?:\s*([\-0-9.]+)\s*C\s*([\-0-9.]+)\s*%?", re.IGNORECASE)
         self.ir1_pattern = re.compile(r"IR1.*?:\s*(BLOCKED|CLEAR)", re.IGNORECASE)
@@ -70,6 +71,9 @@ class SharedSerialReader(threading.Thread):
         while self.running:
             try:
                 if self.ser and self.ser.is_open:
+                    if self.suspended:
+                        time.sleep(0.05)
+                        continue
                     now = time.time()
                     if (now - self._last_balance_poll) >= self._balance_poll_interval:
                         try:
@@ -209,6 +213,12 @@ class SharedSerialReader(threading.Thread):
         self.running = False
         if self.ser and self.ser.is_open:
             self.ser.close()
+
+    def suspend(self):
+        self.suspended = True
+
+    def resume(self):
+        self.suspended = False
 
 
 def _autodetect_serial_port():

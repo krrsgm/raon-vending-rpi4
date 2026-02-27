@@ -633,19 +633,33 @@ class CartScreen(tk.Frame):
             except Exception:
                 pass
             self._complete_after_id = None
-        
-        # Stop payment session and dispense change if needed
-        received, change_dispensed, change_status = self.payment_handler.stop_payment_session(
-            required_amount=self.payment_required
+
+        thread_args = (
+            self.payment_required,
+            list(self.controller.cart),
+            self.coin_received,
+            self.bill_received,
         )
-            
-        # Get individual amounts for final display
-        coin_amount = self.coin_received
-        bill_amount = self.bill_received
-        
-        # Start vending physical items in background so UI stays responsive
+        threading.Thread(target=self._complete_payment_thread, args=thread_args, daemon=True).start()
+
+    def _complete_payment_thread(self, required_amount, cart_snapshot, coin_amount, bill_amount):
+        received, change_dispensed, change_status = self.payment_handler.stop_payment_session(
+            required_amount=required_amount
+        )
+        self.after(0, lambda: self._present_payment_complete(
+            required_amount,
+            received,
+            change_dispensed,
+            change_status,
+            cart_snapshot,
+            coin_amount,
+            bill_amount
+        ))
+
+    def _present_payment_complete(self, required_amount, received, change_dispensed,
+                                  change_status, cart_snapshot, coin_amount, bill_amount):
         try:
-            vend_list = [ {"item": it["item"], "quantity": it["quantity"]} for it in self.controller.cart ]
+            vend_list = [ {"item": it["item"], "quantity": it["quantity"]} for it in cart_snapshot ]
         except Exception:
             vend_list = []
 
@@ -658,7 +672,6 @@ class CartScreen(tk.Frame):
                         if item_obj and item_obj.get('name'):
                             name = item_obj.get('name')
                             print(f"Vending {qty} x {name}...")
-                            # vend_slots_for will handle round-robin if multiple slots assigned (uses 4000ms pulse)
                             try:
                                 self.controller.vend_slots_for(name, qty)
                             except Exception as e:
@@ -673,14 +686,13 @@ class CartScreen(tk.Frame):
         except Exception:
             pass
 
-        # Show final status immediately after payment/change processing.
-        change_due = max(0.0, float(received) - float(self.payment_required))
+        change_due = max(0.0, float(received) - float(required_amount))
         status_text = (
-            f"Thank you!\n\n"
+            "Thank you!\n\n"
             f"Coins received: ₱{coin_amount:.2f}\n"
             f"Bills received: ₱{bill_amount:.2f}\n"
             f"Total paid: ₱{received:.2f}\n"
-            f"\nYour items will now be dispensed."
+            "\nYour items will now be dispensed."
         )
         if change_due > 0:
             status_text += (
@@ -699,9 +711,9 @@ class CartScreen(tk.Frame):
 
         self._destroy_payment_window()
         messagebox.showinfo("Payment Complete", status_text)
-        # Apply stock deductions after popup so completion UI is not delayed.
+
         try:
-            self.controller.apply_cart_stock_deductions(self.controller.cart)
+            self.controller.apply_cart_stock_deductions(cart_snapshot)
         except Exception as e:
             print(f"[CartScreen] Error applying stock deductions: {e}")
 
@@ -726,7 +738,7 @@ class CartScreen(tk.Frame):
         try:
             logger = get_logger()
             items_to_log = []
-            for item in self.controller.cart:
+            for item in cart_snapshot:
                 item_name, qty = _extract_cart_entry_name_and_qty(item)
                 items_to_log.append({
                     'name': item_name,
@@ -744,7 +756,7 @@ class CartScreen(tk.Frame):
         # Record sales in stock tracker for inventory management and alerts
         if self.stock_tracker:
             try:
-                for item in self.controller.cart:
+                for item in cart_snapshot:
                     item_name, qty = _extract_cart_entry_name_and_qty(item)
                     
                     result = self.stock_tracker.record_sale(
@@ -758,7 +770,6 @@ class CartScreen(tk.Frame):
                     if not result['success']:
                         print(f"[CartScreen] Failed to record sale for {item_name}: {result['message']}")
                     elif result['alert']:
-                        # Show low stock alert to user
                         alert_msg = result['alert'].get('message', 'Stock low')
                         print(f"[CartScreen] STOCK ALERT: {alert_msg}")
                         messagebox.showwarning('âš ï¸ Stock Alert', alert_msg)

@@ -258,13 +258,13 @@ class CoinHopper:
         """
         if denomination not in (1, 5):
             return (False, 0, f"Invalid denomination: {denomination}")
-        
+
         if count <= 0:
             return (False, 0, "Count must be greater than 0")
-        
+
         if not self.serial_conn or not self.serial_conn.is_open:
             return (False, 0, "Serial connection not open")
-        
+
         try:
             cmd = f"DISPENSE_DENOM {denomination} {count} {timeout_ms}"
             denom_label = "ONE" if denomination == 1 else "FIVE"
@@ -275,16 +275,17 @@ class CoinHopper:
             if not self.serial_conn or not self.serial_conn.is_open:
                 return (False, 0, "Serial connection not open")
 
-            # Send command and wait for terminal result from Arduino.
-            with self._lock:
-                self.serial_conn.reset_input_buffer()
-                self.serial_conn.reset_output_buffer()
-                self.serial_conn.write((cmd + '\n').encode('utf-8'))
-                self.serial_conn.flush()
+            self.serial_conn.reset_input_buffer()
+            self.serial_conn.reset_output_buffer()
+            self.serial_conn.write((cmd + '\n').encode('utf-8'))
+            self.serial_conn.flush()
 
-                deadline = time.time() + max(1.0, (timeout_ms / 1000.0) + 8.0)
-                last_pulse_count = 0
-                last_lines = []
+            deadline = time.time() + max(1.0, (timeout_ms / 1000.0) + 8.0)
+            last_pulse_count = 0
+            last_lines = []
+            success_result = None
+
+            with self._lock:
                 while time.time() < deadline:
                     try:
                         line_raw = self.serial_conn.readline()
@@ -297,14 +298,12 @@ class CoinHopper:
                     if not line:
                         continue
                     upper = line.upper()
-                    # Keep only hopper-relevant lines to avoid noisy sensor logs in UI errors.
                     if ("DONE " in upper) or ("ERR " in upper) or ("OK START" in upper) or (pulse_prefix in upper):
                         last_lines.append(line)
                         if len(last_lines) > 8:
                             last_lines.pop(0)
                     if callback and (upper.startswith("DONE ") or upper.startswith("ERR ") or upper.startswith("OK START")):
                         callback(f"Hopper: {line}")
-                    # Track pulse events as fallback evidence of dispensing progress.
                     if pulse_prefix in upper:
                         m = re.search(rf'{re.escape(pulse_prefix)}\s+(\d+)', upper)
                         if m:
@@ -317,46 +316,51 @@ class CoinHopper:
                                 callback(f"Hopper: PULSE {denom_label} {last_pulse_count}/{count}")
                             else:
                                 callback(f"Hopper: {line}")
-                    # Success terminal line: DONE ONE <count> / DONE FIVE <count>
+                        if last_pulse_count >= count:
+                            success_result = (True, count, f"Dispensed {count} {denomination}-peso coins (inferred from pulses)")
+                            break
                     if "DONE " in upper and denom_label in upper:
                         m = re.search(r'DONE\s+\w+\s+(\d+)', upper)
                         dispensed = int(m.group(1)) if m else count
-                        return (True, dispensed, f"Dispensed {dispensed} {denomination}-peso coins")
-
-                    # Error terminal lines: ERR TIMEOUT/ERR NO COIN for current denom
+                        success_result = (True, dispensed, f"Dispensed {dispensed} {denomination}-peso coins")
+                        break
                     if "ERR " in upper and denom_label in upper:
                         m = re.search(r'dispensed:\s*(\d+)', line, re.IGNORECASE)
                         dispensed = int(m.group(1)) if m else 0
-                        return (False, dispensed, f"Dispensing failed: {line}")
+                        success_result = (False, dispensed, f"Dispensing failed: {line}")
+                        break
 
-                # If terminal DONE line was missed but pulse count reached target, accept success.
+                if success_result:
+                    return success_result
                 if last_pulse_count >= count:
                     return (True, count, f"Dispensed {count} {denomination}-peso coins (inferred from pulses)")
-                # Fallback: query STATUS to see final counts if DONE/PULSE lines were missed.
-                status = None
-                try:
-                    status = self.send_command("STATUS")
-                except Exception:
-                    status = None
-                if status:
-                    m_one = re.search(r'ONE:(\d+)', status, re.IGNORECASE)
-                    m_five = re.search(r'FIVE:(\d+)', status, re.IGNORECASE)
-                    try:
-                        stat_count = int(m_one.group(1)) if denom_label == "ONE" and m_one else \
-                                     int(m_five.group(1)) if denom_label == "FIVE" and m_five else 0
-                    except Exception:
-                        stat_count = 0
-                    if stat_count >= count:
-                        return (True, count, f"Dispensed {count} {denomination}-peso coins (inferred from STATUS)")
-                    if stat_count > last_pulse_count:
-                        last_pulse_count = stat_count
 
-                if last_lines:
-                    tail = " | ".join(last_lines[-3:])
-                    msg = f"Dispensing timeout waiting for DONE {denom_label}. {tail}"
-                else:
-                    msg = f"Dispensing timeout waiting for DONE {denom_label}"
-                return (False, max(0, last_pulse_count), msg)
+            status = None
+            try:
+                status = self.send_command("STATUS")
+            except Exception:
+                status = None
+            if status:
+                if callback:
+                    callback(f"Hopper: {status}")
+                m_one = re.search(r'ONE:(\d+)', status, re.IGNORECASE)
+                m_five = re.search(r'FIVE:(\d+)', status, re.IGNORECASE)
+                try:
+                    stat_count = int(m_one.group(1)) if denom_label == "ONE" and m_one else \
+                                 int(m_five.group(1)) if denom_label == "FIVE" and m_five else 0
+                except Exception:
+                    stat_count = 0
+                if stat_count >= count:
+                    return (True, count, f"Dispensed {count} {denomination}-peso coins (inferred from STATUS)")
+                if stat_count > last_pulse_count:
+                    last_pulse_count = stat_count
+
+            if last_lines:
+                tail = " | ".join(last_lines[-3:])
+                msg = f"Dispensing timeout waiting for DONE {denom_label}. {tail}"
+            else:
+                msg = f"Dispensing timeout waiting for DONE {denom_label}"
+            return (False, max(0, last_pulse_count), msg)
 
         except Exception as e:
             error_msg = f"Error dispensing coins: {str(e)}"

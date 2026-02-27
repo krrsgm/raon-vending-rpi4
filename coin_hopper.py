@@ -385,9 +385,32 @@ class CoinHopper:
         """
         if not self.serial_conn or not self.serial_conn.is_open:
             return None
-        
-        response = self.send_command("STATUS")
-        return response
+        try:
+            with self._lock:
+                self.serial_conn.reset_input_buffer()
+                self.serial_conn.reset_output_buffer()
+                self.serial_conn.write(b"STATUS\n")
+                self.serial_conn.flush()
+
+                start = time.time()
+                # STATUS command emits multiple lines; pick the canonical status line.
+                while time.time() - start < self.timeout:
+                    if not self.serial_conn.in_waiting:
+                        time.sleep(0.01)
+                        continue
+                    raw = self.serial_conn.readline()
+                    if not raw:
+                        continue
+                    line = raw.decode('utf-8', errors='ignore').strip()
+                    if not line:
+                        continue
+                    upper = line.upper()
+                    if upper.startswith("STATUS "):
+                        return line
+                return None
+        except Exception as e:
+            print(f"[CoinHopper] Error getting STATUS: {e}")
+            return None
 
     def open_hopper(self, denomination):
         """Manually open a hopper.

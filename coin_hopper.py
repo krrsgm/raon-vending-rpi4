@@ -335,26 +335,6 @@ class CoinHopper:
                 if last_pulse_count >= count:
                     return (True, count, f"Dispensed {count} {denomination}-peso coins (inferred from pulses)")
 
-            status = None
-            try:
-                status = self.send_command("STATUS")
-            except Exception:
-                status = None
-            if status:
-                if callback:
-                    callback(f"Hopper: {status}")
-                m_one = re.search(r'ONE:(\d+)', status, re.IGNORECASE)
-                m_five = re.search(r'FIVE:(\d+)', status, re.IGNORECASE)
-                try:
-                    stat_count = int(m_one.group(1)) if denom_label == "ONE" and m_one else \
-                                 int(m_five.group(1)) if denom_label == "FIVE" and m_five else 0
-                except Exception:
-                    stat_count = 0
-                if stat_count >= count:
-                    return (True, count, f"Dispensed {count} {denomination}-peso coins (inferred from STATUS)")
-                if stat_count > last_pulse_count:
-                    last_pulse_count = stat_count
-
             if last_lines:
                 tail = " | ".join(last_lines[-3:])
                 msg = f"Dispensing timeout waiting for DONE {denom_label}. {tail}"

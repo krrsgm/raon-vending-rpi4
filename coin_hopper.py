@@ -313,7 +313,10 @@ class CoinHopper:
                             except Exception:
                                 pass
                         if callback:
-                            callback(f"Hopper: {line}")
+                            if last_pulse_count:
+                                callback(f"Hopper: PULSE {denom_label} {last_pulse_count}/{count}")
+                            else:
+                                callback(f"Hopper: {line}")
                     # Success terminal line: DONE ONE <count> / DONE FIVE <count>
                     if "DONE " in upper and denom_label in upper:
                         m = re.search(r'DONE\s+\w+\s+(\d+)', upper)

@@ -280,7 +280,8 @@ class CoinHopper:
             self.serial_conn.write((cmd + '\n').encode('utf-8'))
             self.serial_conn.flush()
 
-            deadline = time.time() + max(1.0, (timeout_ms / 1000.0) + 8.0)
+            # Keep fallback wait tight so UI completion isn't delayed when DONE is missed.
+            deadline = time.time() + max(1.0, (timeout_ms / 1000.0) + 1.0)
             last_pulse_count = 0
             last_lines = []
             success_result = None
@@ -325,7 +326,12 @@ class CoinHopper:
                         success_result = (True, dispensed, f"Dispensed {dispensed} {denomination}-peso coins")
                         break
                     if "ERR " in upper and denom_label in upper:
+                        # Support multiple Arduino error formats:
+                        # - "ERR TIMEOUT FIVE dispensed:3"
+                        # - "ERR NO COIN FIVE timeout3" (count appended at end)
                         m = re.search(r'dispensed:\s*(\d+)', line, re.IGNORECASE)
+                        if not m:
+                            m = re.search(r'(\d+)\s*$', line)
                         dispensed = int(m.group(1)) if m else 0
                         success_result = (False, dispensed, f"Dispensing failed: {line}")
                         break

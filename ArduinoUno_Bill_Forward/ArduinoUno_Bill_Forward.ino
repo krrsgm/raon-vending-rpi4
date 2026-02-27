@@ -587,7 +587,7 @@ void loop(){
 
   // --- Coin Hopper Job Management ---
   unsigned long now = millis();
-  const unsigned long COIN_TIMEOUT_MS = 8000;
+  const unsigned long COIN_TIMEOUT_MS = 5000;
   if (job_five.active){
     if (five_count >= job_five.target){ stop_motor(FIVE_MOTOR_PIN); job_five.active = false; Serial.print("DONE FIVE "); Serial.println(five_count); if (sequence_active && job_one.target > 0 && !job_one.active){ if (job_one.target > 0){ start_dispense_denon(1, job_one.target, sequence_timeout_ms); } } }
     else if (now - job_five.start_ms > job_five.timeout_ms){ stop_motor(FIVE_MOTOR_PIN); job_five.active = false; Serial.print("ERR TIMEOUT FIVE dispensed:"); Serial.println(five_count); }

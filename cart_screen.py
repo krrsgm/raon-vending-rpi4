@@ -312,6 +312,7 @@ class CartScreen(tk.Frame):
             self.payment_required = total_amount
             self.payment_received = 0.0
             self.change_alert_shown = False
+            self.last_change_status = None
             self.payment_completion_scheduled = False
             self._complete_after_id = None
             # Start payment session and register callbacks for immediate updates

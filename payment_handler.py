@@ -318,6 +318,11 @@ class PaymentHandler:
             if change_int <= 0:
                 change_int = 0
             if change_int > 0 and self.coin_hopper:
+                if self._change_callback:
+                    try:
+                        self._change_callback(f"Dispensing change: ₱{change_int}")
+                    except Exception:
+                        pass
                 success, dispensed, message = self.coin_hopper.dispense_change(
                     change_int,
                     callback=self._change_callback
@@ -325,6 +330,11 @@ class PaymentHandler:
                 if success:
                     change_amount = dispensed
                     change_status = f"Change dispensed: ₱{dispensed}"
+                    if self._change_callback:
+                        try:
+                            self._change_callback(change_status)
+                        except Exception:
+                            pass
                 else:
                     # Preserve partial dispense amount so UI reflects actual output.
                     try:
@@ -332,8 +342,18 @@ class PaymentHandler:
                     except Exception:
                         change_amount = 0
                     change_status = f"Error: {message}"
+                    if self._change_callback:
+                        try:
+                            self._change_callback(change_status)
+                        except Exception:
+                            pass
             else:
                 change_status = "Change dispenser not available"
+                if self._change_callback:
+                    try:
+                        self._change_callback(change_status)
+                    except Exception:
+                        pass
         if self.coin_acceptor:
             self.coin_acceptor.reset_amount()
         if self.bill_acceptor:

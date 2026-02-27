@@ -677,9 +677,19 @@ class CartScreen(tk.Frame):
         threading.Thread(target=self._complete_payment_thread, args=thread_args, daemon=True).start()
 
     def _complete_payment_thread(self, required_amount, cart_snapshot, coin_amount, bill_amount):
-        received, change_dispensed, change_status = self.payment_handler.stop_payment_session(
-            required_amount=required_amount
-        )
+        try:
+            received, change_dispensed, change_status = self.payment_handler.stop_payment_session(
+                required_amount=required_amount
+            )
+        except Exception as e:
+            # Never leave payment UI hanging if hardware/session finalization fails.
+            try:
+                print(f"[CartScreen] ERROR during stop_payment_session: {e}")
+            except Exception:
+                pass
+            received = self.payment_received
+            change_dispensed = 0
+            change_status = f"Error finalizing payment: {e}"
         self.after(0, lambda: self._present_payment_complete(
             required_amount,
             received,

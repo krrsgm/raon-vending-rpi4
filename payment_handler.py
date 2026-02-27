@@ -323,8 +323,11 @@ class PaymentHandler:
                         self._change_callback(f"Dispensing change: ₱{change_int}")
                     except Exception:
                         pass
+                # Keep UI responsive: avoid very long waits if serial DONE/ERR lines
+                # are missed even when coins were physically dispensed.
                 success, dispensed, message = self.coin_hopper.dispense_change(
                     change_int,
+                    timeout_ms=8000,
                     callback=self._change_callback
                 )
                 if success:

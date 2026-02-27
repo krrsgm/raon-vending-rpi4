@@ -332,6 +332,25 @@ class CoinHopper:
                 # If terminal DONE line was missed but pulse count reached target, accept success.
                 if last_pulse_count >= count:
                     return (True, count, f"Dispensed {count} {denomination}-peso coins (inferred from pulses)")
+                # Fallback: query STATUS to see final counts if DONE/PULSE lines were missed.
+                status = None
+                try:
+                    status = self.send_command("STATUS")
+                except Exception:
+                    status = None
+                if status:
+                    m_one = re.search(r'ONE:(\d+)', status, re.IGNORECASE)
+                    m_five = re.search(r'FIVE:(\d+)', status, re.IGNORECASE)
+                    try:
+                        stat_count = int(m_one.group(1)) if denom_label == "ONE" and m_one else \
+                                     int(m_five.group(1)) if denom_label == "FIVE" and m_five else 0
+                    except Exception:
+                        stat_count = 0
+                    if stat_count >= count:
+                        return (True, count, f"Dispensed {count} {denomination}-peso coins (inferred from STATUS)")
+                    if stat_count > last_pulse_count:
+                        last_pulse_count = stat_count
+
                 if last_lines:
                     tail = " | ".join(last_lines[-3:])
                     msg = f"Dispensing timeout waiting for DONE {denom_label}. {tail}"

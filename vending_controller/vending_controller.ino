@@ -30,6 +30,7 @@
 #include <Arduino.h>
 #include <CD74HC4067.h>
 #include "DHT.h"
+#include "esp_timer.h"
 
 // DHT22 sensor configuration
 #define DHTPIN1 36
@@ -38,9 +39,15 @@
 DHT dht1(DHTPIN1, DHTTYPE);
 DHT dht2(DHTPIN2, DHTTYPE);
 
-// IR sensor configuration
+// IR sensor configuration (Sharp GP2Y0A21YK0F analog)
 #define IRPIN1 34
 #define IRPIN2 35
+// Tune for your bin geometry. ESP32 ADC defaults to 12-bit (0-4095).
+// Use hysteresis to avoid flicker.
+const int IR_BLOCKED_THRESHOLD = 2200; // enter BLOCKED
+const int IR_CLEAR_THRESHOLD   = 1900; // return to CLEAR
+const int IR_SAMPLE_COUNT = 5;
+const int IR_SAMPLE_DELAY_MS = 2;
 
 
 // ============================================================================
@@ -64,7 +71,7 @@ const int PWM_DEFAULT_DUTY = 230;    // default speed (~200 of 255)
 // ============================================================================
 // MOTOR PULSE CONFIGURATION
 // ============================================================================
-const unsigned long DEFAULT_PULSE_MS = 4000;  // Default pulse duration (4000ms = 4 seconds)
+const unsigned long DEFAULT_PULSE_MS = 3900;  // Default pulse duration (3900ms = 3.9 seconds)
 // ============================================================================
 // MULTIPLEXER PIN DEFINITIONS
 // ============================================================================
@@ -107,6 +114,13 @@ unsigned long active_until[NUM_OUTPUTS];  // when each pulse expires
 bool outputs_state[NUM_OUTPUTS];          // current ON/OFF state
 String inputBuffer2 = "";                 // RXTX command buffer
 String inputBuffer = "";                  // USB Serial command buffer
+int last_ir1_state = -1;                  // 1 = BLOCKED, 0 = CLEAR
+int last_ir2_state = -1;                  // 1 = BLOCKED, 0 = CLEAR
+
+// Pulse timing handled by a periodic ESP32 timer for consistent motor cutoff.
+const uint64_t PULSE_TIMER_INTERVAL_US = 1000; // 1ms tick
+esp_timer_handle_t pulse_timer = nullptr;
+portMUX_TYPE output_mux = portMUX_INITIALIZER_UNLOCKED;
 
 // --- Coin Acceptor State ---
 volatile float received_amount = 0.0;
@@ -138,6 +152,7 @@ CD74HC4067 mux3(MUX3_S0, MUX3_S1, MUX3_S2, MUX3_S3);
 void setOutput(int idx, bool on);
 void processCommand(String cmd, Stream &out);
 void processCoinCommand(String command);
+void pulse_timer_callback(void *arg);
 
 // ============================================================================
 // COIN ACCEPTOR INTERRUPT HANDLER
@@ -213,6 +228,18 @@ void setup() {
   // Initialize PWM pin for global motor speed control using analogWrite
   pinMode(PWM_PIN, OUTPUT);
   analogWrite(PWM_PIN, PWM_DEFAULT_DUTY);
+
+  // Start periodic pulse timer for consistent motor cutoffs
+  esp_timer_create_args_t pulse_timer_args = {};
+  pulse_timer_args.callback = &pulse_timer_callback;
+  pulse_timer_args.arg = nullptr;
+  pulse_timer_args.dispatch_method = ESP_TIMER_TASK;
+  pulse_timer_args.name = "pulse_timer";
+  if (esp_timer_create(&pulse_timer_args, &pulse_timer) == ESP_OK) {
+    esp_timer_start_periodic(pulse_timer, PULSE_TIMER_INTERVAL_US);
+  } else {
+    Serial.println("ERR: pulse timer init failed");
+  }
   
   Serial.println("==============================================================");
   Serial.println("ESP32 Vending Controller - RXTX + Coin Acceptor");
@@ -236,6 +263,9 @@ void setup() {
   // Initialize IR sensor pins
   pinMode(IRPIN1, INPUT);
   pinMode(IRPIN2, INPUT);
+
+  // Widen ADC range (up to ~3.3V) for Sharp analog outputs.
+  analogSetAttenuation(ADC_11db);
 }
 
 // ============================================================================
@@ -295,18 +325,6 @@ void loop() {
     }
   }
 
-  // Handle pulse timers - turn off outputs when time expires
-  unsigned long now = millis();
-  for (int i = 0; i < NUM_OUTPUTS; i++) {
-    if (active_until[i] != 0 && now >= active_until[i]) {
-      active_until[i] = 0;
-      if (outputs_state[i]) {
-        outputs_state[i] = false;
-        setOutput(i, false);
-      }
-    }
-  }
-
   // Read and print DHT22 and IR sensor values every 2 seconds
   static unsigned long lastSensorRead = 0;
   if (millis() - lastSensorRead > 2000) {
@@ -322,14 +340,33 @@ void loop() {
     Serial.print(t2); Serial.print("C ");
     Serial.print(h2); Serial.println("%");
 
-    // IR sensors
-    int ir1 = digitalRead(IRPIN1);
-    int ir2 = digitalRead(IRPIN2);
+    // IR sensors (analog distance)
+    int ir1 = ir_blocked_from_adc(IRPIN1, last_ir1_state) ? 1 : 0;
+    int ir2 = ir_blocked_from_adc(IRPIN2, last_ir2_state) ? 1 : 0;
     Serial.print("IR1 (GPIO34): ");
-    Serial.println(ir1 == LOW ? "BLOCKED" : "CLEAR");
+    Serial.println(ir1 == 1 ? "BLOCKED" : "CLEAR");
     Serial.print("IR2 (GPIO35): ");
-    Serial.println(ir2 == LOW ? "BLOCKED" : "CLEAR");
+    Serial.println(ir2 == 1 ? "BLOCKED" : "CLEAR");
+    last_ir1_state = ir1;
+    last_ir2_state = ir2;
   }
+}
+
+int read_ir_avg(int pin) {
+  long sum = 0;
+  for (int i = 0; i < IR_SAMPLE_COUNT; i++) {
+    sum += analogRead(pin);
+    delay(IR_SAMPLE_DELAY_MS);
+  }
+  return (int)(sum / IR_SAMPLE_COUNT);
+}
+
+bool ir_blocked_from_adc(int pin, int last_state) {
+  int reading = read_ir_avg(pin);
+  if (last_state == 1) {
+    return reading >= IR_CLEAR_THRESHOLD;
+  }
+  return reading >= IR_BLOCKED_THRESHOLD;
 }
 
 // ============================================================================
@@ -339,6 +376,7 @@ void loop() {
 void setOutput(int idx, bool on) {
   if (idx < 0 || idx >= NUM_OUTPUTS) return;
 
+  portENTER_CRITICAL(&output_mux);
   // Determine which multiplexer and channel
   int mux_num = idx / MOTORS_PER_MUX;      // 0-3
   int channel = idx % MOTORS_PER_MUX;      // 0-15
@@ -363,6 +401,20 @@ void setOutput(int idx, bool on) {
     default:
       // Out of range for this firmware (supports 0..47 indices)
       break;
+  }
+  portEXIT_CRITICAL(&output_mux);
+}
+
+void pulse_timer_callback(void *arg) {
+  (void)arg;
+  unsigned long now = millis();
+  for (int i = 0; i < NUM_OUTPUTS; i++) {
+    if (active_until[i] != 0 && now >= active_until[i]) {
+      active_until[i] = 0;
+      if (outputs_state[i]) {
+        setOutput(i, false);
+      }
+    }
   }
 }
 

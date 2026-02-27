@@ -23,7 +23,7 @@
   Added shared Arduino Uno sensor bridge:
   - Coin acceptor on D3
   - DHT22 on D4/D5
-  - IR sensors on D6/D7
+  - IR sensors (Sharp GP2Y0A21YK0F analog) on A0/A1
   - TEC relay on D8
 */
 
@@ -57,8 +57,15 @@ float coin_total = 0.0;
 // --- Shared Sensor Bridge Pins ---
 const int DHT1_PIN = 4; // D4
 const int DHT2_PIN = 5; // D5
-const int IR1_PIN = 6;  // D6
-const int IR2_PIN = 7;  // D7
+const int IR1_PIN = A0;  // Analog input
+const int IR2_PIN = A1;  // Analog input
+// Sharp GP2Y0A21YK0F outputs higher voltage when an object is closer.
+// Calibrate thresholds for your chute geometry (max distance ~26cm).
+// Use a little hysteresis to avoid flicker.
+const int IR_BLOCKED_THRESHOLD = 350; // 0-1023 (5V ADC), enter BLOCKED
+const int IR_CLEAR_THRESHOLD   = 300; // 0-1023 (5V ADC), return to CLEAR
+const int IR_SAMPLE_COUNT = 5;
+const int IR_SAMPLE_DELAY_MS = 2;
 const int TEC_RELAY_PIN = 8; // D8
 
 #define DHTTYPE DHT22
@@ -66,8 +73,8 @@ DHT dht1(DHT1_PIN, DHTTYPE);
 DHT dht2(DHT2_PIN, DHTTYPE);
 unsigned long lastDhtMs = 0;
 const unsigned long DHT_INTERVAL_MS = 2000;
-int last_ir1_state = HIGH;
-int last_ir2_state = HIGH;
+int last_ir1_state = -1; // 1 = BLOCKED, 0 = CLEAR
+int last_ir2_state = -1; // 1 = BLOCKED, 0 = CLEAR
 unsigned long last_motor_active_ms = 0;
 const unsigned long IR_ARM_DELAY_MS = 800; // wait after motors stop before reporting IR
 
@@ -204,9 +211,26 @@ void report_balance() {
   report_balance(Serial);
 }
 
+int read_ir_avg(int pin) {
+  long sum = 0;
+  for (int i = 0; i < IR_SAMPLE_COUNT; i++) {
+    sum += analogRead(pin);
+    delay(IR_SAMPLE_DELAY_MS);
+  }
+  return (int)(sum / IR_SAMPLE_COUNT);
+}
+
+bool ir_blocked_from_adc(int pin, int last_state) {
+  int reading = read_ir_avg(pin);
+  if (last_state == 1) {
+    return reading >= IR_CLEAR_THRESHOLD;
+  }
+  return reading >= IR_BLOCKED_THRESHOLD;
+}
+
 void report_ir_state(Stream &out) {
-  bool ir1_blocked = (digitalRead(IR1_PIN) == LOW);
-  bool ir2_blocked = (digitalRead(IR2_PIN) == LOW);
+  bool ir1_blocked = ir_blocked_from_adc(IR1_PIN, last_ir1_state);
+  bool ir2_blocked = ir_blocked_from_adc(IR2_PIN, last_ir2_state);
   out.print("IR1: ");
   out.println(ir1_blocked ? "BLOCKED" : "CLEAR");
   out.print("IR2: ");
@@ -443,8 +467,8 @@ void setup(){
   attachInterrupt(digitalPinToInterrupt(COIN_ACCEPTOR_PIN), countCoinPulse, FALLING);
 
   // Initialize shared sensor pins
-  pinMode(IR1_PIN, INPUT_PULLUP);
-  pinMode(IR2_PIN, INPUT_PULLUP);
+  pinMode(IR1_PIN, INPUT);
+  pinMode(IR2_PIN, INPUT);
   pinMode(TEC_RELAY_PIN, OUTPUT);
   digitalWrite(TEC_RELAY_PIN, TEC_RELAY_INACTIVE_LEVEL);
   dht1.begin();
@@ -628,16 +652,16 @@ void loop(){
 
   // Suppress IR reporting while motors are active and for a short settle period after
   if (now_ms - last_motor_active_ms >= IR_ARM_DELAY_MS) {
-    int ir1_state = digitalRead(IR1_PIN);
-    int ir2_state = digitalRead(IR2_PIN);
+    int ir1_state = ir_blocked_from_adc(IR1_PIN, last_ir1_state) ? 1 : 0;
+    int ir2_state = ir_blocked_from_adc(IR2_PIN, last_ir2_state) ? 1 : 0;
     if (ir1_state != last_ir1_state) {
       Serial.print("IR1: ");
-      Serial.println(ir1_state == LOW ? "BLOCKED" : "CLEAR");
+      Serial.println(ir1_state == 1 ? "BLOCKED" : "CLEAR");
       last_ir1_state = ir1_state;
     }
     if (ir2_state != last_ir2_state) {
       Serial.print("IR2: ");
-      Serial.println(ir2_state == LOW ? "BLOCKED" : "CLEAR");
+      Serial.println(ir2_state == 1 ? "BLOCKED" : "CLEAR");
       last_ir2_state = ir2_state;
     }
   }

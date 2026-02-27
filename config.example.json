@@ -86,11 +86,11 @@
       "esp32_baud": 115200,
       "sensor_1": {
         "enabled": true,
-        "gpio_pin": 6
+        "gpio_pin": 34
       },
       "sensor_2": {
         "enabled": true,
-        "gpio_pin": 5
+        "gpio_pin": 35
       },
       "dispense_timeout": 10.0,
       "detection_mode": "any",

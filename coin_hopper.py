@@ -346,6 +346,30 @@ class CoinHopper:
                 msg = f"Dispensing timeout waiting for DONE {denom_label}. {tail}"
             else:
                 msg = f"Dispensing timeout waiting for DONE {denom_label}"
+            # Fallback: ask Arduino STATUS and use sensor counters when DONE/PULSE
+            # lines were missed on serial but dispensing physically occurred.
+            status_line = self.get_status()
+            status_count = None
+            if status_line:
+                m = re.search(r'ONE:(\d+).*FIVE:(\d+)', status_line, re.IGNORECASE)
+                if m:
+                    try:
+                        one_seen = int(m.group(1))
+                        five_seen = int(m.group(2))
+                        status_count = one_seen if denomination == 1 else five_seen
+                    except Exception:
+                        status_count = None
+            if status_count is not None:
+                dispensed = max(last_pulse_count, max(0, status_count))
+                if callback:
+                    try:
+                        callback(f"Hopper: STATUS inferred {denom_label} {dispensed}/{count}")
+                    except Exception:
+                        pass
+                if dispensed >= count:
+                    return (True, count, f"Dispensed {count} {denomination}-peso coins (inferred from STATUS)")
+                return (False, dispensed, msg)
+
             return (False, max(0, last_pulse_count), msg)
 
         except Exception as e:

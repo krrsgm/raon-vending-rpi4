@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox
 import threading
+import re
 from payment_handler import PaymentHandler
 from system_status_panel import SystemStatusPanel
 from daily_sales_logger import get_logger
@@ -57,6 +58,7 @@ class CartScreen(tk.Frame):
         self.payment_received = 0.0
         self.payment_required = 0.0
         self.change_label = None  # Will be created in the payment window
+        self.change_progress_label = None  # Live hopper pulse progress in payment window
         self.change_alert_shown = False  # Prevent duplicate hopper timeout alerts
         self.last_change_status = None  # Deduplicate noisy hopper status messages
         self.payment_completion_scheduled = False
@@ -414,6 +416,17 @@ class CartScreen(tk.Frame):
                 fg=self.colors["payment_fg"]
             )
             self.change_label.pack_forget()  # Hidden until change is dispensed
+
+            self.change_progress_label = tk.Label(
+                status_frame,
+                text="",
+                font=tkfont.Font(family="Helvetica", size=11),
+                bg=self.colors["payment_bg"],
+                fg=self.colors["text_fg"],
+                justify=tk.LEFT,
+                anchor='w'
+            )
+            self.change_progress_label.pack_forget()  # Hidden until first pulse update
             
             # Accepted coins info
             tk.Label(
@@ -594,6 +607,26 @@ class CartScreen(tk.Frame):
             if self.change_label:
                 self.change_label.config(text=message)
                 self.change_label.pack()  # Make visible
+            # Show parsed live pulse progress (x/y) from hopper callback lines.
+            if self.change_progress_label:
+                pulse_match = re.search(r'PULSE\s+(ONE|FIVE)\s+(\d+)\s*/\s*(\d+)', str(message), re.IGNORECASE)
+                if pulse_match:
+                    denom = pulse_match.group(1).upper()
+                    current = pulse_match.group(2)
+                    target = pulse_match.group(3)
+                    value = "₱1" if denom == "ONE" else "₱5"
+                    self.change_progress_label.config(
+                        text=f"Dispense progress ({value}): {current}/{target}"
+                    )
+                    self.change_progress_label.pack()
+                else:
+                    upper = str(message).upper()
+                    if "CHANGE DISPENSED" in upper:
+                        self.change_progress_label.config(text="Dispense progress: Completed")
+                        self.change_progress_label.pack()
+                    elif "ERROR" in upper or "NO COIN" in upper or "TIMEOUT" in upper:
+                        self.change_progress_label.config(text="Dispense progress: Stopped")
+                        self.change_progress_label.pack()
 
             # Show explicit alert when hopper reports no-coin timeout.
             if message and not self.change_alert_shown:

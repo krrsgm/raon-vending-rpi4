@@ -1,5 +1,4 @@
 from threading import Lock
-from coin_handler_esp32 import CoinAcceptorESP32
 from coin_hopper import CoinHopper
 import logging
 import platform
@@ -16,12 +15,64 @@ try:
 except Exception:
     get_shared_serial_reader = None
 
-try:
-    from coin_handler import CoinAcceptor
-except ImportError:
-    CoinAcceptor = None
-
 logger = logging.getLogger(__name__)
+
+class SharedReaderCoinAcceptor:
+    """Coin acceptor adapter backed by SharedSerialReader coin totals."""
+    def __init__(self, shared_reader):
+        self._shared_reader = shared_reader
+        self._callback = None
+        self._base_total = 0.0
+        self._last_amount = 0.0
+        self._lock = Lock()
+        try:
+            self._base_total = float(self._shared_reader.get_coin_total() or 0.0)
+        except Exception:
+            self._base_total = 0.0
+        try:
+            self._shared_reader.add_coin_callback(self._on_shared_coin_total)
+        except Exception:
+            pass
+
+    def _on_shared_coin_total(self, total):
+        try:
+            amount = max(0.0, float(total) - self._base_total)
+        except Exception:
+            amount = 0.0
+        callback = None
+        with self._lock:
+            self._last_amount = amount
+            callback = self._callback
+        if callback:
+            try:
+                callback(amount)
+            except Exception:
+                pass
+
+    def set_callback(self, callback):
+        with self._lock:
+            self._callback = callback
+
+    def get_received_amount(self):
+        try:
+            total = float(self._shared_reader.get_coin_total() or 0.0)
+            amount = max(0.0, total - self._base_total)
+        except Exception:
+            amount = 0.0
+        with self._lock:
+            self._last_amount = amount
+            return self._last_amount
+
+    def reset_amount(self):
+        try:
+            self._base_total = float(self._shared_reader.get_coin_total() or 0.0)
+        except Exception:
+            self._base_total = 0.0
+        with self._lock:
+            self._last_amount = 0.0
+
+    def cleanup(self):
+        return
 
 class PaymentHandler:
     """Payment handler that manages bill and coin acceptance, plus coin hopper dispensing."""
@@ -57,57 +108,28 @@ class PaymentHandler:
         if not coin_hopper_port:
             coin_hopper_port = auto_port
         try:
-            hw_cfg = config.get('hardware', {}) if isinstance(config, dict) else {}
-            dht_cfg = hw_cfg.get('dht22_sensors', {})
-            ir_cfg = hw_cfg.get('ir_sensors', {})
-            use_shared = bool(
-                dht_cfg.get('use_esp32_serial', False)
-                or ir_cfg.get('use_esp32_serial', False)
-                or (not use_gpio_coin)
-            )
+            # Coin/bill/hopper are read from Arduino Uno serial in this build.
+            use_shared = True
             if use_shared and get_shared_serial_reader:
                 shared_reader = get_shared_serial_reader(port=coin_port or bill_port, baudrate=coin_baud or 115200)
         except Exception:
             shared_reader = None
         self._shared_reader = shared_reader
 
-        # Setup coin acceptor - prefer GPIO-based on Raspberry Pi, fallback to ESP32
+        # Setup coin acceptor from Arduino Uno shared serial only.
         self.coin_acceptor = None
-        self.use_gpio_coin = use_gpio_coin and (platform.system() == 'Linux' or CoinAcceptor is not None)
-        
-        if self.use_gpio_coin and CoinAcceptor:
+        # Final fallback: use shared serial reader directly for Arduino Uno coin totals.
+        if shared_reader is not None:
             try:
-                self.coin_acceptor = CoinAcceptor(coin_pin=coin_gpio_pin, counter_pin=None)
-                print(f"DEBUG: GPIO coin acceptor initialized on GPIO {coin_gpio_pin}")
-                logger.info(f"GPIO coin acceptor initialized on GPIO {coin_gpio_pin}")
-                
-                # Register callback for coin updates if available
-                try:
-                    if hasattr(self.coin_acceptor, 'set_callback'):
-                        self.coin_acceptor.set_callback(self._on_coin_update)
-                        print(f"DEBUG: Coin acceptor callback registered")
-                except Exception as e:
-                    print(f"DEBUG: Failed to register coin acceptor callback: {e}")
-                    
+                self.coin_acceptor = SharedReaderCoinAcceptor(shared_reader)
+                logger.info("Shared serial coin acceptor initialized from Arduino reader")
             except Exception as e:
-                print(f"DEBUG: Failed to initialize GPIO coin acceptor: {e}")
-                logger.warning(f"Failed to initialize GPIO coin acceptor: {e}")
-                self.coin_acceptor = None
-        
-        # Fallback to ESP32-based coin acceptor if GPIO failed
-        if not self.coin_acceptor and not self.use_gpio_coin:
-            try:
-                self.coin_acceptor = CoinAcceptorESP32(port=coin_port, baudrate=coin_baud, shared_reader=shared_reader)
-                print(f"DEBUG: ESP32 coin acceptor initialized")
-                logger.info("ESP32 coin acceptor initialized")
-            except Exception as e:
-                print(f"DEBUG: Failed to initialize ESP32 coin acceptor: {e}")
-                logger.warning(f"Failed to initialize ESP32 coin acceptor: {e}")
+                logger.warning(f"Failed to initialize shared-serial coin acceptor: {e}")
         
         # Ensure coin acceptor is initialized
         if not self.coin_acceptor:
-            print("WARNING: No coin acceptor available (neither GPIO nor ESP32)")
-            logger.warning("No coin acceptor available (neither GPIO nor ESP32)")
+            print("WARNING: No coin acceptor available from Arduino shared serial")
+            logger.warning("No coin acceptor available from Arduino shared serial")
         else:
             # Ensure payment UI receives push updates from coin acceptor in all modes.
             try:

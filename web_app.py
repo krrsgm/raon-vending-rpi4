@@ -222,6 +222,24 @@ def _resolve_sale_item_name(sale):
     return "Unknown Item"
 
 
+def _resolve_logs_dir():
+    """Resolve logs directory reliably regardless of current working directory."""
+    try:
+        logger_inst = get_logger() if get_logger else None
+        if logger_inst and getattr(logger_inst, 'logs_dir', None):
+            return logger_inst.logs_dir
+    except Exception:
+        pass
+
+    try:
+        if get_absolute_path:
+            return get_absolute_path('logs')
+    except Exception:
+        pass
+
+    return 'logs'
+
+
 # ============================================================================
 # ROUTES - INVENTORY DASHBOARD (Multi-Machine)
 # ============================================================================
@@ -368,8 +386,8 @@ def api_sensor_readings():
         from datetime import datetime as dt
         date_str = request.args.get('date', dt.now().strftime("%Y-%m-%d"))
         
-        # Try to find sensor data logger
-        sensor_log_dir = 'logs'  # Default logs directory
+        # Resolve logs folder robustly (service/cwd-safe)
+        sensor_log_dir = _resolve_logs_dir()
         sensor_log_file = os.path.join(sensor_log_dir, f"sensor_data_{date_str}.csv")
         
         if not os.path.exists(sensor_log_file):
@@ -443,8 +461,8 @@ def api_sensor_readings_previous_day():
         from datetime import datetime as dt
         yesterday = (dt.now() - timedelta(days=1)).strftime("%Y-%m-%d")
         
-        # Try to find sensor data logger
-        sensor_log_dir = 'logs'  # Default logs directory
+        # Resolve logs folder robustly (service/cwd-safe)
+        sensor_log_dir = _resolve_logs_dir()
         sensor_log_file = os.path.join(sensor_log_dir, f"sensor_data_{yesterday}.csv")
         
         if not os.path.exists(sensor_log_file):

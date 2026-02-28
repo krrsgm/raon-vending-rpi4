@@ -113,15 +113,21 @@ current_payment_session = {
 }
 
 
+def should_init_payment_handler(config):
+    """Web app must never own payment hardware; main.py is the hardware owner."""
+    return False
+
+
 def init_payment_handler(config):
     """Initialize the payment handler with config."""
     global payment_handler
     try:
         if PaymentHandler:
+            coin_cfg = config.get('hardware', {}).get('coin_acceptor', {}) if isinstance(config, dict) else {}
             payment_handler = PaymentHandler(
                 config=config,
-                use_gpio_coin=True,
-                coin_gpio_pin=config.get('hardware', {}).get('coin_acceptor', {}).get('gpio_pin', 17)
+                use_gpio_coin=bool(coin_cfg.get('use_gpio', False)),
+                coin_gpio_pin=coin_cfg.get('gpio_pin', 17)
             )
             logger.info("Payment handler initialized")
             return True
@@ -1168,7 +1174,10 @@ def create_app_with_db():
             db.session.commit()
             logger.info(f"Created default machine: {machine_id}")
         
-        init_payment_handler(config)
+        if should_init_payment_handler(config):
+            init_payment_handler(config)
+        else:
+            logger.info("Skipping PaymentHandler in web_app (hard-disabled; use main.py for hardware).")
         logger.info("Web app initialized")
     return app
 

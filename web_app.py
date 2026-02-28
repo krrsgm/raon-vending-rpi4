@@ -240,6 +240,118 @@ def _resolve_logs_dir():
     return 'logs'
 
 
+def _extract_log_seconds(text):
+    """Extract HH:MM:SS from a log line and return seconds since midnight."""
+    try:
+        m = re.search(r'(\d{2}):(\d{2}):(\d{2})', str(text))
+        if not m:
+            return None
+        hh, mm, ss = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return (hh * 3600) + (mm * 60) + ss
+    except Exception:
+        return None
+
+
+def _extract_item_name_from_sale_log(text):
+    """Best-effort parse of item name from a sale log line."""
+    try:
+        s = str(text).strip()
+        # Example: [12:34:56] Soda x2 - ?40.00
+        m = re.search(r'\]\s*(.*?)\s*-\s*.*?\d', s)
+        if not m:
+            return None
+        name = m.group(1).strip()
+        return name if name else None
+    except Exception:
+        return None
+
+
+def _parse_ir_detected(value):
+    """Parse IR CSV cell to detection bool (True/False/None unknown)."""
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if not text:
+        return None
+    if text in ('1', 'true', 'detected', 'blocked', 'high'):
+        return True
+    if text in ('0', 'false', 'not detected', 'clear', 'low'):
+        return False
+    if 'detect' in text or 'block' in text:
+        return True
+    if 'clear' in text:
+        return False
+    try:
+        return float(text) > 0
+    except Exception:
+        return None
+
+
+def _build_ir_dispense_logs(date_str, sales_struct):
+    """Build IR dispense event log lines and optionally map nearest sale item."""
+    sensor_log_file = os.path.join(_resolve_logs_dir(), f"sensor_data_{date_str}.csv")
+    if not os.path.exists(sensor_log_file):
+        return []
+
+    sale_candidates = [
+        s for s in sales_struct
+        if s.get('seconds') is not None and s.get('item_name')
+    ]
+
+    ir_logs = []
+    prev_ir1 = None
+    prev_ir2 = None
+
+    try:
+        import csv
+        with open(sensor_log_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                ir1 = _parse_ir_detected(row.get('IR_Sensor1_Detection'))
+                ir2 = _parse_ir_detected(row.get('IR_Sensor2_Detection'))
+
+                fired = []
+                if ir1 is True and prev_ir1 is not True:
+                    fired.append('IR1')
+                if ir2 is True and prev_ir2 is not True:
+                    fired.append('IR2')
+
+                prev_ir1 = ir1
+                prev_ir2 = ir2
+
+                if not fired:
+                    continue
+
+                ts_raw = row.get('DateTime', row.get('Timestamp', '')) or ''
+                sec = _extract_log_seconds(ts_raw)
+                hhmmss = '??:??:??'
+                m = re.search(r'(\d{2}:\d{2}:\d{2})', str(ts_raw))
+                if m:
+                    hhmmss = m.group(1)
+
+                item_hint = None
+                if sec is not None and sale_candidates:
+                    nearest = min(sale_candidates, key=lambda s: abs(s['seconds'] - sec))
+                    if abs(nearest['seconds'] - sec) <= 30:
+                        item_hint = nearest.get('item_name')
+
+                ir_text = '/'.join(fired)
+                if item_hint:
+                    line = f"[{hhmmss}] DISPENSE DETECTED ({ir_text}) - Item: {item_hint}"
+                else:
+                    line = f"[{hhmmss}] DISPENSE DETECTED ({ir_text})"
+
+                ir_logs.append({
+                    'line': line,
+                    'seconds': sec
+                })
+    except Exception as e:
+        logger.error(f"Error building IR dispense logs: {e}")
+        return []
+
+    return ir_logs
+
+
 # ============================================================================
 # ROUTES - INVENTORY DASHBOARD (Multi-Machine)
 # ============================================================================
@@ -310,20 +422,41 @@ def api_sales_logs():
         logs_dir = logger_inst.logs_dir
         log_file = os.path.join(logs_dir, f"sales_{date_str}.log")
         
-        if not os.path.exists(log_file):
-            return jsonify({'logs': [], 'date': date_str}), 200
-        
         logs = []
-        try:
-            with open(log_file, 'r', encoding='utf-8') as f:
-                logs = _filter_dashboard_sales_logs(f.readlines())
-        except Exception as e:
-            logger.error(f"Error reading log file: {e}")
-        
+        if os.path.exists(log_file):
+            try:
+                with open(log_file, 'r', encoding='utf-8') as f:
+                    logs = _filter_dashboard_sales_logs(f.readlines())
+            except Exception as e:
+                logger.error(f"Error reading log file: {e}")
+
+        # Build structured sales lines first so we can match nearby IR dispense events.
+        sales_struct = []
+        for line in logs:
+            sales_struct.append({
+                'line': str(line).strip(),
+                'seconds': _extract_log_seconds(line),
+                'item_name': _extract_item_name_from_sale_log(line)
+            })
+
+        ir_struct = _build_ir_dispense_logs(date_str, sales_struct)
+
+        # Merge + sort by time (fallback keeps stable order for unknown timestamps).
+        merged = sales_struct + ir_struct
+        merged_with_idx = list(enumerate(merged))
+        merged_with_idx.sort(
+            key=lambda pair: (
+                pair[1].get('seconds') is None,
+                pair[1].get('seconds') if pair[1].get('seconds') is not None else 0,
+                pair[0]
+            )
+        )
+        merged_logs = [pair[1].get('line', '') for pair in merged_with_idx if pair[1].get('line')]
+
         return jsonify({
-            'logs': logs,
+            'logs': merged_logs,
             'date': date_str,
-            'count': len(logs)
+            'count': len(merged_logs)
         }), 200
     except Exception as e:
         logger.error(f"Sales logs error: {e}")

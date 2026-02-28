@@ -364,12 +364,9 @@
         <!-- Temperature & Humidity Text Logs -->
         <div class="logs-section">
             <h3>Temperature & Humidity Logs (Every 30 Minutes)</h3>
-            <div style="margin-bottom: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <label for="sensorTextDatePicker" style="font-size: 12px; color: #666;">Select Date:</label>
-                <input type="date" id="sensorTextDatePicker" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <button type="button" onclick="loadSensorTextLogsFromPicker()" style="padding: 6px 10px; border: none; border-radius: 4px; background: #667eea; color: white; cursor: pointer;">Load Date</button>
-                <button type="button" onclick="loadTodaySensorTextLogs()" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333; cursor: pointer;">Today</button>
-                <span id="sensorTextDateLabel" style="font-size: 12px; color: #666;"></span>
+            <div style="margin-bottom: 10px; font-size: 12px; color: #666;">
+                Uses the same selected date as Sensor Readings below.
+                <span id="sensorTextDateLabel" style="margin-left: 8px;"></span>
             </div>
             <div class="logs-container" id="sensorTextLogsContainer">
                 <div class="log-line">Loading temperature/humidity logs...</div>
@@ -382,8 +379,8 @@
             <div style="margin-bottom: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                 <label for="sensorDatePicker" style="font-size: 12px; color: #666;">Select Date:</label>
                 <input type="date" id="sensorDatePicker" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <button type="button" onclick="loadSensorGraphFromPicker()" style="padding: 6px 10px; border: none; border-radius: 4px; background: #667eea; color: white; cursor: pointer;">Load Date</button>
-                <button type="button" onclick="loadTodaySensorGraph()" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333; cursor: pointer;">Today</button>
+                <button type="button" onclick="loadSensorDataFromPicker()" style="padding: 6px 10px; border: none; border-radius: 4px; background: #667eea; color: white; cursor: pointer;">Load Date</button>
+                <button type="button" onclick="loadTodaySensorData()" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333; cursor: pointer;">Today</button>
                 <span id="sensorDateLabel" style="font-size: 12px; color: #666;"></span>
             </div>
 
@@ -640,6 +637,7 @@
                 const data = await res.json();
                 const readings = data.readings || [];
                 document.getElementById('sensorDateLabel').textContent = 'Date: ' + dateStr;
+                document.getElementById('sensorTextDateLabel').textContent = 'Date: ' + dateStr;
 
                 if (readings.length === 0) {
                     applySensorStats({});
@@ -677,6 +675,25 @@
             await loadSensorGraphByDate(today);
         }
 
+        async function loadSensorDataForDate(dateStr) {
+            if (!dateStr) return;
+            await loadSensorGraphByDate(dateStr);
+            await loadSensorTextLogsByDate(dateStr);
+        }
+
+        async function loadSensorDataFromPicker() {
+            const picker = document.getElementById('sensorDatePicker');
+            const selected = picker && picker.value ? picker.value : getTodayIsoDate();
+            await loadSensorDataForDate(selected);
+        }
+
+        async function loadTodaySensorData() {
+            const today = getTodayIsoDate();
+            const picker = document.getElementById('sensorDatePicker');
+            if (picker) picker.value = today;
+            await loadSensorDataForDate(today);
+        }
+
         async function loadSensorTextLogsByDate(dateStr) {
             if (!dateStr) return;
             try {
@@ -693,16 +710,11 @@
         }
 
         async function loadSensorTextLogsFromPicker() {
-            const picker = document.getElementById('sensorTextDatePicker');
-            const selected = picker && picker.value ? picker.value : getTodayIsoDate();
-            await loadSensorTextLogsByDate(selected);
+            await loadSensorDataFromPicker();
         }
 
         async function loadTodaySensorTextLogs() {
-            const today = getTodayIsoDate();
-            const picker = document.getElementById('sensorTextDatePicker');
-            if (picker) picker.value = today;
-            await loadSensorTextLogsByDate(today);
+            await loadTodaySensorData();
         }
 
         async function loadStockAlerts() {
@@ -799,17 +811,12 @@
         const sensorPicker = document.getElementById('sensorDatePicker');
         if (sensorPicker && !sensorPicker.value) sensorPicker.value = today;
 
-        const sensorTextPicker = document.getElementById('sensorTextDatePicker');
-        if (sensorTextPicker && !sensorTextPicker.value) sensorTextPicker.value = today;
-
         updateStatus();
-        loadTodaySensorGraph();
-        loadTodaySensorTextLogs();
+        loadTodaySensorData();
         loadStockAlerts();
 
         setInterval(updateStatus, 5000);
-        setInterval(loadTodaySensorGraph, 3600000);
-        setInterval(loadTodaySensorTextLogs, 3600000);
+        setInterval(loadTodaySensorData, 3600000);
         setInterval(loadStockAlerts, 10000);
     </script>
 </body>

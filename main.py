@@ -3,6 +3,7 @@ import time
 import threading
 from kiosk_app import KioskFrame
 from selection_screen import SelectionScreen
+from start_order_screen import StartOrderScreen
 import json
 from admin_screen import AdminScreen
 from assign_items_screen import AssignItemsScreen
@@ -57,6 +58,7 @@ class MainApp(tk.Tk):
         self._arduino_sensor_bridge_running = False
         self._arduino_sensor_bridge_thread = None
         self._vend_lock = threading.Lock()  # Ensure only one motor pulse at a time
+        self._order_start_ts = None  # Transaction timer start (epoch seconds)
 
         # Start in fullscreen mode for kiosk display
         self.is_fullscreen = True
@@ -174,7 +176,7 @@ class MainApp(tk.Tk):
         container.grid_columnconfigure(0, weight=1)
 
         self.frames = {}
-        for F in (SelectionScreen, KioskFrame, AdminScreen, AssignItemsScreen, ItemScreen, CartScreen, LogsScreen):
+        for F in (SelectionScreen, StartOrderScreen, KioskFrame, AdminScreen, AssignItemsScreen, ItemScreen, CartScreen, LogsScreen):
             page_name = F.__name__
             frame = F(parent=container, controller=self)
             self.frames[page_name] = frame
@@ -768,6 +770,37 @@ class MainApp(tk.Tk):
         self.show_frame("KioskFrame")
         # Force focus back to main window for key bindings
         self.focus_force()
+
+    def show_start_order(self):
+        """Show kiosk landing/start screen."""
+        self.show_frame("StartOrderScreen")
+        self.focus_force()
+
+    def start_order(self):
+        """Start a new order session and open kiosk menu."""
+        self._order_start_ts = time.time()
+        try:
+            self.clear_cart()
+        except Exception:
+            pass
+        self.show_kiosk()
+
+    def finish_order_timer(self, status="SUCCESS"):
+        """Stop transaction timer and log duration in daily log file."""
+        start_ts = self._order_start_ts
+        self._order_start_ts = None
+        if not start_ts:
+            return None
+        try:
+            duration_sec = max(0.0, float(time.time() - float(start_ts)))
+        except Exception:
+            return None
+        try:
+            logger = get_logger()
+            logger.log_transaction_time(duration_sec, status=status)
+        except Exception as e:
+            print(f"[MainApp] Failed to log transaction time: {e}")
+        return duration_sec
 
     def show_item(self, item_data):
         """Passes item data to the ItemScreen and displays it."""
@@ -1373,6 +1406,9 @@ class MainApp(tk.Tk):
         # From Kiosk go back to Selection
         elif self.active_frame_name in ["KioskFrame"]:
             # Handle window state in show_frame
+            self.show_frame("SelectionScreen")
+        # From StartOrder, go back to Selection
+        elif self.active_frame_name in ["StartOrderScreen"]:
             self.show_frame("SelectionScreen")
         # Only exit app from SelectionScreen
         elif self.active_frame_name in ["SelectionScreen"]:

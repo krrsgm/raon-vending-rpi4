@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import time
+import re
 from threading import Thread, Lock
 import logging
 
@@ -113,15 +114,21 @@ current_payment_session = {
 }
 
 
+def should_init_payment_handler(config):
+    """Web app must never own payment hardware; main.py is the hardware owner."""
+    return False
+
+
 def init_payment_handler(config):
     """Initialize the payment handler with config."""
     global payment_handler
     try:
         if PaymentHandler:
+            coin_cfg = config.get('hardware', {}).get('coin_acceptor', {}) if isinstance(config, dict) else {}
             payment_handler = PaymentHandler(
                 config=config,
-                use_gpio_coin=True,
-                coin_gpio_pin=config.get('hardware', {}).get('coin_acceptor', {}).get('gpio_pin', 17)
+                use_gpio_coin=bool(coin_cfg.get('use_gpio', False)),
+                coin_gpio_pin=coin_cfg.get('gpio_pin', 17)
             )
             logger.info("Payment handler initialized")
             return True
@@ -216,6 +223,136 @@ def _resolve_sale_item_name(sale):
     return "Unknown Item"
 
 
+def _resolve_logs_dir():
+    """Resolve logs directory reliably regardless of current working directory."""
+    try:
+        logger_inst = get_logger() if get_logger else None
+        if logger_inst and getattr(logger_inst, 'logs_dir', None):
+            return logger_inst.logs_dir
+    except Exception:
+        pass
+
+    try:
+        if get_absolute_path:
+            return get_absolute_path('logs')
+    except Exception:
+        pass
+
+    return 'logs'
+
+
+def _extract_log_seconds(text):
+    """Extract HH:MM:SS from a log line and return seconds since midnight."""
+    try:
+        m = re.search(r'(\d{2}):(\d{2}):(\d{2})', str(text))
+        if not m:
+            return None
+        hh, mm, ss = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return (hh * 3600) + (mm * 60) + ss
+    except Exception:
+        return None
+
+
+def _extract_item_name_from_sale_log(text):
+    """Best-effort parse of item name from a sale log line."""
+    try:
+        s = str(text).strip()
+        # Example: [12:34:56] Soda x2 - ?40.00
+        m = re.search(r'\]\s*(.*?)\s*-\s*.*?\d', s)
+        if not m:
+            return None
+        name = m.group(1).strip()
+        return name if name else None
+    except Exception:
+        return None
+
+
+def _parse_ir_detected(value):
+    """Parse IR CSV cell to detection bool (True/False/None unknown)."""
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if not text:
+        return None
+    if text in ('1', 'true', 'detected', 'blocked', 'high'):
+        return True
+    if text in ('0', 'false', 'not detected', 'clear', 'low'):
+        return False
+    if 'detect' in text or 'block' in text:
+        return True
+    if 'clear' in text:
+        return False
+    try:
+        return float(text) > 0
+    except Exception:
+        return None
+
+
+def _build_ir_dispense_logs(date_str, sales_struct):
+    """Build IR dispense event log lines and optionally map nearest sale item."""
+    sensor_log_file = os.path.join(_resolve_logs_dir(), f"sensor_data_{date_str}.csv")
+    if not os.path.exists(sensor_log_file):
+        return []
+
+    sale_candidates = [
+        s for s in sales_struct
+        if s.get('seconds') is not None and s.get('item_name')
+    ]
+
+    ir_logs = []
+    prev_ir1 = None
+    prev_ir2 = None
+
+    try:
+        import csv
+        with open(sensor_log_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                ir1 = _parse_ir_detected(row.get('IR_Sensor1_Detection'))
+                ir2 = _parse_ir_detected(row.get('IR_Sensor2_Detection'))
+
+                fired = []
+                if ir1 is True and prev_ir1 is not True:
+                    fired.append('IR1')
+                if ir2 is True and prev_ir2 is not True:
+                    fired.append('IR2')
+
+                prev_ir1 = ir1
+                prev_ir2 = ir2
+
+                if not fired:
+                    continue
+
+                ts_raw = row.get('DateTime', row.get('Timestamp', '')) or ''
+                sec = _extract_log_seconds(ts_raw)
+                hhmmss = '??:??:??'
+                m = re.search(r'(\d{2}:\d{2}:\d{2})', str(ts_raw))
+                if m:
+                    hhmmss = m.group(1)
+
+                item_hint = None
+                if sec is not None and sale_candidates:
+                    nearest = min(sale_candidates, key=lambda s: abs(s['seconds'] - sec))
+                    if abs(nearest['seconds'] - sec) <= 30:
+                        item_hint = nearest.get('item_name')
+
+                ir_text = '/'.join(fired)
+                if item_hint:
+                    line = f"[{hhmmss}] DISPENSE DETECTED ({ir_text}) - Item: {item_hint}"
+                else:
+                    line = f"[{hhmmss}] DISPENSE DETECTED ({ir_text})"
+
+                ir_logs.append({
+                    'line': line,
+                    'seconds': sec
+                })
+    except Exception as e:
+        logger.error(f"Error building IR dispense logs: {e}")
+        return []
+
+    return ir_logs
+
+
 # ============================================================================
 # ROUTES - INVENTORY DASHBOARD (Multi-Machine)
 # ============================================================================
@@ -286,23 +423,77 @@ def api_sales_logs():
         logs_dir = logger_inst.logs_dir
         log_file = os.path.join(logs_dir, f"sales_{date_str}.log")
         
-        if not os.path.exists(log_file):
-            return jsonify({'logs': [], 'date': date_str}), 200
-        
         logs = []
-        try:
-            with open(log_file, 'r', encoding='utf-8') as f:
-                logs = _filter_dashboard_sales_logs(f.readlines())
-        except Exception as e:
-            logger.error(f"Error reading log file: {e}")
-        
+        if os.path.exists(log_file):
+            try:
+                with open(log_file, 'r', encoding='utf-8') as f:
+                    logs = _filter_dashboard_sales_logs(f.readlines())
+            except Exception as e:
+                logger.error(f"Error reading log file: {e}")
+
+        # Build structured sales lines first so we can match nearby IR dispense events.
+        sales_struct = []
+        for line in logs:
+            sales_struct.append({
+                'line': str(line).strip(),
+                'seconds': _extract_log_seconds(line),
+                'item_name': _extract_item_name_from_sale_log(line)
+            })
+
+        ir_struct = _build_ir_dispense_logs(date_str, sales_struct)
+
+        # Merge + sort by time (fallback keeps stable order for unknown timestamps).
+        merged = sales_struct + ir_struct
+        merged_with_idx = list(enumerate(merged))
+        merged_with_idx.sort(
+            key=lambda pair: (
+                pair[1].get('seconds') is None,
+                pair[1].get('seconds') if pair[1].get('seconds') is not None else 0,
+                pair[0]
+            )
+        )
+        merged_logs = [pair[1].get('line', '') for pair in merged_with_idx if pair[1].get('line')]
+
         return jsonify({
-            'logs': logs,
+            'logs': merged_logs,
             'date': date_str,
-            'count': len(logs)
+            'count': len(merged_logs)
         }), 200
     except Exception as e:
         logger.error(f"Sales logs error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/transaction-times')
+def api_transaction_times():
+    """API: Get per-transaction duration logs for a specific date."""
+    try:
+        logger_inst = get_logger() if get_logger else None
+        if not logger_inst:
+            return jsonify({'error': 'Logger not available'}), 500
+
+        from datetime import datetime as dt
+        date_str = request.args.get('date', dt.now().strftime("%Y-%m-%d"))
+        logs_dir = logger_inst.logs_dir
+        log_file = os.path.join(logs_dir, f"sales_{date_str}.log")
+
+        if not os.path.exists(log_file):
+            return jsonify({'logs': [], 'date': date_str, 'count': 0}), 200
+
+        tx_logs = []
+        with open(log_file, 'r', encoding='utf-8') as f:
+            for raw in f:
+                line = str(raw).strip()
+                if "TRANSACTION_TIME" in line:
+                    tx_logs.append(line)
+
+        return jsonify({
+            'logs': tx_logs,
+            'date': date_str,
+            'count': len(tx_logs)
+        }), 200
+    except Exception as e:
+        logger.error(f"Transaction times error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -362,8 +553,8 @@ def api_sensor_readings():
         from datetime import datetime as dt
         date_str = request.args.get('date', dt.now().strftime("%Y-%m-%d"))
         
-        # Try to find sensor data logger
-        sensor_log_dir = 'logs'  # Default logs directory
+        # Resolve logs folder robustly (service/cwd-safe)
+        sensor_log_dir = _resolve_logs_dir()
         sensor_log_file = os.path.join(sensor_log_dir, f"sensor_data_{date_str}.csv")
         
         if not os.path.exists(sensor_log_file):
@@ -437,8 +628,8 @@ def api_sensor_readings_previous_day():
         from datetime import datetime as dt
         yesterday = (dt.now() - timedelta(days=1)).strftime("%Y-%m-%d")
         
-        # Try to find sensor data logger
-        sensor_log_dir = 'logs'  # Default logs directory
+        # Resolve logs folder robustly (service/cwd-safe)
+        sensor_log_dir = _resolve_logs_dir()
         sensor_log_file = os.path.join(sensor_log_dir, f"sensor_data_{yesterday}.csv")
         
         if not os.path.exists(sensor_log_file):
@@ -860,7 +1051,7 @@ def get_realtime_status():
             
             # Calculate low stock items
             # Calculate today's sales
-            today = datetime.date.today()
+            today = datetime.utcnow().date()
             today_sales_sum = db.session.query(func.sum(Sale.coin_amount + Sale.bill_amount)).filter(
                 Sale.item_id.in_([i.id for i in items]),
                 func.date(Sale.timestamp) == today
@@ -895,11 +1086,11 @@ def get_realtime_status():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/sales/today')
+@app.route('/api/db/sales/today')
 def get_today_sales():
     """Get today's sales summary"""
     try:
-        today = datetime.date.today()
+        today = datetime.utcnow().date()
         sales = Sale.query.filter(func.date(Sale.timestamp) == today).all()
         
         total_sales = sum(s.coin_amount + s.bill_amount for s in sales)
@@ -921,11 +1112,11 @@ def get_today_sales():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/sales/logs')
+@app.route('/api/db/sales/logs')
 def get_sales_logs():
     """Get today's sales logs"""
     try:
-        today = datetime.date.today()
+        today = datetime.utcnow().date()
         sales = Sale.query.filter(func.date(Sale.timestamp) == today).order_by(Sale.timestamp.desc()).limit(100).all()
         
         logs = []
@@ -1168,7 +1359,10 @@ def create_app_with_db():
             db.session.commit()
             logger.info(f"Created default machine: {machine_id}")
         
-        init_payment_handler(config)
+        if should_init_payment_handler(config):
+            init_payment_handler(config)
+        else:
+            logger.info("Skipping PaymentHandler in web_app (hard-disabled; use main.py for hardware).")
         logger.info("Web app initialized")
     return app
 

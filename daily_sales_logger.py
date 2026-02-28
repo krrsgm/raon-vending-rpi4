@@ -144,6 +144,33 @@ class DailySalesLogger:
                     print(f"[Logger] ERROR writing event log: {e}")
         except Exception as e:
             print(f"[Logger] ERROR logging event: {e}")
+
+    def log_transaction_time(self, duration_seconds, status="SUCCESS"):
+        """Log transaction duration for each completed order."""
+        try:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                duration_seconds = max(0.0, float(duration_seconds))
+            except Exception:
+                duration_seconds = 0.0
+
+            mins = int(duration_seconds // 60)
+            secs = duration_seconds - (mins * 60)
+            human = f"{mins:02d}:{secs:05.2f}"
+
+            log_entry = (
+                f"[{ts}] TRANSACTION_TIME | "
+                f"DurationSec: {duration_seconds:.2f} | "
+                f"Duration: {human} | "
+                f"Status: {status}"
+            )
+
+            with self._lock:
+                log_file = self._get_log_filename()
+                with open(log_file, "a", encoding="utf-8") as f:
+                    f.write(log_entry + "\n")
+        except Exception as e:
+            print(f"[Logger] ERROR logging transaction time: {e}")
     
     def get_today_summary(self):
         """Get summary of today's sales.

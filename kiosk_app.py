@@ -436,8 +436,25 @@ class KioskFrame(tk.Frame):
         right_frame = tk.Frame(self.header, bg=header_bg)
         right_frame.pack(side='right', padx=12)
         
-        cart_btn = tk.Button(right_frame, text='Cart', bg='white', fg='#2222a8', relief='flat', font=self.fonts['cart_btn'], padx=20, pady=10, command=lambda: self.controller.show_cart())
+        cart_btn = tk.Button(
+            right_frame,
+            text='Cart',
+            bg='white',
+            fg='#2222a8',
+            activebackground='#dfe8ff',
+            activeforeground='#1f2f85',
+            relief='flat',
+            borderwidth=0,
+            highlightthickness=0,
+            cursor='hand2',
+            font=self.fonts['cart_btn'],
+            padx=22,
+            pady=11,
+            command=lambda: self.controller.show_cart()
+        )
         cart_btn.pack()
+        cart_btn.bind('<Enter>', lambda _e: cart_btn.configure(bg='#dfe8ff'))
+        cart_btn.bind('<Leave>', lambda _e: cart_btn.configure(bg='white'))
 
         # Main content area: left sidebar + main product area
         content = tk.Frame(self, bg=self.colors['background'])
@@ -496,7 +513,22 @@ class KioskFrame(tk.Frame):
         categories = build_categories()
         
         for cat in categories:
-            b = tk.Button(self.categories_frame, text=cat, relief='flat', bg='#f7fafc', anchor='w', command=lambda c=cat: self._on_category_click(c))
+            b = tk.Button(
+                self.categories_frame,
+                text=cat,
+                relief='flat',
+                bg='#f7fafc',
+                fg='#2c3e50',
+                activebackground='#e6f0ff',
+                activeforeground='#1f2f85',
+                borderwidth=0,
+                highlightthickness=0,
+                cursor='hand2',
+                anchor='w',
+                padx=12,
+                pady=7,
+                command=lambda c=cat: self._on_category_click(c)
+            )
             b.pack(fill='x', pady=2)
             self._category_buttons[cat] = b
         
@@ -866,7 +898,22 @@ class KioskFrame(tk.Frame):
             
             # Rebuild category buttons
             for cat in cat_list:
-                b = tk.Button(self.categories_frame, text=cat, relief='flat', bg='#f7fafc', anchor='w', command=lambda c=cat: self._on_category_click(c))
+                b = tk.Button(
+                    self.categories_frame,
+                    text=cat,
+                    relief='flat',
+                    bg='#f7fafc',
+                    fg='#2c3e50',
+                    activebackground='#e6f0ff',
+                    activeforeground='#1f2f85',
+                    borderwidth=0,
+                    highlightthickness=0,
+                    cursor='hand2',
+                    anchor='w',
+                    padx=12,
+                    pady=7,
+                    command=lambda c=cat: self._on_category_click(c)
+                )
                 b.pack(fill='x', pady=2)
                 self._category_buttons[cat] = b
             
@@ -889,13 +936,13 @@ class KioskFrame(tk.Frame):
         """Visually mark the active category button."""
         for k, btn in getattr(self, '_category_buttons', {}).items():
             try:
-                btn.configure(bg='#f7fafc', fg='black')
+                btn.configure(bg='#f7fafc', fg='#2c3e50')
             except Exception:
                 pass
         try:
             btn = self._category_buttons.get(cat)
             if btn:
-                btn.configure(bg='#e6f0ff', fg='black')
+                btn.configure(bg='#dbe4ff', fg='#1f2f85')
         except Exception:
             pass
 

@@ -49,9 +49,9 @@ volatile unsigned long coinLastPulseMs = 0;
 volatile unsigned long coinLastEdgeUs = 0;
 volatile bool coinCountActive = false;
 unsigned long lastCoinValidMs = 0;
-const unsigned long coinDebounceMs = 80;      // debounce between recognized coin events
-const unsigned long coinPulseDebounceUs = 5000; // debounce per pulse edge (5ms)
-const unsigned long coinGroupGapMs = 180;     // gap that ends a pulse train for one coin
+const unsigned long coinDebounceMs = 180;      // debounce between recognized coin events
+const unsigned long coinPulseDebounceUs = 12000; // debounce per pulse edge (12ms) for noise rejection
+const unsigned long coinGroupGapMs = 220;     // gap that ends a pulse train for one coin
 float coin_total = 0.0;
 
 // --- Shared Sensor Bridge Pins ---
@@ -611,7 +611,7 @@ void loop(){
 
   // --- Coin Hopper Job Management ---
   unsigned long now = millis();
-  const unsigned long COIN_TIMEOUT_MS = 8000;
+  const unsigned long COIN_TIMEOUT_MS = 5000;
   if (job_five.active){
     if (five_count >= job_five.target){ stop_motor(FIVE_MOTOR_PIN); job_five.active = false; Serial.print("DONE FIVE "); Serial.println(five_count); if (sequence_active && job_one.target > 0 && !job_one.active){ if (job_one.target > 0){ start_dispense_denon(1, job_one.target, sequence_timeout_ms); } } }
     else if (now - job_five.start_ms > job_five.timeout_ms){ stop_motor(FIVE_MOTOR_PIN); job_five.active = false; Serial.print("ERR TIMEOUT FIVE dispensed:"); Serial.println(five_count); }

@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox
 import threading
+import re
 from payment_handler import PaymentHandler
 from system_status_panel import SystemStatusPanel
 from daily_sales_logger import get_logger
@@ -57,6 +58,7 @@ class CartScreen(tk.Frame):
         self.payment_received = 0.0
         self.payment_required = 0.0
         self.change_label = None  # Will be created in the payment window
+        self.change_progress_label = None  # Live hopper pulse progress in payment window
         self.change_alert_shown = False  # Prevent duplicate hopper timeout alerts
         self.last_change_status = None  # Deduplicate noisy hopper status messages
         self.payment_completion_scheduled = False
@@ -87,9 +89,13 @@ class CartScreen(tk.Frame):
             "gray_fg": "#7f8c8d",
             "border": "#dfe6e9",
             "header_bg": "#ffffff",
-            "total_fg": "#27ae60",
-            "payment_bg": "#e8f5e9",
-            "payment_fg": "#2e7d32",
+            "total_fg": "#2a3eb1",
+            "payment_bg": "#eaf0ff",
+            "payment_fg": "#1f2f85",
+            "primary_btn_bg": "#2222a8",
+            "primary_btn_hover": "#2f3fc6",
+            "secondary_btn_bg": "#4a63d9",
+            "secondary_btn_hover": "#5b73e2",
         }
         self.fonts = {
             "header": tkfont.Font(family="Helvetica", size=24, weight="bold"),
@@ -139,29 +145,61 @@ class CartScreen(tk.Frame):
             action_frame,
             text="Back to Shopping",
             font=self.fonts["action_button"],
-            bg=self.colors["gray_fg"],
-            fg=self.colors["background"],
+            bg=self.colors["secondary_btn_bg"],
+            fg="#ffffff",
+            activebackground=self.colors["secondary_btn_hover"],
+            activeforeground="#ffffff",
             relief="flat",
             pady=10,
             command=lambda: controller.show_kiosk(),
         )
         back_button.pack(side="left", expand=True, fill="x", padx=(0, 5))
+        self._style_button(back_button, hover_bg=self.colors["secondary_btn_hover"])
 
         self.checkout_button = tk.Button(
             action_frame,
             text="Pay",
             font=self.fonts["action_button"],
-            bg=self.colors["total_fg"],
-            fg=self.colors["background"],
+            bg=self.colors["primary_btn_bg"],
+            fg="#ffffff",
+            activebackground=self.colors["primary_btn_hover"],
+            activeforeground="#ffffff",
             relief="flat",
             pady=10,
             command=self.handle_checkout,  # Using our new coin payment handler
         )
         self.checkout_button.pack(side="left", expand=True, fill="x", padx=(5, 0))
+        self._style_button(self.checkout_button, hover_bg=self.colors["primary_btn_hover"])
 
         # --- System Status Panel ---
         self.status_panel = SystemStatusPanel(self, controller=self.controller)
         self.status_panel.pack(side='bottom', fill='x')
+
+    def _style_button(self, btn, hover_bg=None, hover_fg=None):
+        base_bg = btn.cget("bg")
+        base_fg = btn.cget("fg")
+        btn.configure(
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+            cursor="hand2",
+            activebackground=hover_bg or base_bg,
+            activeforeground=hover_fg or base_fg,
+            padx=12,
+            pady=10,
+        )
+
+        def _on_enter(_event):
+            if hover_bg:
+                btn.configure(bg=hover_bg)
+            if hover_fg:
+                btn.configure(fg=hover_fg)
+
+        def _on_leave(_event):
+            btn.configure(bg=base_bg, fg=base_fg)
+
+        btn.bind("<Enter>", _on_enter)
+        btn.bind("<Leave>", _on_leave)
 
     def update_cart(self, cart_items):
         # Clear previous items
@@ -240,6 +278,7 @@ class CartScreen(tk.Frame):
                 command=lambda i=item: self.controller.decrease_cart_item_quantity(i),
             )
             decrease_btn.pack(side="left")
+            self._style_button(decrease_btn, hover_bg="#dbe4ff")
 
             qty_label = tk.Label(
                 qty_frame,
@@ -262,6 +301,7 @@ class CartScreen(tk.Frame):
                 command=lambda i=item: self.controller.increase_cart_item_quantity(i),
             )
             increase_btn.pack(side="left")
+            self._style_button(increase_btn, hover_bg="#dbe4ff")
 
             # Total price for the item line
             price_label = tk.Label(
@@ -286,6 +326,7 @@ class CartScreen(tk.Frame):
                 command=lambda i=item: self.controller.remove_from_cart(i),
             )
             delete_btn.pack(side="left")
+            self._style_button(delete_btn, hover_bg="#ffe7ea")
 
         self.total_label.config(
             text=f"Total: {self.controller.currency_symbol}{grand_total:.2f}"
@@ -312,6 +353,7 @@ class CartScreen(tk.Frame):
             self.payment_required = total_amount
             self.payment_received = 0.0
             self.change_alert_shown = False
+            self.last_change_status = None
             self.payment_completion_scheduled = False
             self._complete_after_id = None
             # Start payment session and register callbacks for immediate updates
@@ -413,6 +455,17 @@ class CartScreen(tk.Frame):
                 fg=self.colors["payment_fg"]
             )
             self.change_label.pack_forget()  # Hidden until change is dispensed
+
+            self.change_progress_label = tk.Label(
+                status_frame,
+                text="",
+                font=tkfont.Font(family="Helvetica", size=11),
+                bg=self.colors["payment_bg"],
+                fg=self.colors["text_fg"],
+                justify=tk.LEFT,
+                anchor='w'
+            )
+            self.change_progress_label.pack_forget()  # Hidden until first pulse update
             
             # Accepted coins info
             tk.Label(
@@ -441,15 +494,19 @@ class CartScreen(tk.Frame):
             ).pack()
             
             # Cancel button
-            tk.Button(
+            cancel_btn = tk.Button(
                 self.payment_window,
                 text="Cancel Payment",
                 font=self.fonts["item_details"],
                 command=self.cancel_payment,
-                bg="white",
-                fg="#e74c3c",
+                bg=self.colors["secondary_btn_bg"],
+                fg="#ffffff",
+                activebackground=self.colors["secondary_btn_hover"],
+                activeforeground="#ffffff",
                 relief="flat"
-            ).pack(pady=20)
+            )
+            cancel_btn.pack(pady=20)
+            self._style_button(cancel_btn, hover_bg=self.colors["secondary_btn_hover"])
             
             # Start updating payment status
             self.update_payment_status(total_amount)
@@ -593,6 +650,26 @@ class CartScreen(tk.Frame):
             if self.change_label:
                 self.change_label.config(text=message)
                 self.change_label.pack()  # Make visible
+            # Show parsed live pulse progress (x/y) from hopper callback lines.
+            if self.change_progress_label:
+                pulse_match = re.search(r'PULSE\s+(ONE|FIVE)\s+(\d+)\s*/\s*(\d+)', str(message), re.IGNORECASE)
+                if pulse_match:
+                    denom = pulse_match.group(1).upper()
+                    current = pulse_match.group(2)
+                    target = pulse_match.group(3)
+                    value = "₱1" if denom == "ONE" else "₱5"
+                    self.change_progress_label.config(
+                        text=f"Dispense progress ({value}): {current}/{target}"
+                    )
+                    self.change_progress_label.pack()
+                else:
+                    upper = str(message).upper()
+                    if "CHANGE DISPENSED" in upper:
+                        self.change_progress_label.config(text="Dispense progress: Completed")
+                        self.change_progress_label.pack()
+                    elif "ERROR" in upper or "NO COIN" in upper or "TIMEOUT" in upper:
+                        self.change_progress_label.config(text="Dispense progress: Stopped")
+                        self.change_progress_label.pack()
 
             # Show explicit alert when hopper reports no-coin timeout.
             if message and not self.change_alert_shown:
@@ -633,19 +710,43 @@ class CartScreen(tk.Frame):
             except Exception:
                 pass
             self._complete_after_id = None
-        
-        # Stop payment session and dispense change if needed
-        received, change_dispensed, change_status = self.payment_handler.stop_payment_session(
-            required_amount=self.payment_required
+
+        thread_args = (
+            self.payment_required,
+            list(self.controller.cart),
+            self.coin_received,
+            self.bill_received,
         )
-            
-        # Get individual amounts for final display
-        coin_amount = self.coin_received
-        bill_amount = self.bill_received
-        
-        # Start vending physical items in background so UI stays responsive
+        threading.Thread(target=self._complete_payment_thread, args=thread_args, daemon=True).start()
+
+    def _complete_payment_thread(self, required_amount, cart_snapshot, coin_amount, bill_amount):
         try:
-            vend_list = [ {"item": it["item"], "quantity": it["quantity"]} for it in self.controller.cart ]
+            received, change_dispensed, change_status = self.payment_handler.stop_payment_session(
+                required_amount=required_amount
+            )
+        except Exception as e:
+            # Never leave payment UI hanging if hardware/session finalization fails.
+            try:
+                print(f"[CartScreen] ERROR during stop_payment_session: {e}")
+            except Exception:
+                pass
+            received = self.payment_received
+            change_dispensed = 0
+            change_status = f"Error finalizing payment: {e}"
+        self.after(0, lambda: self._present_payment_complete(
+            required_amount,
+            received,
+            change_dispensed,
+            change_status,
+            cart_snapshot,
+            coin_amount,
+            bill_amount
+        ))
+
+    def _present_payment_complete(self, required_amount, received, change_dispensed,
+                                  change_status, cart_snapshot, coin_amount, bill_amount):
+        try:
+            vend_list = [ {"item": it["item"], "quantity": it["quantity"]} for it in cart_snapshot ]
         except Exception:
             vend_list = []
 
@@ -658,7 +759,6 @@ class CartScreen(tk.Frame):
                         if item_obj and item_obj.get('name'):
                             name = item_obj.get('name')
                             print(f"Vending {qty} x {name}...")
-                            # vend_slots_for will handle round-robin if multiple slots assigned (uses 4000ms pulse)
                             try:
                                 self.controller.vend_slots_for(name, qty)
                             except Exception as e:
@@ -673,14 +773,13 @@ class CartScreen(tk.Frame):
         except Exception:
             pass
 
-        # Show final status immediately after payment/change processing.
-        change_due = max(0.0, float(received) - float(self.payment_required))
+        change_due = max(0.0, float(received) - float(required_amount))
         status_text = (
-            f"Thank you!\n\n"
+            "Thank you!\n\n"
             f"Coins received: ₱{coin_amount:.2f}\n"
             f"Bills received: ₱{bill_amount:.2f}\n"
             f"Total paid: ₱{received:.2f}\n"
-            f"\nYour items will now be dispensed."
+            "\nYour items will now be dispensed."
         )
         if change_due > 0:
             status_text += (
@@ -699,9 +798,9 @@ class CartScreen(tk.Frame):
 
         self._destroy_payment_window()
         messagebox.showinfo("Payment Complete", status_text)
-        # Apply stock deductions after popup so completion UI is not delayed.
+
         try:
-            self.controller.apply_cart_stock_deductions(self.controller.cart)
+            self.controller.apply_cart_stock_deductions(cart_snapshot)
         except Exception as e:
             print(f"[CartScreen] Error applying stock deductions: {e}")
 
@@ -726,7 +825,7 @@ class CartScreen(tk.Frame):
         try:
             logger = get_logger()
             items_to_log = []
-            for item in self.controller.cart:
+            for item in cart_snapshot:
                 item_name, qty = _extract_cart_entry_name_and_qty(item)
                 items_to_log.append({
                     'name': item_name,
@@ -744,7 +843,7 @@ class CartScreen(tk.Frame):
         # Record sales in stock tracker for inventory management and alerts
         if self.stock_tracker:
             try:
-                for item in self.controller.cart:
+                for item in cart_snapshot:
                     item_name, qty = _extract_cart_entry_name_and_qty(item)
                     
                     result = self.stock_tracker.record_sale(
@@ -758,7 +857,6 @@ class CartScreen(tk.Frame):
                     if not result['success']:
                         print(f"[CartScreen] Failed to record sale for {item_name}: {result['message']}")
                     elif result['alert']:
-                        # Show low stock alert to user
                         alert_msg = result['alert'].get('message', 'Stock low')
                         print(f"[CartScreen] STOCK ALERT: {alert_msg}")
                         messagebox.showwarning('âš ï¸ Stock Alert', alert_msg)
@@ -769,7 +867,11 @@ class CartScreen(tk.Frame):
         
         # Clear cart and return to kiosk screen
         self.controller.clear_cart()
-        self.controller.show_frame("KioskFrame")
+        try:
+            self.controller.finish_order_timer(status="SUCCESS")
+        except Exception:
+            pass
+        self.controller.show_start_order()
 
     def _destroy_payment_window(self):
         """Safely destroy the payment status window."""
@@ -829,9 +931,14 @@ class CartScreen(tk.Frame):
         # Ensure the payment window is closed and return to kiosk
         self._destroy_payment_window()
 
-        # Return to kiosk screen regardless of payment state
         try:
-            self.controller.show_kiosk()
+            self.controller.finish_order_timer(status="CANCELLED")
+        except Exception:
+            pass
+
+        # Return to start-order screen regardless of payment state
+        try:
+            self.controller.show_start_order()
         except Exception:
             pass
                 

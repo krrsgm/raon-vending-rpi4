@@ -57,7 +57,9 @@
       "enabled": true,
       "use_gpio": false,
       "gpio_pin": 17,
-      "debounce_ms": 50
+      "debounce_ms": 50,
+      "accepted_values": [1, 5, 10],
+      "event_debounce_ms": 250
     },
     "bill_acceptor": {
       "enabled": true,

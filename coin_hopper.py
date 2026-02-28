@@ -258,13 +258,13 @@ class CoinHopper:
         """
         if denomination not in (1, 5):
             return (False, 0, f"Invalid denomination: {denomination}")
-        
+
         if count <= 0:
             return (False, 0, "Count must be greater than 0")
-        
+
         if not self.serial_conn or not self.serial_conn.is_open:
             return (False, 0, "Serial connection not open")
-        
+
         try:
             cmd = f"DISPENSE_DENOM {denomination} {count} {timeout_ms}"
             denom_label = "ONE" if denomination == 1 else "FIVE"
@@ -275,16 +275,18 @@ class CoinHopper:
             if not self.serial_conn or not self.serial_conn.is_open:
                 return (False, 0, "Serial connection not open")
 
-            # Send command and wait for terminal result from Arduino.
-            with self._lock:
-                self.serial_conn.reset_input_buffer()
-                self.serial_conn.reset_output_buffer()
-                self.serial_conn.write((cmd + '\n').encode('utf-8'))
-                self.serial_conn.flush()
+            self.serial_conn.reset_input_buffer()
+            self.serial_conn.reset_output_buffer()
+            self.serial_conn.write((cmd + '\n').encode('utf-8'))
+            self.serial_conn.flush()
 
-                deadline = time.time() + max(1.0, (timeout_ms / 1000.0) + 8.0)
-                last_pulse_count = 0
-                last_lines = []
+            # Keep fallback wait tight so UI completion isn't delayed when DONE is missed.
+            deadline = time.time() + max(1.0, (timeout_ms / 1000.0) + 1.0)
+            last_pulse_count = 0
+            last_lines = []
+            success_result = None
+
+            with self._lock:
                 while time.time() < deadline:
                     try:
                         line_raw = self.serial_conn.readline()
@@ -297,14 +299,12 @@ class CoinHopper:
                     if not line:
                         continue
                     upper = line.upper()
-                    # Keep only hopper-relevant lines to avoid noisy sensor logs in UI errors.
                     if ("DONE " in upper) or ("ERR " in upper) or ("OK START" in upper) or (pulse_prefix in upper):
                         last_lines.append(line)
                         if len(last_lines) > 8:
                             last_lines.pop(0)
                     if callback and (upper.startswith("DONE ") or upper.startswith("ERR ") or upper.startswith("OK START")):
                         callback(f"Hopper: {line}")
-                    # Track pulse events as fallback evidence of dispensing progress.
                     if pulse_prefix in upper:
                         m = re.search(rf'{re.escape(pulse_prefix)}\s+(\d+)', upper)
                         if m:
@@ -313,28 +313,64 @@ class CoinHopper:
                             except Exception:
                                 pass
                         if callback:
-                            callback(f"Hopper: {line}")
-                    # Success terminal line: DONE ONE <count> / DONE FIVE <count>
+                            if last_pulse_count:
+                                callback(f"Hopper: PULSE {denom_label} {last_pulse_count}/{count}")
+                            else:
+                                callback(f"Hopper: {line}")
+                        if last_pulse_count >= count:
+                            success_result = (True, count, f"Dispensed {count} {denomination}-peso coins (inferred from pulses)")
+                            break
                     if "DONE " in upper and denom_label in upper:
                         m = re.search(r'DONE\s+\w+\s+(\d+)', upper)
                         dispensed = int(m.group(1)) if m else count
-                        return (True, dispensed, f"Dispensed {dispensed} {denomination}-peso coins")
-
-                    # Error terminal lines: ERR TIMEOUT/ERR NO COIN for current denom
+                        success_result = (True, dispensed, f"Dispensed {dispensed} {denomination}-peso coins")
+                        break
                     if "ERR " in upper and denom_label in upper:
+                        # Support multiple Arduino error formats:
+                        # - "ERR TIMEOUT FIVE dispensed:3"
+                        # - "ERR NO COIN FIVE timeout3" (count appended at end)
                         m = re.search(r'dispensed:\s*(\d+)', line, re.IGNORECASE)
+                        if not m:
+                            m = re.search(r'(\d+)\s*$', line)
                         dispensed = int(m.group(1)) if m else 0
-                        return (False, dispensed, f"Dispensing failed: {line}")
+                        success_result = (False, dispensed, f"Dispensing failed: {line}")
+                        break
 
-                # If terminal DONE line was missed but pulse count reached target, accept success.
+                if success_result:
+                    return success_result
                 if last_pulse_count >= count:
                     return (True, count, f"Dispensed {count} {denomination}-peso coins (inferred from pulses)")
-                if last_lines:
-                    tail = " | ".join(last_lines[-3:])
-                    msg = f"Dispensing timeout waiting for DONE {denom_label}. {tail}"
-                else:
-                    msg = f"Dispensing timeout waiting for DONE {denom_label}"
-                return (False, max(0, last_pulse_count), msg)
+
+            if last_lines:
+                tail = " | ".join(last_lines[-3:])
+                msg = f"Dispensing timeout waiting for DONE {denom_label}. {tail}"
+            else:
+                msg = f"Dispensing timeout waiting for DONE {denom_label}"
+            # Fallback: ask Arduino STATUS and use sensor counters when DONE/PULSE
+            # lines were missed on serial but dispensing physically occurred.
+            status_line = self.get_status()
+            status_count = None
+            if status_line:
+                m = re.search(r'ONE:(\d+).*FIVE:(\d+)', status_line, re.IGNORECASE)
+                if m:
+                    try:
+                        one_seen = int(m.group(1))
+                        five_seen = int(m.group(2))
+                        status_count = one_seen if denomination == 1 else five_seen
+                    except Exception:
+                        status_count = None
+            if status_count is not None:
+                dispensed = max(last_pulse_count, max(0, status_count))
+                if callback:
+                    try:
+                        callback(f"Hopper: STATUS inferred {denom_label} {dispensed}/{count}")
+                    except Exception:
+                        pass
+                if dispensed >= count:
+                    return (True, count, f"Dispensed {count} {denomination}-peso coins (inferred from STATUS)")
+                return (False, dispensed, msg)
+
+            return (False, max(0, last_pulse_count), msg)
 
         except Exception as e:
             error_msg = f"Error dispensing coins: {str(e)}"
@@ -349,9 +385,32 @@ class CoinHopper:
         """
         if not self.serial_conn or not self.serial_conn.is_open:
             return None
-        
-        response = self.send_command("STATUS")
-        return response
+        try:
+            with self._lock:
+                self.serial_conn.reset_input_buffer()
+                self.serial_conn.reset_output_buffer()
+                self.serial_conn.write(b"STATUS\n")
+                self.serial_conn.flush()
+
+                start = time.time()
+                # STATUS command emits multiple lines; pick the canonical status line.
+                while time.time() - start < self.timeout:
+                    if not self.serial_conn.in_waiting:
+                        time.sleep(0.01)
+                        continue
+                    raw = self.serial_conn.readline()
+                    if not raw:
+                        continue
+                    line = raw.decode('utf-8', errors='ignore').strip()
+                    if not line:
+                        continue
+                    upper = line.upper()
+                    if upper.startswith("STATUS "):
+                        return line
+                return None
+        except Exception as e:
+            print(f"[CoinHopper] Error getting STATUS: {e}")
+            return None
 
     def open_hopper(self, denomination):
         """Manually open a hopper.

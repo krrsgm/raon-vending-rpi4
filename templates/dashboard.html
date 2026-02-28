@@ -290,7 +290,7 @@
 </head>
 <body>
     <div class="header">
-        <h1>📊 RAON Dashboard</h1>
+        <h1>ðŸ“Š RAON Dashboard</h1>
         <div class="header-right">
             <div class="refresh-time">Last update: <span id="lastUpdate">now</span></div>
         </div>
@@ -300,17 +300,17 @@
         <!-- Real-time Stats -->
         <div class="stats-grid" id="statsGrid">
             <div class="stat-card">
-                <div class="stat-icon">💰</div>
+                <div class="stat-icon">ðŸ’°</div>
                 <div class="stat-label">Today's Sales</div>
-                <div class="stat-value" id="todaySales">₱0.00</div>
+                <div class="stat-value" id="todaySales">â‚±0.00</div>
             </div>
             <div class="stat-card">
-                <div class="stat-icon">🛒</div>
+                <div class="stat-icon">ðŸ›’</div>
                 <div class="stat-label">Transactions</div>
                 <div class="stat-value" id="transactions">0</div>
             </div>
             <div class="stat-card">
-                <div class="stat-icon">📦</div>
+                <div class="stat-icon">ðŸ“¦</div>
                 <div class="stat-label">Items Sold</div>
                 <div class="stat-value" id="itemsSold">0</div>
             </div>
@@ -319,7 +319,7 @@
         <!-- Low Stock Alerts Section -->
         <div id="alertsSection" style="margin-bottom: 30px;">
             <div class="logs-section" style="background: #fff5f5; border-left: 5px solid #e74c3c;">
-                <h3 style="color: #c0392b;">🚨 Stock Alerts</h3>
+                <h3 style="color: #c0392b;">ðŸš¨ Stock Alerts</h3>
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
                     <div style="background: white; padding: 10px; border-radius: 4px; border-left: 4px solid #c0392b;">
                         <div style="font-size: 12px; color: #999; font-weight: bold;">Out of Stock</div>
@@ -347,7 +347,7 @@
         </div>
         <!-- Sales Logs -->
         <div class="logs-section">
-            <h3>📝 Sales Logs</h3>
+            <h3>ðŸ“ Sales Logs</h3>
             <div id="today-logs" class="tab-content active">
                 <div style="margin-bottom: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                     <label for="logsDatePicker" style="font-size: 12px; color: #666;">Select Date:</label>
@@ -397,11 +397,11 @@
                 <div class="sensor-stats-grid" id="todayStatsGrid">
                     <div class="sensor-stat-box">
                         <div class="sensor-stat-label">Avg Temp 1</div>
-                        <div class="sensor-stat-value" id="avgTemp1">--°C</div>
+                        <div class="sensor-stat-value" id="avgTemp1">--Â°C</div>
                     </div>
                     <div class="sensor-stat-box">
                         <div class="sensor-stat-label">Avg Temp 2</div>
-                        <div class="sensor-stat-value" id="avgTemp2">--°C</div>
+                        <div class="sensor-stat-value" id="avgTemp2">--Â°C</div>
                     </div>
                     <div class="sensor-stat-box">
                         <div class="sensor-stat-label">Avg Humidity 1</div>
@@ -573,8 +573,8 @@
             const temp2 = Number(stats && stats.avg_temp2);
             const humidity1 = Number(stats && stats.avg_humidity1);
             const humidity2 = Number(stats && stats.avg_humidity2);
-            document.getElementById('avgTemp1').textContent = Number.isNaN(temp1) ? '--�C' : temp1.toFixed(1) + '�C';
-            document.getElementById('avgTemp2').textContent = Number.isNaN(temp2) ? '--�C' : temp2.toFixed(1) + '�C';
+            document.getElementById('avgTemp1').textContent = Number.isNaN(temp1) ? '--°C' : temp1.toFixed(1) + '°C';
+            document.getElementById('avgTemp2').textContent = Number.isNaN(temp2) ? '--°C' : temp2.toFixed(1) + '°C';
             document.getElementById('avgHumidity1').textContent = Number.isNaN(humidity1) ? '--%' : humidity1.toFixed(1) + '%';
             document.getElementById('avgHumidity2').textContent = Number.isNaN(humidity2) ? '--%' : humidity2.toFixed(1) + '%';
         }
@@ -588,8 +588,8 @@
                 data: {
                     labels: timestamps,
                     datasets: [
-                        { label: 'Temperature Sensor 1 (�C)', data: temp1Data, borderColor: '#e74c3c', backgroundColor: 'rgba(231, 76, 60, 0.1)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 3 },
-                        { label: 'Temperature Sensor 2 (�C)', data: temp2Data, borderColor: '#f39c12', backgroundColor: 'rgba(243, 156, 18, 0.1)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 3 },
+                        { label: 'Temperature Sensor 1 (°C)', data: temp1Data, borderColor: '#e74c3c', backgroundColor: 'rgba(231, 76, 60, 0.1)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 3 },
+                        { label: 'Temperature Sensor 2 (°C)', data: temp2Data, borderColor: '#f39c12', backgroundColor: 'rgba(243, 156, 18, 0.1)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 3 },
                         { label: 'Humidity Sensor 1 (%)', data: humidity1Data, borderColor: '#3498db', backgroundColor: 'rgba(52, 152, 219, 0.1)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 3 },
                         { label: 'Humidity Sensor 2 (%)', data: humidity2Data, borderColor: '#1abc9c', backgroundColor: 'rgba(26, 188, 156, 0.1)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 3 }
                     ]

@@ -345,15 +345,9 @@
         <div class="machines-grid" id="machinesGrid">
             <div class="machine-card">Loading...</div>
         </div>
-        
         <!-- Sales Logs -->
         <div class="logs-section">
-            <h3>📝 Recent Sales Logs</h3>
-            <div class="tabs">
-                <button class="tab-button active" onclick="switchTab(event, 'today-logs')">Today</button>
-                <button class="tab-button" onclick="switchTab(event, 'previous-logs')">Previous Day</button>
-            </div>
-            
+            <h3>📝 Sales Logs</h3>
             <div id="today-logs" class="tab-content active">
                 <div style="margin-bottom: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                     <label for="logsDatePicker" style="font-size: 12px; color: #666;">Select Date:</label>
@@ -366,17 +360,8 @@
                     <div class="log-line">Loading logs...</div>
                 </div>
             </div>
-            
-            <div id="previous-logs" class="tab-content">
-                <div class="previous-day-logs" id="previousLogsContainer">
-                    <div class="log-line">Loading previous day logs...</div>
-                </div>
-                <div style="margin-top: 10px; font-size: 12px; color: #999;">
-                    <span id="previousDateLabel"></span>
-                </div>
-            </div>
         </div>
-        
+
         <!-- Sensor Readings Chart -->
         <div class="chart-section">
             <h3>📊 Sensor Readings - Temperature & Humidity</h3>
@@ -1074,3 +1059,7 @@
     </script>
 </body>
 </html>
+
+
+
+

@@ -89,9 +89,13 @@ class CartScreen(tk.Frame):
             "gray_fg": "#7f8c8d",
             "border": "#dfe6e9",
             "header_bg": "#ffffff",
-            "total_fg": "#27ae60",
-            "payment_bg": "#e8f5e9",
-            "payment_fg": "#2e7d32",
+            "total_fg": "#2a3eb1",
+            "payment_bg": "#eaf0ff",
+            "payment_fg": "#1f2f85",
+            "primary_btn_bg": "#2222a8",
+            "primary_btn_hover": "#2f3fc6",
+            "secondary_btn_bg": "#4a63d9",
+            "secondary_btn_hover": "#5b73e2",
         }
         self.fonts = {
             "header": tkfont.Font(family="Helvetica", size=24, weight="bold"),
@@ -141,29 +145,61 @@ class CartScreen(tk.Frame):
             action_frame,
             text="Back to Shopping",
             font=self.fonts["action_button"],
-            bg=self.colors["gray_fg"],
-            fg=self.colors["background"],
+            bg=self.colors["secondary_btn_bg"],
+            fg="#ffffff",
+            activebackground=self.colors["secondary_btn_hover"],
+            activeforeground="#ffffff",
             relief="flat",
             pady=10,
             command=lambda: controller.show_kiosk(),
         )
         back_button.pack(side="left", expand=True, fill="x", padx=(0, 5))
+        self._style_button(back_button, hover_bg=self.colors["secondary_btn_hover"])
 
         self.checkout_button = tk.Button(
             action_frame,
             text="Pay",
             font=self.fonts["action_button"],
-            bg=self.colors["total_fg"],
-            fg=self.colors["background"],
+            bg=self.colors["primary_btn_bg"],
+            fg="#ffffff",
+            activebackground=self.colors["primary_btn_hover"],
+            activeforeground="#ffffff",
             relief="flat",
             pady=10,
             command=self.handle_checkout,  # Using our new coin payment handler
         )
         self.checkout_button.pack(side="left", expand=True, fill="x", padx=(5, 0))
+        self._style_button(self.checkout_button, hover_bg=self.colors["primary_btn_hover"])
 
         # --- System Status Panel ---
         self.status_panel = SystemStatusPanel(self, controller=self.controller)
         self.status_panel.pack(side='bottom', fill='x')
+
+    def _style_button(self, btn, hover_bg=None, hover_fg=None):
+        base_bg = btn.cget("bg")
+        base_fg = btn.cget("fg")
+        btn.configure(
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+            cursor="hand2",
+            activebackground=hover_bg or base_bg,
+            activeforeground=hover_fg or base_fg,
+            padx=12,
+            pady=10,
+        )
+
+        def _on_enter(_event):
+            if hover_bg:
+                btn.configure(bg=hover_bg)
+            if hover_fg:
+                btn.configure(fg=hover_fg)
+
+        def _on_leave(_event):
+            btn.configure(bg=base_bg, fg=base_fg)
+
+        btn.bind("<Enter>", _on_enter)
+        btn.bind("<Leave>", _on_leave)
 
     def update_cart(self, cart_items):
         # Clear previous items
@@ -242,6 +278,7 @@ class CartScreen(tk.Frame):
                 command=lambda i=item: self.controller.decrease_cart_item_quantity(i),
             )
             decrease_btn.pack(side="left")
+            self._style_button(decrease_btn, hover_bg="#dbe4ff")
 
             qty_label = tk.Label(
                 qty_frame,
@@ -264,6 +301,7 @@ class CartScreen(tk.Frame):
                 command=lambda i=item: self.controller.increase_cart_item_quantity(i),
             )
             increase_btn.pack(side="left")
+            self._style_button(increase_btn, hover_bg="#dbe4ff")
 
             # Total price for the item line
             price_label = tk.Label(
@@ -288,6 +326,7 @@ class CartScreen(tk.Frame):
                 command=lambda i=item: self.controller.remove_from_cart(i),
             )
             delete_btn.pack(side="left")
+            self._style_button(delete_btn, hover_bg="#ffe7ea")
 
         self.total_label.config(
             text=f"Total: {self.controller.currency_symbol}{grand_total:.2f}"
@@ -455,15 +494,19 @@ class CartScreen(tk.Frame):
             ).pack()
             
             # Cancel button
-            tk.Button(
+            cancel_btn = tk.Button(
                 self.payment_window,
                 text="Cancel Payment",
                 font=self.fonts["item_details"],
                 command=self.cancel_payment,
-                bg="white",
-                fg="#e74c3c",
+                bg=self.colors["secondary_btn_bg"],
+                fg="#ffffff",
+                activebackground=self.colors["secondary_btn_hover"],
+                activeforeground="#ffffff",
                 relief="flat"
-            ).pack(pady=20)
+            )
+            cancel_btn.pack(pady=20)
+            self._style_button(cancel_btn, hover_bg=self.colors["secondary_btn_hover"])
             
             # Start updating payment status
             self.update_payment_status(total_amount)

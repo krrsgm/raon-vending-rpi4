@@ -5,6 +5,25 @@ class SelectionScreen(tk.Frame):
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent, bg='#f0f4f8') # Light background
         self.controller = controller
+        primary_blue = '#2222a8'
+        primary_blue_hover = '#2f3fc6'
+        secondary_blue = '#4a63d9'
+        secondary_blue_hover = '#5b73e2'
+
+        def style_button(btn, hover_bg):
+            base_bg = btn.cget('bg')
+            btn.configure(
+                relief='flat',
+                borderwidth=0,
+                highlightthickness=0,
+                cursor='hand2',
+                activebackground=hover_bg,
+                activeforeground='#ffffff',
+                padx=18,
+                pady=12
+            )
+            btn.bind('<Enter>', lambda _e: btn.configure(bg=hover_bg))
+            btn.bind('<Leave>', lambda _e: btn.configure(bg=base_bg))
 
         # Get screen dimensions for proportional sizing
         screen_height = self.winfo_screenheight()
@@ -28,9 +47,9 @@ class SelectionScreen(tk.Frame):
             text="Kiosk",
             font=button_font,
             command=lambda: controller.show_start_order(),
-            bg='#27ae60',  # Green
+            bg=primary_blue,
             fg='#ffffff',  # White text
-            activebackground='#2ecc71', # Lighter green on click
+            activebackground=primary_blue_hover,
             activeforeground='#ffffff',
             width=15,
             pady=15,
@@ -38,22 +57,24 @@ class SelectionScreen(tk.Frame):
             borderwidth=0
         )
         kiosk_button.pack(pady=20)
+        style_button(kiosk_button, primary_blue_hover)
 
         admin_button = tk.Button(
             self, 
             text="Admin",
             font=button_font,
             command=lambda: controller.show_admin(),
-            bg='#bdc3c7', # Light gray
-            fg='#2c3e50', # Dark text
-            activebackground='#95a5a6', # Darker gray on click
-            activeforeground='#2c3e50',
+            bg=secondary_blue,
+            fg='#ffffff',
+            activebackground=secondary_blue_hover,
+            activeforeground='#ffffff',
             width=15,
             pady=15,
             relief='flat',
             borderwidth=0
         )
         admin_button.pack(pady=20)
+        style_button(admin_button, secondary_blue_hover)
 
         exit_label = tk.Label(
             self, 

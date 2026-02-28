@@ -26,12 +26,14 @@ class ItemScreen(tk.Frame):
             'background': '#f0f4f8',
             'text_fg': '#2c3e50',
             'gray_fg': '#7f8c8d',
-            'price_fg': '#27ae60',
+            'price_fg': '#2a3eb1',
             'border': '#bdc3c7',
-            'btn_bg': '#bdc3c7',
-            'btn_fg': '#2c3e50',
-            'cart_btn_bg': '#27ae60',
+            'btn_bg': '#dbe4ff',
+            'btn_fg': '#1f2f85',
+            'cart_btn_bg': '#2222a8',
             'cart_btn_fg': '#ffffff',
+            'back_btn_bg': '#4a63d9',
+            'back_btn_fg': '#ffffff',
         }
         self.fonts = {
             'name': tkfont.Font(family="Helvetica", size=36, weight="bold"),
@@ -44,6 +46,32 @@ class ItemScreen(tk.Frame):
         }
 
         self.create_widgets()
+
+    def _style_button(self, btn, hover_bg=None, hover_fg=None):
+        base_bg = btn.cget("bg")
+        base_fg = btn.cget("fg")
+        btn.configure(
+            relief='flat',
+            borderwidth=0,
+            highlightthickness=0,
+            activebackground=hover_bg or base_bg,
+            activeforeground=hover_fg or base_fg,
+            cursor='hand2',
+            padx=14,
+            pady=10,
+        )
+
+        def _on_enter(_event):
+            if hover_bg:
+                btn.configure(bg=hover_bg)
+            if hover_fg:
+                btn.configure(fg=hover_fg)
+
+        def _on_leave(_event):
+            btn.configure(bg=base_bg, fg=base_fg)
+
+        btn.bind("<Enter>", _on_enter)
+        btn.bind("<Leave>", _on_leave)
 
     def create_widgets(self):
         # Main frame uses pack for a single-column layout
@@ -92,10 +120,10 @@ class ItemScreen(tk.Frame):
             font=self.fonts['qty_selector'],
             bg=self.colors['btn_bg'],
             fg=self.colors['btn_fg'],
-            relief='flat',
             width=3,
             command=self.decrease_quantity
         )
+        self._style_button(decrease_button, hover_bg='#c9d7ff')
         decrease_button.pack(side='left')
 
         self.quantity_display_label = tk.Label(
@@ -114,10 +142,10 @@ class ItemScreen(tk.Frame):
             font=self.fonts['qty_selector'],
             bg=self.colors['btn_bg'],
             fg=self.colors['btn_fg'],
-            relief='flat',
             width=3,
             command=self.increase_quantity
         )
+        self._style_button(increase_button, hover_bg='#c9d7ff')
         increase_button.pack(side='left')
 
 
@@ -138,12 +166,12 @@ class ItemScreen(tk.Frame):
             action_frame,
             text="Back",
             font=self.fonts['action_button'],
-            bg=self.colors['gray_fg'],
-            fg=self.colors['background'],
-            relief='flat',
+            bg=self.colors['back_btn_bg'],
+            fg=self.colors['back_btn_fg'],
             pady=10,
             command=lambda: self.controller.show_kiosk()
         )
+        self._style_button(back_button, hover_bg='#5b73e2')
         back_button.pack(side='left', expand=True, fill='x', padx=(0, 5))
 
         cart_button = tk.Button(
@@ -152,10 +180,10 @@ class ItemScreen(tk.Frame):
             font=self.fonts['action_button'],
             bg=self.colors['cart_btn_bg'],
             fg=self.colors['cart_btn_fg'],
-            relief='flat',
             pady=10,
             command=self.add_to_cart
         )
+        self._style_button(cart_button, hover_bg='#2f3fc6')
         cart_button.pack(side='left', expand=True, fill='x', padx=(5, 0))
 
         # Test Dispense button removed to prevent dispensing without payment

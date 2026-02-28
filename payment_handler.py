@@ -22,26 +22,49 @@ class SharedReaderCoinAcceptor:
     def __init__(self, shared_reader):
         self._shared_reader = shared_reader
         self._callback = None
-        self._base_total = 0.0
         self._last_amount = 0.0
+        self._session_amount = 0.0
+        self._last_total = None
         self._lock = Lock()
         try:
-            self._base_total = float(self._shared_reader.get_coin_total() or 0.0)
+            self._last_total = float(self._shared_reader.get_coin_total() or 0.0)
         except Exception:
-            self._base_total = 0.0
+            self._last_total = None
         try:
             self._shared_reader.add_coin_callback(self._on_shared_coin_total)
         except Exception:
             pass
 
-    def _on_shared_coin_total(self, total):
+    def _accumulate_from_total(self, total):
+        """Update session amount from a cumulative shared-reader total."""
         try:
-            amount = max(0.0, float(total) - self._base_total)
+            total = float(total)
         except Exception:
-            amount = 0.0
+            return self._last_amount
+
+        with self._lock:
+            if self._last_total is None:
+                self._last_total = total
+                return self._last_amount
+
+            delta = total - self._last_total
+            self._last_total = total
+
+            # Normal path: shared counter increases as coins are inserted.
+            if delta > 0:
+                self._session_amount += delta
+            # If the shared counter decreases (MCU reset/noise), keep session amount.
+            # This avoids suddenly dropping/negative payable amount mid-session.
+
+            if self._session_amount < 0:
+                self._session_amount = 0.0
+            self._last_amount = self._session_amount
+            return self._last_amount
+
+    def _on_shared_coin_total(self, total):
+        amount = self._accumulate_from_total(total)
         callback = None
         with self._lock:
-            self._last_amount = amount
             callback = self._callback
         if callback:
             try:
@@ -56,19 +79,22 @@ class SharedReaderCoinAcceptor:
     def get_received_amount(self):
         try:
             total = float(self._shared_reader.get_coin_total() or 0.0)
-            amount = max(0.0, total - self._base_total)
+            amount = self._accumulate_from_total(total)
         except Exception:
-            amount = 0.0
+            with self._lock:
+                amount = self._last_amount
         with self._lock:
             self._last_amount = amount
             return self._last_amount
 
     def reset_amount(self):
         try:
-            self._base_total = float(self._shared_reader.get_coin_total() or 0.0)
+            current_total = float(self._shared_reader.get_coin_total() or 0.0)
         except Exception:
-            self._base_total = 0.0
+            current_total = None
         with self._lock:
+            self._last_total = current_total
+            self._session_amount = 0.0
             self._last_amount = 0.0
 
     def cleanup(self):

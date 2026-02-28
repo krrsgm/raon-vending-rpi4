@@ -361,16 +361,33 @@
                 </div>
             </div>
         </div>
+        <!-- Temperature & Humidity Text Logs -->
+        <div class="logs-section">
+            <h3>Temperature & Humidity Logs (Every 30 Minutes)</h3>
+            <div style="margin-bottom: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <label for="sensorTextDatePicker" style="font-size: 12px; color: #666;">Select Date:</label>
+                <input type="date" id="sensorTextDatePicker" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <button type="button" onclick="loadSensorTextLogsFromPicker()" style="padding: 6px 10px; border: none; border-radius: 4px; background: #667eea; color: white; cursor: pointer;">Load Date</button>
+                <button type="button" onclick="loadTodaySensorTextLogs()" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333; cursor: pointer;">Today</button>
+                <span id="sensorTextDateLabel" style="font-size: 12px; color: #666;"></span>
+            </div>
+            <div class="logs-container" id="sensorTextLogsContainer">
+                <div class="log-line">Loading temperature/humidity logs...</div>
+            </div>
+        </div>
 
         <!-- Sensor Readings Chart -->
         <div class="chart-section">
-            <h3>📊 Sensor Readings - Temperature & Humidity</h3>
-            <div class="tabs">
-                <button class="tab-button active" onclick="switchChart(event, 'today-chart')">Today</button>
-                <button class="tab-button" onclick="switchChart(event, 'previous-chart')">Previous Day</button>
+            <h3>Sensor Readings - Temperature & Humidity</h3>
+            <div style="margin-bottom: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <label for="sensorDatePicker" style="font-size: 12px; color: #666;">Select Date:</label>
+                <input type="date" id="sensorDatePicker" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <button type="button" onclick="loadSensorGraphFromPicker()" style="padding: 6px 10px; border: none; border-radius: 4px; background: #667eea; color: white; cursor: pointer;">Load Date</button>
+                <button type="button" onclick="loadTodaySensorGraph()" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333; cursor: pointer;">Today</button>
+                <span id="sensorDateLabel" style="font-size: 12px; color: #666;"></span>
             </div>
-            
-            <div id="today-chart" class="tab-content active">
+
+                        <div id="today-chart" class="tab-content active">
                 <div class="chart-container">
                     <canvas id="sensorChart"></canvas>
                 </div>
@@ -396,41 +413,12 @@
                     </div>
                 </div>
             </div>
-            
-            <div id="previous-chart" class="tab-content">
-                <div class="chart-container">
-                    <canvas id="sensorChartPrevious"></canvas>
-                </div>
-                <div class="chart-container" style="margin-top: 20px;">
-                    <canvas id="irSensorChartPrevious"></canvas>
-                </div>
-                <div class="sensor-stats-grid" id="previousStatsGrid">
-                    <div class="sensor-stat-box">
-                        <div class="sensor-stat-label">Avg Temp 1</div>
-                        <div class="sensor-stat-value" id="avgTemp1Prev">--°C</div>
-                    </div>
-                    <div class="sensor-stat-box">
-                        <div class="sensor-stat-label">Avg Temp 2</div>
-                        <div class="sensor-stat-value" id="avgTemp2Prev">--°C</div>
-                    </div>
-                    <div class="sensor-stat-box">
-                        <div class="sensor-stat-label">Avg Humidity 1</div>
-                        <div class="sensor-stat-value" id="avgHumidity1Prev">--%</div>
-                    </div>
-                    <div class="sensor-stat-box">
-                        <div class="sensor-stat-label">Avg Humidity 2</div>
-                        <div class="sensor-stat-value" id="avgHumidity2Prev">--%</div>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
     
-    <script>
+        <script>
         let sensorChartInstance = null;
-        let sensorChartPreviousInstance = null;
         let irChartInstance = null;
-        let irChartPreviousInstance = null;
 
         function getTodayIsoDate() {
             const now = new Date();
@@ -452,7 +440,6 @@
         function renderLogs(containerId, logs, emptyText) {
             const container = document.getElementById(containerId);
             if (!container) return;
-
             if (logs && logs.length > 0) {
                 container.innerHTML = logs
                     .slice(-20)
@@ -465,25 +452,17 @@
         }
 
         async function loadSalesLogsByDate(dateStr, containerId, labelId) {
-            if (!dateStr) {
-                return;
-            }
+            if (!dateStr) return;
             try {
                 const res = await fetch('/api/sales/logs?date=' + encodeURIComponent(dateStr));
                 const data = await res.json();
                 renderLogs(containerId, data.logs, `No sales recorded on ${dateStr}`);
-                if (labelId) {
-                    const label = document.getElementById(labelId);
-                    if (label) {
-                        label.textContent = 'Date: ' + dateStr;
-                    }
-                }
+                const label = document.getElementById(labelId);
+                if (label) label.textContent = 'Date: ' + dateStr;
             } catch (error) {
                 console.error('Error loading sales logs:', error);
                 const container = document.getElementById(containerId);
-                if (container) {
-                    container.innerHTML = '<div class="log-line">Error loading sales logs</div>';
-                }
+                if (container) container.innerHTML = '<div class="log-line">Error loading sales logs</div>';
             }
         }
 
@@ -496,569 +475,352 @@
         async function loadTodayLogsNow() {
             const today = getTodayIsoDate();
             const picker = document.getElementById('logsDatePicker');
-            if (picker) {
-                picker.value = today;
-            }
+            if (picker) picker.value = today;
             await loadSalesLogsByDate(today, 'logsContainer', 'selectedDateLabel');
         }
-        
-        // Tab switching functions
-        function switchTab(event, tabName) {
-            event.preventDefault();
-            
-            // Hide all tabs
-            const contents = document.querySelectorAll('.logs-section .tab-content');
-            contents.forEach(content => content.classList.remove('active'));
-            
-            // Remove active class from all buttons
-            const buttons = event.target.parentElement.querySelectorAll('.tab-button');
-            buttons.forEach(btn => btn.classList.remove('active'));
-            
-            // Show selected tab
-            document.getElementById(tabName).classList.add('active');
-            event.target.classList.add('active');
-            
-            // Load previous logs if needed
-            if (tabName === 'previous-logs') {
-                loadPreviousDayLogs();
-            }
-        }
-        
-        function switchChart(event, chartName) {
-            event.preventDefault();
-            
-            // Hide all chart tabs
-            const contents = document.querySelectorAll('.chart-section .tab-content');
-            contents.forEach(content => content.classList.remove('active'));
-            
-            // Remove active class from all buttons
-            const buttons = event.target.parentElement.querySelectorAll('.tab-button');
-            buttons.forEach(btn => btn.classList.remove('active'));
-            
-            // Show selected chart tab
-            document.getElementById(chartName).classList.add('active');
-            event.target.classList.add('active');
-            
-            // Load sensor data if switching to previous day
-            if (chartName === 'previous-chart') {
-                loadSensorReadingsPreviousDay();
-            }
-        }
-        
-        // Load previous day logs
-        async function loadPreviousDayLogs() {
-            try {
-                const res = await fetch('/api/sales/previous-day');
-                const data = await res.json();
 
-                renderLogs('previousLogsContainer', data.logs, 'No sales recorded on ' + data.date);
-                document.getElementById('previousDateLabel').textContent = 'Date: ' + data.date;
-            } catch (error) {
-                console.error('Error loading previous day logs:', error);
-                document.getElementById('previousLogsContainer').innerHTML = '<div class="log-line">Error loading previous day logs</div>';
+        function toTimeLabel(timestamp, fallbackIndex) {
+            if (!timestamp) return String(fallbackIndex || '');
+            const parsed = new Date(timestamp);
+            if (!Number.isNaN(parsed.getTime())) {
+                const hh = String(parsed.getHours()).padStart(2, '0');
+                const mm = String(parsed.getMinutes()).padStart(2, '0');
+                return `${hh}:${mm}`;
             }
-        }
-        
-        // Load sensor readings for today
-        async function loadSensorReadings() {
-            try {
-                const res = await fetch('/api/sensor-readings');
-                const data = await res.json();
-                
-                if (!data.readings || data.readings.length === 0) {
-                    console.log('No sensor readings available for today');
-                    return;
-                }
-                
-                // Extract data for chart
-                const timestamps = data.readings.map(r => r.timestamp.substring(11, 16)); // HH:MM format
-                const temp1Data = data.readings.map(r => r.temp1 || null);
-                const temp2Data = data.readings.map(r => r.temp2 || null);
-                const humidity1Data = data.readings.map(r => r.humidity1 || null);
-                const humidity2Data = data.readings.map(r => r.humidity2 || null);
-                const ir1Data = data.readings.map(r => parseIRValue(r.ir1));
-                const ir2Data = data.readings.map(r => parseIRValue(r.ir2));
-                
-                // Update stats
-                document.getElementById('avgTemp1').textContent = data.stats.avg_temp1.toFixed(1) + '°C';
-                document.getElementById('avgTemp2').textContent = data.stats.avg_temp2.toFixed(1) + '°C';
-                document.getElementById('avgHumidity1').textContent = data.stats.avg_humidity1.toFixed(1) + '%';
-                document.getElementById('avgHumidity2').textContent = data.stats.avg_humidity2.toFixed(1) + '%';
-                
-                // Create chart
-                drawSensorChart('sensorChart', timestamps, temp1Data, temp2Data, humidity1Data, humidity2Data, 'Today');
-                drawIRChart('irSensorChart', timestamps, ir1Data, ir2Data, 'Today');
-            } catch (error) {
-                console.error('Error loading sensor readings:', error);
-            }
-        }
-        
-        // Load sensor readings for previous day
-        async function loadSensorReadingsPreviousDay() {
-            try {
-                const res = await fetch('/api/sensor-readings/previous-day');
-                const data = await res.json();
-                
-                if (!data.readings || data.readings.length === 0) {
-                    console.log('No sensor readings available for previous day');
-                    return;
-                }
-                
-                // Extract data for chart
-                const timestamps = data.readings.map(r => r.timestamp.substring(11, 16)); // HH:MM format
-                const temp1Data = data.readings.map(r => r.temp1 || null);
-                const temp2Data = data.readings.map(r => r.temp2 || null);
-                const humidity1Data = data.readings.map(r => r.humidity1 || null);
-                const humidity2Data = data.readings.map(r => r.humidity2 || null);
-                const ir1Data = data.readings.map(r => parseIRValue(r.ir1));
-                const ir2Data = data.readings.map(r => parseIRValue(r.ir2));
-                
-                // Update stats
-                document.getElementById('avgTemp1Prev').textContent = data.stats.avg_temp1.toFixed(1) + '°C';
-                document.getElementById('avgTemp2Prev').textContent = data.stats.avg_temp2.toFixed(1) + '°C';
-                document.getElementById('avgHumidity1Prev').textContent = data.stats.avg_humidity1.toFixed(1) + '%';
-                document.getElementById('avgHumidity2Prev').textContent = data.stats.avg_humidity2.toFixed(1) + '%';
-                
-                // Create chart
-                drawSensorChart('sensorChartPrevious', timestamps, temp1Data, temp2Data, humidity1Data, humidity2Data, 'Previous Day (' + data.date + ')');
-                drawIRChart('irSensorChartPrevious', timestamps, ir1Data, ir2Data, 'Previous Day (' + data.date + ')');
-            } catch (error) {
-                console.error('Error loading previous day sensor readings:', error);
-            }
+            const txt = String(timestamp);
+            return txt.length >= 16 ? txt.substring(11, 16) : txt;
         }
 
         function parseIRValue(rawValue) {
-            if (rawValue === null || rawValue === undefined) {
-                return null;
-            }
-
+            if (rawValue === null || rawValue === undefined) return null;
             const value = String(rawValue).trim().toLowerCase();
-            if (value === '') {
-                return null;
-            }
-
-            if (value === '1' || value === 'true' || value === 'detected' || value.includes('detect')) {
-                return 1;
-            }
-            if (value === '0' || value === 'false' || value === 'not detected' || value.includes('clear')) {
-                return 0;
-            }
-
+            if (value === '') return null;
+            if (value === '1' || value === 'true' || value === 'detected' || value.includes('detect')) return 1;
+            if (value === '0' || value === 'false' || value === 'not detected' || value.includes('clear')) return 0;
             const numericValue = Number(value);
-            if (!Number.isNaN(numericValue)) {
-                return numericValue > 0 ? 1 : 0;
-            }
+            if (!Number.isNaN(numericValue)) return numericValue > 0 ? 1 : 0;
             return null;
         }
-        
-        // Load low stock alerts
-        async function loadLowStockAlerts() {
-            try {
-                const res = await fetch('/api/low-stock-alerts');
-                const data = await res.json();
-                
-                const container = document.getElementById('alertsContainer');
-                const section = document.getElementById('alertsSection');
-                
-                if (data.alerts && data.alerts.length > 0) {
-                    section.style.display = 'block';
-                    
-                    container.innerHTML = data.alerts.map(alert => `
-                        <div class="alert-item ${alert.severity}">
-                            <div class="alert-info">
-                                <div class="alert-title">${alert.severity === 'critical' ? '❌ OUT OF STOCK' : '⚠️ LOW STOCK'}: ${alert.item_name}</div>
-                                <div class="alert-message">Quantity: ${alert.current_quantity} (Threshold: ${alert.threshold})</div>
-                                <div class="alert-time">Detected: ${new Date(alert.timestamp).toLocaleString()}</div>
-                            </div>
-                            <div class="alert-actions">
-                                <button class="acknowledge-btn" onclick="acknowledgeAlert(${alert.id})">Acknowledge</button>
-                            </div>
-                        </div>
-                    `).join('');
+
+        function roundOne(value) {
+            if (value === null || value === undefined || Number.isNaN(Number(value))) return null;
+            return Math.round(Number(value) * 10) / 10;
+        }
+
+        function buildThirtyMinuteTextLogs(readings) {
+            const buckets = new Map();
+            readings.forEach((reading, index) => {
+                const rawTs = reading && reading.timestamp ? reading.timestamp : null;
+                const parsed = rawTs ? new Date(rawTs) : null;
+                let key;
+                let label;
+
+                if (parsed && !Number.isNaN(parsed.getTime())) {
+                    const y = parsed.getFullYear();
+                    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+                    const d = String(parsed.getDate()).padStart(2, '0');
+                    const hh = String(parsed.getHours()).padStart(2, '0');
+                    const bucketMinute = parsed.getMinutes() < 30 ? '00' : '30';
+                    key = `${y}-${m}-${d} ${hh}:${bucketMinute}`;
+                    label = `${hh}:${bucketMinute}`;
                 } else {
-                    section.style.display = 'none';
+                    key = `unknown-${index}`;
+                    label = toTimeLabel(rawTs, index + 1);
                 }
-            } catch (error) {
-                console.error('Error loading low stock alerts:', error);
-            }
-        }
-        
-        // Acknowledge a low stock alert
-        async function acknowledgeAlert(alertId) {
-            try {
-                const res = await fetch(`/api/low-stock-alerts/${alertId}/acknowledge`, {
-                    method: 'POST'
+
+                if (!buckets.has(key)) {
+                    buckets.set(key, {
+                        label,
+                        temp1Total: 0,
+                        temp1Count: 0,
+                        temp2Total: 0,
+                        temp2Count: 0,
+                        humidity1Total: 0,
+                        humidity1Count: 0,
+                        humidity2Total: 0,
+                        humidity2Count: 0
+                    });
+                }
+
+                const bucket = buckets.get(key);
+                const t1 = Number(reading.temp1);
+                const t2 = Number(reading.temp2);
+                const h1 = Number(reading.humidity1);
+                const h2 = Number(reading.humidity2);
+                if (!Number.isNaN(t1)) { bucket.temp1Total += t1; bucket.temp1Count += 1; }
+                if (!Number.isNaN(t2)) { bucket.temp2Total += t2; bucket.temp2Count += 1; }
+                if (!Number.isNaN(h1)) { bucket.humidity1Total += h1; bucket.humidity1Count += 1; }
+                if (!Number.isNaN(h2)) { bucket.humidity2Total += h2; bucket.humidity2Count += 1; }
+            });
+
+            return Array.from(buckets.entries())
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .map(([, bucket]) => {
+                    const t1 = bucket.temp1Count ? roundOne(bucket.temp1Total / bucket.temp1Count) : null;
+                    const t2 = bucket.temp2Count ? roundOne(bucket.temp2Total / bucket.temp2Count) : null;
+                    const h1 = bucket.humidity1Count ? roundOne(bucket.humidity1Total / bucket.humidity1Count) : null;
+                    const h2 = bucket.humidity2Count ? roundOne(bucket.humidity2Total / bucket.humidity2Count) : null;
+                    const t1Txt = t1 === null ? '--' : `${t1.toFixed(1)} C`;
+                    const t2Txt = t2 === null ? '--' : `${t2.toFixed(1)} C`;
+                    const h1Txt = h1 === null ? '--' : `${h1.toFixed(1)} %`;
+                    const h2Txt = h2 === null ? '--' : `${h2.toFixed(1)} %`;
+                    return `${bucket.label} | T1 ${t1Txt}, H1 ${h1Txt} | T2 ${t2Txt}, H2 ${h2Txt}`;
                 });
-                const data = await res.json();
-                
-                if (data.success) {
-                    // Reload alerts
-                    loadLowStockAlerts();
-                }
-            } catch (error) {
-                console.error('Error acknowledging alert:', error);
-            }
         }
-        
+
+        function applySensorStats(stats) {
+            const temp1 = Number(stats && stats.avg_temp1);
+            const temp2 = Number(stats && stats.avg_temp2);
+            const humidity1 = Number(stats && stats.avg_humidity1);
+            const humidity2 = Number(stats && stats.avg_humidity2);
+            document.getElementById('avgTemp1').textContent = Number.isNaN(temp1) ? '--�C' : temp1.toFixed(1) + '�C';
+            document.getElementById('avgTemp2').textContent = Number.isNaN(temp2) ? '--�C' : temp2.toFixed(1) + '�C';
+            document.getElementById('avgHumidity1').textContent = Number.isNaN(humidity1) ? '--%' : humidity1.toFixed(1) + '%';
+            document.getElementById('avgHumidity2').textContent = Number.isNaN(humidity2) ? '--%' : humidity2.toFixed(1) + '%';
+        }
+
         function drawSensorChart(canvasId, timestamps, temp1Data, temp2Data, humidity1Data, humidity2Data, label) {
             const ctx = document.getElementById(canvasId).getContext('2d');
-            
-            // Destroy existing chart if any
-            if (canvasId === 'sensorChart' && sensorChartInstance) {
-                sensorChartInstance.destroy();
-            } else if (canvasId === 'sensorChartPrevious' && sensorChartPreviousInstance) {
-                sensorChartPreviousInstance.destroy();
-            }
-            
-            const chart = new Chart(ctx, {
+            if (sensorChartInstance) sensorChartInstance.destroy();
+
+            sensorChartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: timestamps,
                     datasets: [
-                        {
-                            label: 'Temperature Sensor 1 (°C)',
-                            data: temp1Data,
-                            borderColor: '#e74c3c',
-                            backgroundColor: 'rgba(231, 76, 60, 0.1)',
-                            borderWidth: 2,
-                            fill: true,
-                            tension: 0.4,
-                            pointRadius: 3,
-                            pointBackgroundColor: '#e74c3c'
-                        },
-                        {
-                            label: 'Temperature Sensor 2 (°C)',
-                            data: temp2Data,
-                            borderColor: '#f39c12',
-                            backgroundColor: 'rgba(243, 156, 18, 0.1)',
-                            borderWidth: 2,
-                            fill: true,
-                            tension: 0.4,
-                            pointRadius: 3,
-                            pointBackgroundColor: '#f39c12'
-                        },
-                        {
-                            label: 'Humidity Sensor 1 (%)',
-                            data: humidity1Data,
-                            borderColor: '#3498db',
-                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                            borderWidth: 2,
-                            fill: true,
-                            tension: 0.4,
-                            pointRadius: 3,
-                            pointBackgroundColor: '#3498db'
-                        },
-                        {
-                            label: 'Humidity Sensor 2 (%)',
-                            data: humidity2Data,
-                            borderColor: '#1abc9c',
-                            backgroundColor: 'rgba(26, 188, 156, 0.1)',
-                            borderWidth: 2,
-                            fill: true,
-                            tension: 0.4,
-                            pointRadius: 3,
-                            pointBackgroundColor: '#1abc9c'
-                        }
+                        { label: 'Temperature Sensor 1 (�C)', data: temp1Data, borderColor: '#e74c3c', backgroundColor: 'rgba(231, 76, 60, 0.1)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 3 },
+                        { label: 'Temperature Sensor 2 (�C)', data: temp2Data, borderColor: '#f39c12', backgroundColor: 'rgba(243, 156, 18, 0.1)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 3 },
+                        { label: 'Humidity Sensor 1 (%)', data: humidity1Data, borderColor: '#3498db', backgroundColor: 'rgba(52, 152, 219, 0.1)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 3 },
+                        { label: 'Humidity Sensor 2 (%)', data: humidity2Data, borderColor: '#1abc9c', backgroundColor: 'rgba(26, 188, 156, 0.1)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 3 }
                     ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: true,
-                            position: 'top',
-                            labels: {
-                                boxWidth: 12,
-                                padding: 15,
-                                font: { size: 12 }
-                            }
-                        },
-                        title: {
-                            display: true,
-                            text: 'Sensor Readings - ' + label
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Value'
-                            }
-                        },
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Time (HH:MM)'
-                            }
-                        }
-                    }
+                    plugins: { title: { display: true, text: 'Sensor Readings - ' + label } },
+                    scales: { y: { beginAtZero: true }, x: { title: { display: true, text: 'Time (HH:MM)' } } }
                 }
             });
-            
-            if (canvasId === 'sensorChart') {
-                sensorChartInstance = chart;
-            } else if (canvasId === 'sensorChartPrevious') {
-                sensorChartPreviousInstance = chart;
-            }
         }
 
         function drawIRChart(canvasId, timestamps, ir1Data, ir2Data, label) {
             const ctx = document.getElementById(canvasId).getContext('2d');
+            if (irChartInstance) irChartInstance.destroy();
 
-            if (canvasId === 'irSensorChart' && irChartInstance) {
-                irChartInstance.destroy();
-            } else if (canvasId === 'irSensorChartPrevious' && irChartPreviousInstance) {
-                irChartPreviousInstance.destroy();
-            }
-
-            const chart = new Chart(ctx, {
+            irChartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: timestamps,
                     datasets: [
-                        {
-                            label: 'IR Sensor 1',
-                            data: ir1Data,
-                            borderColor: '#8e44ad',
-                            backgroundColor: 'rgba(142, 68, 173, 0.1)',
-                            borderWidth: 2,
-                            fill: true,
-                            tension: 0.1,
-                            pointRadius: 2
-                        },
-                        {
-                            label: 'IR Sensor 2',
-                            data: ir2Data,
-                            borderColor: '#2ecc71',
-                            backgroundColor: 'rgba(46, 204, 113, 0.1)',
-                            borderWidth: 2,
-                            fill: true,
-                            tension: 0.1,
-                            pointRadius: 2
-                        }
+                        { label: 'IR Sensor 1', data: ir1Data, borderColor: '#8e44ad', backgroundColor: 'rgba(142, 68, 173, 0.1)', borderWidth: 2, fill: true, tension: 0.1, pointRadius: 2 },
+                        { label: 'IR Sensor 2', data: ir2Data, borderColor: '#2ecc71', backgroundColor: 'rgba(46, 204, 113, 0.1)', borderWidth: 2, fill: true, tension: 0.1, pointRadius: 2 }
                     ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: true,
-                            position: 'top'
-                        },
-                        title: {
-                            display: true,
-                            text: 'IR Sensor Readings - ' + label
-                        }
-                    },
+                    plugins: { title: { display: true, text: 'IR Sensor Readings - ' + label } },
                     scales: {
                         y: {
                             min: 0,
                             max: 1,
-                            ticks: {
-                                stepSize: 1,
-                                callback: function(value) {
-                                    return value === 1 ? 'Detected' : 'Clear';
-                                }
-                            },
-                            title: {
-                                display: true,
-                                text: 'Detection'
-                            }
+                            ticks: { stepSize: 1, callback: v => (v === 1 ? 'Detected' : 'Clear') },
+                            title: { display: true, text: 'Detection' }
                         },
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Time (HH:MM)'
-                            }
-                        }
+                        x: { title: { display: true, text: 'Time (HH:MM)' } }
                     }
                 }
             });
+        }
 
-            if (canvasId === 'irSensorChart') {
-                irChartInstance = chart;
-            } else if (canvasId === 'irSensorChartPrevious') {
-                irChartPreviousInstance = chart;
+        async function loadSensorGraphByDate(dateStr) {
+            if (!dateStr) return;
+            try {
+                const res = await fetch('/api/sensor-readings?date=' + encodeURIComponent(dateStr));
+                const data = await res.json();
+                const readings = data.readings || [];
+                document.getElementById('sensorDateLabel').textContent = 'Date: ' + dateStr;
+
+                if (readings.length === 0) {
+                    applySensorStats({});
+                    drawSensorChart('sensorChart', [], [], [], [], [], dateStr + ' (No Data)');
+                    drawIRChart('irSensorChart', [], [], [], dateStr + ' (No Data)');
+                    return;
+                }
+
+                const timestamps = readings.map((r, idx) => toTimeLabel(r.timestamp, idx + 1));
+                const temp1Data = readings.map(r => r.temp1 || null);
+                const temp2Data = readings.map(r => r.temp2 || null);
+                const humidity1Data = readings.map(r => r.humidity1 || null);
+                const humidity2Data = readings.map(r => r.humidity2 || null);
+                const ir1Data = readings.map(r => parseIRValue(r.ir1));
+                const ir2Data = readings.map(r => parseIRValue(r.ir2));
+
+                applySensorStats(data.stats || {});
+                drawSensorChart('sensorChart', timestamps, temp1Data, temp2Data, humidity1Data, humidity2Data, dateStr);
+                drawIRChart('irSensorChart', timestamps, ir1Data, ir2Data, dateStr);
+            } catch (error) {
+                console.error('Error loading sensor graph:', error);
             }
         }
-        
-        // Load and display stock alerts
+
+        async function loadSensorGraphFromPicker() {
+            const picker = document.getElementById('sensorDatePicker');
+            const selected = picker && picker.value ? picker.value : getTodayIsoDate();
+            await loadSensorGraphByDate(selected);
+        }
+
+        async function loadTodaySensorGraph() {
+            const today = getTodayIsoDate();
+            const picker = document.getElementById('sensorDatePicker');
+            if (picker) picker.value = today;
+            await loadSensorGraphByDate(today);
+        }
+
+        async function loadSensorTextLogsByDate(dateStr) {
+            if (!dateStr) return;
+            try {
+                const res = await fetch('/api/sensor-readings?date=' + encodeURIComponent(dateStr));
+                const data = await res.json();
+                const lines = buildThirtyMinuteTextLogs(data.readings || []);
+                document.getElementById('sensorTextDateLabel').textContent = 'Date: ' + dateStr;
+                renderLogs('sensorTextLogsContainer', lines, `No temperature/humidity logs on ${dateStr}`);
+            } catch (error) {
+                console.error('Error loading sensor text logs:', error);
+                const c = document.getElementById('sensorTextLogsContainer');
+                if (c) c.innerHTML = '<div class="log-line">Error loading temperature/humidity logs</div>';
+            }
+        }
+
+        async function loadSensorTextLogsFromPicker() {
+            const picker = document.getElementById('sensorTextDatePicker');
+            const selected = picker && picker.value ? picker.value : getTodayIsoDate();
+            await loadSensorTextLogsByDate(selected);
+        }
+
+        async function loadTodaySensorTextLogs() {
+            const today = getTodayIsoDate();
+            const picker = document.getElementById('sensorTextDatePicker');
+            if (picker) picker.value = today;
+            await loadSensorTextLogsByDate(today);
+        }
+
         async function loadStockAlerts() {
             try {
                 const res = await fetch('/api/stock-alerts');
                 const data = await res.json();
                 const alerts = data.alerts || [];
-                
-                // Update counts
                 document.getElementById('criticalCount').textContent = data.total_critical || 0;
                 document.getElementById('warningCount').textContent = data.total_warning || 0;
-                
-                const now = new Date();
-                document.getElementById('alertsLastUpdated').textContent = now.toLocaleTimeString();
-                
+                document.getElementById('alertsLastUpdated').textContent = new Date().toLocaleTimeString();
+
                 const container = document.getElementById('alertsContainer');
-                
                 if (alerts.length === 0) {
-                    container.innerHTML = '<div style="padding: 20px; text-align: center; color: #27ae60; font-weight: bold;">✓ All items in stock!</div>';
+                    container.innerHTML = '<div style="padding: 20px; text-align: center; color: #27ae60; font-weight: bold;">All items in stock!</div>';
                     return;
                 }
-                
-                // Group alerts by machine
+
                 const alertsByMachine = {};
                 alerts.forEach(alert => {
                     if (!alertsByMachine[alert.machine_id]) {
-                        alertsByMachine[alert.machine_id] = {
-                            machine_name: alert.machine_name,
-                            critical: [],
-                            warning: []
-                        };
+                        alertsByMachine[alert.machine_id] = { machine_name: alert.machine_name, critical: [], warning: [] };
                     }
-                    if (alert.alert_type === 'out_of_stock') {
-                        alertsByMachine[alert.machine_id].critical.push(alert);
-                    } else {
-                        alertsByMachine[alert.machine_id].warning.push(alert);
-                    }
+                    if (alert.alert_type === 'out_of_stock') alertsByMachine[alert.machine_id].critical.push(alert);
+                    else alertsByMachine[alert.machine_id].warning.push(alert);
                 });
-                
-                // Render alerts
+
                 let html = '';
-                Object.entries(alertsByMachine).forEach(([machineId, items]) => {
-                    html += `<div style="margin-bottom: 15px;">
-                        <div style="font-weight: bold; color: #333; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #ddd;">
-                            🏪 ${items.machine_name}
-                        </div>`;
-                    
-                    // Critical alerts (out of stock)
+                Object.values(alertsByMachine).forEach(items => {
+                    html += `<div style="margin-bottom: 15px;"><div style="font-weight: bold; color: #333; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #ddd;">${escapeHtml(items.machine_name)}</div>`;
                     items.critical.forEach(alert => {
-                        html += `<div class="alert-item critical" style="margin-bottom: 8px;">
-                            <div class="alert-info">
-                                <div class="alert-title">❌ OUT OF STOCK</div>
-                                <div class="alert-message">
-                                    <strong>${alert.item_name}</strong> (${alert.category || 'Uncategorized'})<br/>
-                                    Slots: ${alert.slots || 'N/A'} | Price: ₱${alert.price.toFixed(2)}
-                                </div>
-                            </div>
-                        </div>`;
+                        html += `<div class="alert-item critical" style="margin-bottom: 8px;"><div class="alert-info"><div class="alert-title">OUT OF STOCK</div><div class="alert-message"><strong>${escapeHtml(alert.item_name)}</strong> (${escapeHtml(alert.category || 'Uncategorized')})<br/>Slots: ${escapeHtml(alert.slots || 'N/A')} | Price: \u20B1${Number(alert.price || 0).toFixed(2)}</div></div></div>`;
                     });
-                    
-                    // Warning alerts (low stock)
                     items.warning.forEach(alert => {
-                        html += `<div class="alert-item warning" style="margin-bottom: 8px;">
-                            <div class="alert-info">
-                                <div class="alert-title">⚠️ LOW STOCK</div>
-                                <div class="alert-message">
-                                    <strong>${alert.item_name}</strong>: ${alert.current_quantity}/${alert.threshold} units<br/>
-                                    Category: ${alert.category || 'Uncategorized'} | Slots: ${alert.slots || 'N/A'}
-                                </div>
-                            </div>
-                        </div>`;
+                        html += `<div class="alert-item warning" style="margin-bottom: 8px;"><div class="alert-info"><div class="alert-title">LOW STOCK</div><div class="alert-message"><strong>${escapeHtml(alert.item_name)}</strong>: ${alert.current_quantity}/${alert.threshold} units<br/>Category: ${escapeHtml(alert.category || 'Uncategorized')} | Slots: ${escapeHtml(alert.slots || 'N/A')}</div></div></div>`;
                     });
-                    
-                    html += `</div>`;
+                    html += '</div>';
                 });
-                
                 container.innerHTML = html;
             } catch (error) {
                 console.error('Error loading stock alerts:', error);
                 document.getElementById('alertsContainer').innerHTML = '<div style="padding: 10px; color: #e74c3c;">Error loading alerts</div>';
             }
         }
-        
-        // Fetch real-time status
+
         async function updateStatus() {
             try {
-                // Fetch status
                 const statusRes = await fetch('/api/status/realtime');
                 const statusData = await statusRes.json();
-                
-                // Fetch sales logs
+
                 const logsRes = await fetch('/api/sales/today');
                 const logsData = await logsRes.json();
-                
-                // Update stats
-                document.getElementById('todaySales').textContent = '₱' + logsData.total_sales.toFixed(2);
-                document.getElementById('transactions').textContent = logsData.total_transactions;
+
+                document.getElementById('todaySales').textContent = '\u20B1' + Number(logsData.total_sales || 0).toFixed(2);
+                document.getElementById('transactions').textContent = logsData.total_transactions || 0;
                 document.getElementById('itemsSold').textContent = Object.values(logsData.items_sold || {}).reduce((a, b) => a + b, 0);
-                
-                // Update machines grid
+
                 const grid = document.getElementById('machinesGrid');
                 grid.innerHTML = '';
-                
-                statusData.forEach(machine => {
+                (statusData || []).forEach(machine => {
                     const lowStockItems = machine.low_stock_items || [];
-                    const itemsList = Object.entries(machine.items_sold_today || {})
-                        .map(([name, qty]) => `${name}: ${qty}`)
-                        .join(', ') || 'None';
-                    
+                    const itemsList = Object.entries(machine.items_sold_today || {}).map(([name, qty]) => `${name}: ${qty}`).join(', ') || 'None';
                     const card = document.createElement('div');
                     card.className = 'machine-card';
                     card.innerHTML = `
                         <div class="machine-header">
-                            <h2>${machine.name}</h2>
-                            <span class="status-badge">${machine.is_active ? '🟢 Active' : '🔴 Offline'}</span>
+                            <h2>${escapeHtml(machine.name)}</h2>
+                            <span class="status-badge">${machine.is_active ? 'Active' : 'Offline'}</span>
                         </div>
-                        
-                        ${lowStockItems.length > 0 ? `
-                            <div class="low-stock-alert">
-                                <div style="font-weight: bold; color: #c0392b;">⚠️ Low Stock Alert:</div>
-                                <div class="alert-items">${lowStockItems.join(', ')}</div>
-                            </div>
-                        ` : ''}
-                        
+                        ${lowStockItems.length > 0 ? `<div class="low-stock-alert"><div style="font-weight: bold; color: #c0392b;">Low Stock Alert:</div><div class="alert-items">${lowStockItems.map(escapeHtml).join(', ')}</div></div>` : ''}
                         <div class="machine-stats">
-                            <div class="stat-box">
-                                <div class="stat-label-small">Total Items</div>
-                                <div class="stat-value-small">${machine.total_items}</div>
-                            </div>
-                            <div class="stat-box">
-                                <div class="stat-label-small">Today's Sales</div>
-                                <div class="stat-value-small">₱${machine.today_sales.toFixed(2)}</div>
-                            </div>
+                            <div class="stat-box"><div class="stat-label-small">Total Items</div><div class="stat-value-small">${machine.total_items}</div></div>
+                            <div class="stat-box"><div class="stat-label-small">Today's Sales</div><div class="stat-value-small">\u20B1${Number(machine.today_sales || 0).toFixed(2)}</div></div>
                         </div>
-                        
-                        <div class="items-sold">
-                            <div class="items-sold-title">Today's Items Sold:</div>
-                            <div class="items-sold-list">${itemsList}</div>
-                        </div>
+                        <div class="items-sold"><div class="items-sold-title">Today's Items Sold:</div><div class="items-sold-list">${escapeHtml(itemsList)}</div></div>
                     `;
                     grid.appendChild(card);
                 });
-                
-                // Update logs based on selected date
+
                 const picker = document.getElementById('logsDatePicker');
                 const selectedDate = picker && picker.value ? picker.value : getTodayIsoDate();
                 await loadSalesLogsByDate(selectedDate, 'logsContainer', 'selectedDateLabel');
-                
-                // Load low stock alerts
-                loadStockAlerts();
-                
-                // Update timestamp
-                const now = new Date();
-                document.getElementById('lastUpdate').textContent = now.toLocaleTimeString();
+
+                await loadStockAlerts();
+                document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
             } catch (error) {
                 console.error('Error updating status:', error);
             }
         }
-        
-        // Initial load
+
+        const today = getTodayIsoDate();
         const logsPicker = document.getElementById('logsDatePicker');
-        if (logsPicker && !logsPicker.value) {
-            logsPicker.value = getTodayIsoDate();
-        }
+        if (logsPicker && !logsPicker.value) logsPicker.value = today;
+
+        const sensorPicker = document.getElementById('sensorDatePicker');
+        if (sensorPicker && !sensorPicker.value) sensorPicker.value = today;
+
+        const sensorTextPicker = document.getElementById('sensorTextDatePicker');
+        if (sensorTextPicker && !sensorTextPicker.value) sensorTextPicker.value = today;
+
         updateStatus();
-        loadSensorReadings();
+        loadTodaySensorGraph();
+        loadTodaySensorTextLogs();
         loadStockAlerts();
-        
-        // Auto-refresh status every 5 seconds; sensor readings every 1 hour
+
         setInterval(updateStatus, 5000);
-        setInterval(loadSensorReadings, 3600000);
-        setInterval(loadStockAlerts, 10000);  // Refresh alerts every 10 seconds
+        setInterval(loadTodaySensorGraph, 3600000);
+        setInterval(loadTodaySensorTextLogs, 3600000);
+        setInterval(loadStockAlerts, 10000);
     </script>
 </body>
 </html>
+
+
+
+
+
+
+
 
 
 

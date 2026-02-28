@@ -361,6 +361,17 @@
                 </div>
             </div>
         </div>
+        <!-- Transaction Time Logs -->
+        <div class="logs-section">
+            <h3>Transaction Time Logs</h3>
+            <div style="margin-bottom: 10px; font-size: 12px; color: #666;">
+                Uses the same selected date as Sales Logs.
+                <span id="transactionTimeDateLabel" style="margin-left: 8px;"></span>
+            </div>
+            <div class="logs-container" id="transactionTimeContainer">
+                <div class="log-line">Loading transaction times...</div>
+            </div>
+        </div>
         <!-- Temperature & Humidity Text Logs -->
         <div class="logs-section">
             <h3>Temperature & Humidity Logs (Every 30 Minutes)</h3>
@@ -463,10 +474,31 @@
             }
         }
 
+        async function loadTransactionTimesByDate(dateStr) {
+            if (!dateStr) return;
+            try {
+                const res = await fetch('/api/transaction-times?date=' + encodeURIComponent(dateStr));
+                const data = await res.json();
+                const lines = (data.logs || []).map(line => {
+                    const ts = (line.match(/\[(.*?)\]/) || [null, ''])[1];
+                    const dur = (line.match(/Duration:\s*([^|]+)/i) || [null, 'N/A'])[1].trim();
+                    return ts ? `[${ts}] ${dur}` : line;
+                });
+                renderLogs('transactionTimeContainer', lines, `No transaction time logs on ${dateStr}`);
+                const label = document.getElementById('transactionTimeDateLabel');
+                if (label) label.textContent = 'Date: ' + dateStr;
+            } catch (error) {
+                console.error('Error loading transaction time logs:', error);
+                const container = document.getElementById('transactionTimeContainer');
+                if (container) container.innerHTML = '<div class="log-line">Error loading transaction time logs</div>';
+            }
+        }
+
         async function loadLogsFromPicker() {
             const picker = document.getElementById('logsDatePicker');
             const selected = picker && picker.value ? picker.value : getTodayIsoDate();
             await loadSalesLogsByDate(selected, 'logsContainer', 'selectedDateLabel');
+            await loadTransactionTimesByDate(selected);
         }
 
         async function loadTodayLogsNow() {
@@ -474,6 +506,7 @@
             const picker = document.getElementById('logsDatePicker');
             if (picker) picker.value = today;
             await loadSalesLogsByDate(today, 'logsContainer', 'selectedDateLabel');
+            await loadTransactionTimesByDate(today);
         }
 
         function toTimeLabel(timestamp, fallbackIndex) {
@@ -796,6 +829,7 @@
                 const picker = document.getElementById('logsDatePicker');
                 const selectedDate = picker && picker.value ? picker.value : getTodayIsoDate();
                 await loadSalesLogsByDate(selectedDate, 'logsContainer', 'selectedDateLabel');
+                await loadTransactionTimesByDate(selectedDate);
 
                 await loadStockAlerts();
                 document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();

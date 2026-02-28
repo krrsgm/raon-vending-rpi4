@@ -824,7 +824,11 @@ class CartScreen(tk.Frame):
         
         # Clear cart and return to kiosk screen
         self.controller.clear_cart()
-        self.controller.show_frame("KioskFrame")
+        try:
+            self.controller.finish_order_timer(status="SUCCESS")
+        except Exception:
+            pass
+        self.controller.show_start_order()
 
     def _destroy_payment_window(self):
         """Safely destroy the payment status window."""
@@ -884,9 +888,14 @@ class CartScreen(tk.Frame):
         # Ensure the payment window is closed and return to kiosk
         self._destroy_payment_window()
 
-        # Return to kiosk screen regardless of payment state
         try:
-            self.controller.show_kiosk()
+            self.controller.finish_order_timer(status="CANCELLED")
+        except Exception:
+            pass
+
+        # Return to start-order screen regardless of payment state
+        try:
+            self.controller.show_start_order()
         except Exception:
             pass
                 

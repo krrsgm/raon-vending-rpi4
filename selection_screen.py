@@ -27,7 +27,7 @@ class SelectionScreen(tk.Frame):
             self, 
             text="Kiosk",
             font=button_font,
-            command=lambda: controller.show_kiosk(),
+            command=lambda: controller.show_start_order(),
             bg='#27ae60',  # Green
             fg='#ffffff',  # White text
             activebackground='#2ecc71', # Lighter green on click

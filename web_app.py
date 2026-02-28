@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import time
+import re
 from threading import Thread, Lock
 import logging
 
@@ -460,6 +461,39 @@ def api_sales_logs():
         }), 200
     except Exception as e:
         logger.error(f"Sales logs error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/transaction-times')
+def api_transaction_times():
+    """API: Get per-transaction duration logs for a specific date."""
+    try:
+        logger_inst = get_logger() if get_logger else None
+        if not logger_inst:
+            return jsonify({'error': 'Logger not available'}), 500
+
+        from datetime import datetime as dt
+        date_str = request.args.get('date', dt.now().strftime("%Y-%m-%d"))
+        logs_dir = logger_inst.logs_dir
+        log_file = os.path.join(logs_dir, f"sales_{date_str}.log")
+
+        if not os.path.exists(log_file):
+            return jsonify({'logs': [], 'date': date_str, 'count': 0}), 200
+
+        tx_logs = []
+        with open(log_file, 'r', encoding='utf-8') as f:
+            for raw in f:
+                line = str(raw).strip()
+                if "TRANSACTION_TIME" in line:
+                    tx_logs.append(line)
+
+        return jsonify({
+            'logs': tx_logs,
+            'date': date_str,
+            'count': len(tx_logs)
+        }), 200
+    except Exception as e:
+        logger.error(f"Transaction times error: {e}")
         return jsonify({'error': str(e)}), 500
 
 

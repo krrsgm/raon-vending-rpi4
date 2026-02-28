@@ -866,7 +866,7 @@ def get_realtime_status():
             
             # Calculate low stock items
             # Calculate today's sales
-            today = datetime.date.today()
+            today = datetime.utcnow().date()
             today_sales_sum = db.session.query(func.sum(Sale.coin_amount + Sale.bill_amount)).filter(
                 Sale.item_id.in_([i.id for i in items]),
                 func.date(Sale.timestamp) == today
@@ -901,11 +901,11 @@ def get_realtime_status():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/sales/today')
+@app.route('/api/db/sales/today')
 def get_today_sales():
     """Get today's sales summary"""
     try:
-        today = datetime.date.today()
+        today = datetime.utcnow().date()
         sales = Sale.query.filter(func.date(Sale.timestamp) == today).all()
         
         total_sales = sum(s.coin_amount + s.bill_amount for s in sales)
@@ -927,11 +927,11 @@ def get_today_sales():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/sales/logs')
+@app.route('/api/db/sales/logs')
 def get_sales_logs():
     """Get today's sales logs"""
     try:
-        today = datetime.date.today()
+        today = datetime.utcnow().date()
         sales = Sale.query.filter(func.date(Sale.timestamp) == today).order_by(Sale.timestamp.desc()).limit(100).all()
         
         logs = []

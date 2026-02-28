@@ -49,9 +49,9 @@ volatile unsigned long coinLastPulseMs = 0;
 volatile unsigned long coinLastEdgeUs = 0;
 volatile bool coinCountActive = false;
 unsigned long lastCoinValidMs = 0;
-const unsigned long coinDebounceMs = 80;      // debounce between recognized coin events
-const unsigned long coinPulseDebounceUs = 5000; // debounce per pulse edge (5ms)
-const unsigned long coinGroupGapMs = 180;     // gap that ends a pulse train for one coin
+const unsigned long coinDebounceMs = 180;      // debounce between recognized coin events
+const unsigned long coinPulseDebounceUs = 12000; // debounce per pulse edge (12ms) for noise rejection
+const unsigned long coinGroupGapMs = 220;     // gap that ends a pulse train for one coin
 float coin_total = 0.0;
 
 // --- Shared Sensor Bridge Pins ---

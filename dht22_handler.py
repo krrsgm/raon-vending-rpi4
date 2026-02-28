@@ -48,6 +48,9 @@ class SharedSerialReader(threading.Thread):
         self._balance_poll_interval = 1.0
         self._last_status_poll = 0.0
         self._status_poll_interval = 2.0
+        self._last_coin_event_ms = 0
+        self._coin_event_debounce_ms = 250
+        self._allowed_coin_values = {1.0, 5.0, 10.0}
         self.suspended = False
         # Match lines like: "DHT1: 25.0C 60%"
         self.pattern = re.compile(r"(DHT1|DHT2).*?:\s*([\-0-9.]+)\s*C\s*([\-0-9.]+)\s*%?", re.IGNORECASE)
@@ -128,22 +131,45 @@ class SharedSerialReader(threading.Thread):
                                 total = float(m3.group(2))
                         except Exception:
                             total = None
+                        now_ms = int(time.time() * 1000)
+                        event_accepted = False
+                        current_total = None
+
+                        # Reject malformed/noisy value-only lines that are not valid denominations.
+                        if total is None and value is not None and value not in self._allowed_coin_values:
+                            continue
+
+                        # Debounce back-to-back coin events to reduce phantom duplicates.
+                        if (now_ms - self._last_coin_event_ms) < self._coin_event_debounce_ms:
+                            continue
 
                         if total is not None:
                             with self._lock:
-                                self.coin_total = total
+                                prev_total = self.coin_total
+                                # Accept only non-decreasing totals from the stream.
+                                if total >= prev_total:
+                                    self.coin_total = total
+                                    current_total = self.coin_total
+                                    event_accepted = (total > prev_total)
+                                else:
+                                    # Device reset/noise: align baseline quietly.
+                                    self.coin_total = total
+                                    current_total = self.coin_total
+                                    event_accepted = False
                         elif value is not None:
                             with self._lock:
                                 self.coin_total += value
+                                current_total = self.coin_total
+                                event_accepted = True
 
-                        with self._lock:
-                            current_total = self.coin_total
-                        callbacks = list(self._coin_callbacks)
-                        for cb in callbacks:
-                            try:
-                                cb(current_total)
-                            except Exception:
-                                pass
+                        if event_accepted:
+                            self._last_coin_event_ms = now_ms
+                            callbacks = list(self._coin_callbacks)
+                            for cb in callbacks:
+                                try:
+                                    cb(current_total)
+                                except Exception:
+                                    pass
                         continue
                     m4 = self.balance_pattern.search(line)
                     if m4:

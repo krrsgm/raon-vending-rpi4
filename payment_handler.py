@@ -142,6 +142,40 @@ class PaymentHandler:
             shared_reader = None
         self._shared_reader = shared_reader
 
+        # Optional coin-event filtering/tuning from config for noisy lines.
+        # Example:
+        # hardware.coin_acceptor.accepted_values = [5, 10]
+        # hardware.coin_acceptor.event_debounce_ms = 350
+        try:
+            coin_cfg = config.get('hardware', {}).get('coin_acceptor', {}) if isinstance(config, dict) else {}
+            allowed_cfg = coin_cfg.get('accepted_values', [1, 5, 10])
+            debounce_cfg = int(coin_cfg.get('event_debounce_ms', 250))
+        except Exception:
+            coin_cfg = {}
+            allowed_cfg = [1, 5, 10]
+            debounce_cfg = 250
+
+        if shared_reader is not None:
+            try:
+                allowed_values = set()
+                if isinstance(allowed_cfg, (list, tuple, set)):
+                    for v in allowed_cfg:
+                        try:
+                            fv = float(v)
+                            if fv > 0:
+                                allowed_values.add(fv)
+                        except Exception:
+                            continue
+                if not allowed_values:
+                    allowed_values = {1.0, 5.0, 10.0}
+                shared_reader._allowed_coin_values = allowed_values
+            except Exception:
+                pass
+            try:
+                shared_reader._coin_event_debounce_ms = max(0, debounce_cfg)
+            except Exception:
+                pass
+
         # Setup coin acceptor from Arduino Uno shared serial only.
         self.coin_acceptor = None
         # Final fallback: use shared serial reader directly for Arduino Uno coin totals.

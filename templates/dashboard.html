@@ -427,6 +427,78 @@
         <script>
         let sensorChartInstance = null;
         let irChartInstance = null;
+        let stockAlertAudioContext = null;
+        const stockAlertState = {
+            initialized: false,
+            critical: 0,
+            warning: 0,
+            lastPlayedAtMs: 0
+        };
+
+        function getStockAlertAudioContext() {
+            if (stockAlertAudioContext) return stockAlertAudioContext;
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return null;
+            stockAlertAudioContext = new AudioCtx();
+            return stockAlertAudioContext;
+        }
+
+        function playStockAlertSound(severity) {
+            try {
+                const ctx = getStockAlertAudioContext();
+                if (!ctx) return;
+                if (ctx.state === 'suspended') {
+                    ctx.resume().catch(() => {});
+                }
+
+                const pattern = severity === 'critical'
+                    ? [{ f: 980, d: 0.12 }, { f: 740, d: 0.10 }, { f: 980, d: 0.14 }]
+                    : [{ f: 640, d: 0.10 }, { f: 640, d: 0.10 }];
+
+                let start = ctx.currentTime + 0.02;
+                pattern.forEach(step => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.value = step.f;
+                    gain.gain.setValueAtTime(0.0001, start);
+                    gain.gain.exponentialRampToValueAtTime(0.12, start + 0.01);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, start + step.d);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(start);
+                    osc.stop(start + step.d + 0.02);
+                    start += step.d + 0.05;
+                });
+            } catch (err) {
+                console.warn('Stock alert sound failed:', err);
+            }
+        }
+
+        function maybePlayStockAlertSound(criticalCount, warningCount) {
+            const critical = Number(criticalCount || 0);
+            const warning = Number(warningCount || 0);
+            const hasAlerts = critical > 0 || warning > 0;
+            const prevCritical = stockAlertState.critical;
+            const prevWarning = stockAlertState.warning;
+
+            const raised =
+                critical > prevCritical ||
+                warning > prevWarning ||
+                (critical > 0 && prevCritical === 0) ||
+                (warning > 0 && prevWarning === 0);
+
+            const shouldPlay = hasAlerts && (!stockAlertState.initialized || raised);
+            const nowMs = Date.now();
+            if (shouldPlay && (nowMs - stockAlertState.lastPlayedAtMs) > 3000) {
+                playStockAlertSound(critical > 0 ? 'critical' : 'warning');
+                stockAlertState.lastPlayedAtMs = nowMs;
+            }
+
+            stockAlertState.initialized = true;
+            stockAlertState.critical = critical;
+            stockAlertState.warning = warning;
+        }
 
         function getTodayIsoDate() {
             const now = new Date();
@@ -777,9 +849,12 @@
                 const res = await fetch('/api/stock-alerts');
                 const data = await res.json();
                 const alerts = data.alerts || [];
-                document.getElementById('criticalCount').textContent = data.total_critical || 0;
-                document.getElementById('warningCount').textContent = data.total_warning || 0;
+                const totalCritical = Number(data.total_critical || 0);
+                const totalWarning = Number(data.total_warning || 0);
+                document.getElementById('criticalCount').textContent = totalCritical;
+                document.getElementById('warningCount').textContent = totalWarning;
                 document.getElementById('alertsLastUpdated').textContent = new Date().toLocaleTimeString();
+                maybePlayStockAlertSound(totalCritical, totalWarning);
 
                 const container = document.getElementById('alertsContainer');
                 if (alerts.length === 0) {
@@ -866,6 +941,15 @@
 
         const sensorPicker = document.getElementById('sensorDatePicker');
         if (sensorPicker && !sensorPicker.value) sensorPicker.value = today;
+
+        const unlockAlertAudio = () => {
+            const ctx = getStockAlertAudioContext();
+            if (ctx && ctx.state === 'suspended') {
+                ctx.resume().catch(() => {});
+            }
+        };
+        window.addEventListener('pointerdown', unlockAlertAudio, { once: true });
+        window.addEventListener('keydown', unlockAlertAudio, { once: true });
 
         updateStatus();
         loadTodaySensorData();

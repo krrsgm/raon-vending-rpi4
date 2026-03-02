@@ -1,16 +1,17 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
-IR Sensor Test - Arduino Uno serial first (with optional Raspberry Pi GPIO mode).
+IR Sensor Test - Arduino Uno serial first (A0/A1 analog IR via serial).
 
-Expected Arduino serial output:
+Expected Arduino serial output examples:
   IR1: BLOCKED|CLEAR
   IR2: BLOCKED|CLEAR
+  IR1: BLOCKED ADC=512 | IR2: CLEAR ADC=301
 """
 
 import argparse
-import time
-import sys
 import re
+import sys
+import time
 
 try:
     import serial
@@ -24,23 +25,23 @@ try:
     import RPi.GPIO as GPIO
     GPIO_AVAILABLE = True
 except Exception:
-    # allow running on non-RPi machines
+    # Allow running on non-RPi machines.
     try:
         from rpi_gpio_mock import GPIO as GPIO
         GPIO_AVAILABLE = True
     except Exception:
         GPIO_AVAILABLE = False
 
-# Raspberry Pi sensor pins (legacy)
+# Raspberry Pi sensor pins (legacy digital mode).
 SENSOR_1_PIN = 24
 SENSOR_2_PIN = 25
 
-# ESP32 pins (for reference)
-ESP32_IR1_LABEL = "IR1"
-ESP32_IR2_LABEL = "IR2"
+# Arduino Uno analog pin labels (from firmware).
+UNO_IR1_LABEL = "IR1 (A0)"
+UNO_IR2_LABEL = "IR2 (A1)"
 
 
-def autodetect_esp32_port():
+def autodetect_serial_port():
     if not SERIAL_AVAILABLE:
         return None
     ports = list(serial.tools.list_ports.comports())
@@ -52,49 +53,80 @@ def autodetect_esp32_port():
     return ports[0].device if ports else None
 
 
-def read_from_esp32(port, duration=30):
-    """Read IR status lines from ESP32 serial and print a simple table."""
+def read_from_serial(port, duration=30):
+    """Read IR status lines from serial and print a table for Uno A0/A1 sensors."""
     try:
         ser = serial.Serial(port, 115200, timeout=1)
     except Exception as e:
         print(f"[ERROR] Could not open serial port {port}: {e}")
         return
 
-    print(f"âœ“ Reading IR sensor states from ESP32 on {port} for {duration}s")
-    print(f"{'Time (s)':>8} | {'IR1 (GPIO34)':>15} | {'IR2 (GPIO35)':>15}")
-    print('-' * 48)
+    print(f"[INFO] Reading IR sensor states from {port} for {duration}s")
+    print(f"{'Time (s)':>8} | {UNO_IR1_LABEL:>10} | {'ADC':>4} | {UNO_IR2_LABEL:>10} | {'ADC':>4}")
+    print("-" * 56)
 
     start = time.time()
     ir1 = None
     ir2 = None
+    ir1_adc = None
+    ir2_adc = None
+
+    # Combined single-line format (newer firmware).
+    dual_pattern = re.compile(
+        r"IR1:\s*(BLOCKED|CLEAR)\s*(?:ADC=|raw=)?\s*(\d+)?\s*\|\s*IR2:\s*(BLOCKED|CLEAR)\s*(?:ADC=|raw=)?\s*(\d+)?",
+        re.IGNORECASE,
+    )
+    # Separate line format (legacy/new).
     pattern1 = re.compile(r"IR1.*?:\s*(BLOCKED|CLEAR)", re.IGNORECASE)
     pattern2 = re.compile(r"IR2.*?:\s*(BLOCKED|CLEAR)", re.IGNORECASE)
+    adc1_pattern = re.compile(r"IR1.*?(?:ADC=|raw=)\s*(\d+)", re.IGNORECASE)
+    adc2_pattern = re.compile(r"IR2.*?(?:ADC=|raw=)\s*(\d+)", re.IGNORECASE)
 
     try:
         while time.time() - start < duration:
-            line = ser.readline().decode(errors='ignore').strip()
+            line = ser.readline().decode(errors="ignore").strip()
             if not line:
                 continue
-            t = time.time() - start
-            m1 = pattern1.search(line)
-            m2 = pattern2.search(line)
-            if m1:
-                ir1 = m1.group(1).upper()
-            if m2:
-                ir2 = m2.group(1).upper()
 
-            # Print current snapshot whenever we get a line containing IR info
-            if m1 or m2:
+            t = time.time() - start
+            matched = False
+
+            md = dual_pattern.search(line)
+            if md:
+                ir1 = md.group(1).upper()
+                ir2 = md.group(3).upper()
+                ir1_adc = int(md.group(2)) if md.group(2) else ir1_adc
+                ir2_adc = int(md.group(4)) if md.group(4) else ir2_adc
+                matched = True
+            else:
+                m1 = pattern1.search(line)
+                m2 = pattern2.search(line)
+                a1 = adc1_pattern.search(line)
+                a2 = adc2_pattern.search(line)
+                if m1:
+                    ir1 = m1.group(1).upper()
+                    matched = True
+                if m2:
+                    ir2 = m2.group(1).upper()
+                    matched = True
+                if a1:
+                    ir1_adc = int(a1.group(1))
+                if a2:
+                    ir2_adc = int(a2.group(1))
+
+            if matched:
                 s1 = ir1 if ir1 is not None else "--"
                 s2 = ir2 if ir2 is not None else "--"
-                print(f"{t:8.1f} | {s1:>15} | {s2:>15}")
+                a1 = str(ir1_adc) if ir1_adc is not None else "--"
+                a2 = str(ir2_adc) if ir2_adc is not None else "--"
+                print(f"{t:8.1f} | {s1:>10} | {a1:>4} | {s2:>10} | {a2:>4}")
 
     except KeyboardInterrupt:
         print("\n[INFO] Interrupted by user")
     finally:
         try:
             ser.close()
-        except:
+        except Exception:
             pass
 
 
@@ -102,6 +134,8 @@ def read_from_gpio(duration=30, interval=0.5):
     if not GPIO_AVAILABLE:
         print("[ERROR] GPIO not available on this system")
         return
+
+    print("[WARNING] GPIO mode is legacy digital mode. Uno analog A0/A1 is available via --mode serial.")
 
     try:
         GPIO.setmode(GPIO.BCM)
@@ -111,10 +145,10 @@ def read_from_gpio(duration=30, interval=0.5):
         print(f"[ERROR] Failed to initialize GPIO: {e}")
         return
 
-    print(f"âœ“ GPIO initialized (GPIO_AVAILABLE={GPIO_AVAILABLE})")
+    print(f"[INFO] GPIO initialized (GPIO_AVAILABLE={GPIO_AVAILABLE})")
     print(f"Reading IR sensors on GPIO {SENSOR_1_PIN} and {SENSOR_2_PIN} for {duration}s")
     print(f"{'Time (s)':>8} | {'Sensor 1':>18} | {'Sensor 2':>18}")
-    print('-' * 54)
+    print("-" * 54)
 
     start = time.time()
     try:
@@ -131,15 +165,15 @@ def read_from_gpio(duration=30, interval=0.5):
     finally:
         try:
             GPIO.cleanup()
-            print("\nâœ“ GPIO cleaned up")
+            print("\n[INFO] GPIO cleaned up")
         except Exception as e:
             print(f"\n[WARNING] Error during cleanup: {e}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="IR sensor test utility")
+    parser = argparse.ArgumentParser(description="IR sensor test utility (Uno A0/A1 over serial)")
     parser.add_argument("--mode", choices=["serial", "gpio"], default="serial")
-    parser.add_argument("--port", default="/dev/ttyUSB0", help="Arduino serial port or 'auto'")
+    parser.add_argument("--port", default="auto", help="Arduino serial port or 'auto'")
     parser.add_argument("--duration", type=int, default=30, help="Test duration in seconds")
     args = parser.parse_args()
 
@@ -148,15 +182,14 @@ def main():
     print("=" * 50)
 
     if args.mode == "serial":
-        port = autodetect_esp32_port() if args.port.lower() == "auto" else args.port
+        port = autodetect_serial_port() if args.port.lower() == "auto" else args.port
         if not port:
             print("[ERROR] No serial port found for Arduino IR stream")
             sys.exit(1)
-        read_from_esp32(port, duration=args.duration)
+        read_from_serial(port, duration=args.duration)
     else:
         read_from_gpio(duration=args.duration)
 
 
 if __name__ == "__main__":
     main()
-

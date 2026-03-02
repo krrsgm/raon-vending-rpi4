@@ -174,6 +174,8 @@ def _filter_dashboard_sales_logs(raw_lines):
         'bill',
         'change',
         'transaction',
+        'dispense_result',
+        'dispense',
     )
 
     filtered = []

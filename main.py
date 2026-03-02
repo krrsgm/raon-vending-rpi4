@@ -17,6 +17,10 @@ import platform
 import os
 import sys
 from arduino_serial_utils import detect_arduino_serial_port
+try:
+    from sensor_data_logger import get_sensor_logger
+except Exception:
+    get_sensor_logger = None
 
 # Stock Tracker for inventory management
 try:
@@ -57,7 +61,23 @@ class MainApp(tk.Tk):
         self._arduino_reader = None
         self._arduino_sensor_bridge_running = False
         self._arduino_sensor_bridge_thread = None
+        self._sensor_data_logger = None
+        self._sensor_log_interval_seconds = 15 * 60
+        self._next_sensor_snapshot_log_ts = 0.0
+        self._sensor_snapshot_lock = threading.Lock()
+        self._latest_sensor_snapshot = {
+            "sensor1_temp": None,
+            "sensor1_humidity": None,
+            "sensor2_temp": None,
+            "sensor2_humidity": None,
+            "ir_sensor1_detection": None,
+            "ir_sensor2_detection": None,
+            "relay_status": None,
+            "target_temp": None,
+        }
         self._vend_lock = threading.Lock()  # Ensure only one motor pulse at a time
+        self._dispense_track_lock = threading.Lock()
+        self._pending_dispense_by_slot = {}  # slot_id -> [item_name, ...]
         self._order_start_ts = None  # Transaction timer start (epoch seconds)
 
         # Start in fullscreen mode for kiosk display
@@ -307,6 +327,19 @@ class MainApp(tk.Tk):
                 or 115200
             )
 
+            sensor_log_cfg = hardware.get('sensor_logging', {})
+            interval_minutes = sensor_log_cfg.get('dashboard_interval_minutes')
+            if interval_minutes is None:
+                interval_minutes = sensor_log_cfg.get('interval_minutes', 15)
+            try:
+                interval_minutes = float(interval_minutes)
+            except Exception:
+                interval_minutes = 15.0
+            self._sensor_log_interval_seconds = max(60.0, interval_minutes * 60.0)
+            self._next_sensor_snapshot_log_ts = 0.0
+            self._sensor_data_logger = None
+            self._ensure_sensor_data_logger()
+
             self._arduino_reader = get_shared_serial_reader(serial_port, serial_baud)
             if not self._arduino_reader:
                 print(f"[MainApp] Arduino sensor bridge: no serial reader on {serial_port}")
@@ -319,8 +352,119 @@ class MainApp(tk.Tk):
             )
             self._arduino_sensor_bridge_thread.start()
             print(f"[MainApp] Arduino sensor bridge started on {serial_port} @ {serial_baud}")
+            print(f"[MainApp] Dashboard sensor snapshots every {int(self._sensor_log_interval_seconds // 60)} minute(s)")
         except Exception as e:
             print(f"[MainApp] Arduino sensor bridge init failed: {e}")
+
+    def _resolve_config_target_temp(self):
+        """Resolve TEC target temperature from config, if set."""
+        try:
+            tec_cfg = (
+                self.config.get('hardware', {}).get('tec_relay', {})
+                if isinstance(self.config, dict) else {}
+            )
+            target_temp = tec_cfg.get('target_temp')
+            if target_temp is not None:
+                return float(target_temp)
+
+            tmin = tec_cfg.get('target_temp_min')
+            tmax = tec_cfg.get('target_temp_max')
+            if tmin is not None and tmax is not None:
+                return (float(tmin) + float(tmax)) / 2.0
+        except Exception:
+            pass
+        return None
+
+    def _ensure_sensor_data_logger(self):
+        """Initialize sensor logger lazily so both bridge and transaction paths can use it."""
+        if self._sensor_data_logger is not None:
+            return self._sensor_data_logger
+        try:
+            if get_sensor_logger:
+                self._sensor_data_logger = get_sensor_logger(logs_dir=get_absolute_path("logs"))
+        except Exception as e:
+            print(f"[MainApp] Sensor logger init failed: {e}")
+        return self._sensor_data_logger
+
+    def _update_latest_sensor_snapshot(self, **updates):
+        """Update cached latest sensor readings used for periodic CSV snapshots."""
+        try:
+            with self._sensor_snapshot_lock:
+                for key, value in updates.items():
+                    if key in self._latest_sensor_snapshot and value is not None:
+                        self._latest_sensor_snapshot[key] = value
+        except Exception:
+            pass
+
+    def _log_sensor_snapshot_if_due(self):
+        """Persist temp/humidity/TEC snapshot for dashboard graphing at configured interval."""
+        if not self._ensure_sensor_data_logger():
+            return
+
+        now = time.time()
+        if now < self._next_sensor_snapshot_log_ts:
+            return
+
+        snapshot = None
+        try:
+            with self._sensor_snapshot_lock:
+                snapshot = dict(self._latest_sensor_snapshot)
+        except Exception:
+            snapshot = None
+
+        if not snapshot:
+            return
+
+        has_payload = any(snapshot.get(k) is not None for k in (
+            "sensor1_temp",
+            "sensor1_humidity",
+            "sensor2_temp",
+            "sensor2_humidity",
+            "relay_status",
+        ))
+        if not has_payload:
+            return
+
+        try:
+            self._sensor_data_logger.log_sensor_reading(
+                sensor1_temp=snapshot.get("sensor1_temp"),
+                sensor1_humidity=snapshot.get("sensor1_humidity"),
+                sensor2_temp=snapshot.get("sensor2_temp"),
+                sensor2_humidity=snapshot.get("sensor2_humidity"),
+                relay_status=snapshot.get("relay_status"),
+                target_temp=snapshot.get("target_temp"),
+            )
+            self._next_sensor_snapshot_log_ts = now + self._sensor_log_interval_seconds
+        except Exception as e:
+            print(f"[MainApp] Sensor snapshot log error: {e}")
+
+    def _log_ir_transaction_snapshot(self):
+        """Persist IR reading only when a dispense transaction callback occurs."""
+        if not self._ensure_sensor_data_logger():
+            return
+
+        snapshot = None
+        try:
+            with self._sensor_snapshot_lock:
+                snapshot = dict(self._latest_sensor_snapshot)
+        except Exception:
+            snapshot = None
+        if not snapshot:
+            return
+
+        try:
+            self._sensor_data_logger.log_sensor_reading(
+                sensor1_temp=snapshot.get("sensor1_temp"),
+                sensor1_humidity=snapshot.get("sensor1_humidity"),
+                sensor2_temp=snapshot.get("sensor2_temp"),
+                sensor2_humidity=snapshot.get("sensor2_humidity"),
+                ir_sensor1_detection=snapshot.get("ir_sensor1_detection"),
+                ir_sensor2_detection=snapshot.get("ir_sensor2_detection"),
+                relay_status=snapshot.get("relay_status"),
+                target_temp=snapshot.get("target_temp"),
+            )
+        except Exception as e:
+            print(f"[MainApp] IR transaction snapshot log error: {e}")
 
     def _arduino_sensor_bridge_loop(self):
         """Poll shared serial reader and push updates to all status panels."""
@@ -333,13 +477,19 @@ class MainApp(tk.Tk):
                 h1, t1 = self._arduino_reader.get_reading("DHT1")
                 h2, t2 = self._arduino_reader.get_reading("DHT2")
                 if t1 is not None or h1 is not None:
+                    self._update_latest_sensor_snapshot(sensor1_temp=t1, sensor1_humidity=h1)
                     self._on_dht22_update(1, t1, h1)
                 if t2 is not None or h2 is not None:
+                    self._update_latest_sensor_snapshot(sensor2_temp=t2, sensor2_humidity=h2)
                     self._on_dht22_update(2, t2, h2)
 
                 ir1 = self._arduino_reader.get_ir_state("IR1")
                 ir2 = self._arduino_reader.get_ir_state("IR2")
                 if ir1 is not None or ir2 is not None:
+                    self._update_latest_sensor_snapshot(
+                        ir_sensor1_detection=ir1,
+                        ir_sensor2_detection=ir2
+                    )
                     mode = (
                         self.config.get('hardware', {})
                         .get('ir_sensors', {})
@@ -350,16 +500,11 @@ class MainApp(tk.Tk):
 
                 tec_active = self._arduino_reader.get_tec_active()
                 if tec_active is not None:
-                    tec_cfg = (
-                        self.config.get('hardware', {}).get('tec_relay', {})
-                        if isinstance(self.config, dict) else {}
+                    target_temp = self._resolve_config_target_temp()
+                    self._update_latest_sensor_snapshot(
+                        relay_status=bool(tec_active),
+                        target_temp=target_temp
                     )
-                    target_temp = tec_cfg.get('target_temp')
-                    if target_temp is None:
-                        tmin = tec_cfg.get('target_temp_min')
-                        tmax = tec_cfg.get('target_temp_max')
-                        if tmin is not None and tmax is not None:
-                            target_temp = (float(tmin) + float(tmax)) / 2.0
 
                     current_vals = [v for v in (t1, t2) if v is not None]
                     current_temp = (sum(current_vals) / len(current_vals)) if current_vals else None
@@ -369,6 +514,9 @@ class MainApp(tk.Tk):
                         target_temp=target_temp,
                         current_temp=current_temp
                     )
+
+                # Persist dashboard graph snapshots from live Arduino readings.
+                self._log_sensor_snapshot_if_due()
             except Exception:
                 pass
             time.sleep(1)
@@ -393,6 +541,7 @@ class MainApp(tk.Tk):
             simulate_detection = ir_config.get('simulate_detection', False)  # For testing
             use_esp32_ir = ir_config.get('use_esp32_serial', True)
             serial_port = ir_config.get('esp32_port') or hardware_config.get('bill_acceptor', {}).get('serial_port')
+            serial_port = detect_arduino_serial_port(preferred_port=serial_port)
             serial_baud = ir_config.get('esp32_baud', 115200)
             
             self.dispense_monitor = ItemDispenseMonitor(
@@ -412,7 +561,7 @@ class MainApp(tk.Tk):
             self.dispense_monitor.set_on_ir_status_update(self._on_ir_status_update)
             
             self.dispense_monitor.start_monitoring()
-            print("[MainApp] Item Dispense Monitor initialized and started")
+            print(f"[MainApp] Item Dispense Monitor initialized and started (serial={serial_port}, baud={serial_baud})")
         
         except Exception as e:
             print(f"[MainApp] Failed to initialize Dispense Monitor: {e}")
@@ -505,6 +654,10 @@ class MainApp(tk.Tk):
     def _on_ir_status_update(self, sensor_1, sensor_2, detection_mode, last_detection):
         """Handle IR sensor status updates - update status panel."""
         try:
+            self._update_latest_sensor_snapshot(
+                ir_sensor1_detection=sensor_1,
+                ir_sensor2_detection=sensor_2
+            )
             # Update all frames that expose a status_panel so UI shows
             # IR updates regardless of which view is active.
             for frame in self.frames.values():
@@ -518,6 +671,30 @@ class MainApp(tk.Tk):
                     pass
         except Exception as e:
             print(f"[MainApp] Error updating IR status panel: {e}")
+
+    def _track_pending_dispense(self, slot_id, item_name):
+        """Track expected dispense events so callbacks can log item-level outcomes."""
+        try:
+            with self._dispense_track_lock:
+                queue = self._pending_dispense_by_slot.setdefault(int(slot_id), [])
+                queue.append(str(item_name or "Unknown Item"))
+        except Exception:
+            pass
+
+    def _consume_pending_dispense(self, slot_id):
+        """Pop oldest pending item for a slot, if present."""
+        try:
+            sid = int(slot_id)
+            with self._dispense_track_lock:
+                queue = self._pending_dispense_by_slot.get(sid, [])
+                if queue:
+                    item_name = queue.pop(0)
+                    if not queue:
+                        self._pending_dispense_by_slot.pop(sid, None)
+                    return item_name
+        except Exception:
+            pass
+        return "Unknown Item"
     
     def _on_dispense_timeout(self, slot_id, elapsed_time):
         """Handle dispense timeout - show alert dialog."""
@@ -529,10 +706,29 @@ class MainApp(tk.Tk):
     
     def _on_item_dispensed(self, slot_id, success):
         """Handle successful or failed item dispensing."""
+        item_name = self._consume_pending_dispense(slot_id)
+        # IR data is intentionally logged only on dispense callbacks.
+        self._log_ir_transaction_snapshot()
         if success:
             print(f"[MainApp] ✓ Slot {slot_id} dispensed successfully")
+            try:
+                logger = get_logger()
+                logger.log_event(
+                    "DISPENSE",
+                    f"DISPENSE_RESULT | Slot: {slot_id} | Item: {item_name} | Status: SUCCESS"
+                )
+            except Exception:
+                pass
         else:
             print(f"[MainApp] ✗ Slot {slot_id} dispense FAILED")
+            try:
+                logger = get_logger()
+                logger.log_event(
+                    "DISPENSE",
+                    f"DISPENSE_RESULT | Slot: {slot_id} | Item: {item_name} | Status: FAILED"
+                )
+            except Exception:
+                pass
     
     def _on_dispense_status(self, slot_id, status_msg):
         """Handle status messages from dispense monitor."""
@@ -1114,6 +1310,7 @@ class MainApp(tk.Tk):
                     
                     # Start monitoring dispense for this slot if dispense monitor is available
                     if self.dispense_monitor:
+                        self._track_pending_dispense(slot_number, item_name)
                         self.dispense_monitor.start_dispense(
                             slot_id=slot_number,
                             timeout=dispense_timeout,
@@ -1294,6 +1491,7 @@ class MainApp(tk.Tk):
                         
                         # Start monitoring dispense for this slot if available
                         if self.dispense_monitor:
+                            self._track_pending_dispense(slot_number, item_name)
                             self.dispense_monitor.start_dispense(
                                 slot_id=slot_number,
                                 timeout=dispense_timeout,

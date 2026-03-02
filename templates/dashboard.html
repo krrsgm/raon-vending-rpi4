@@ -374,13 +374,13 @@
         </div>
         <!-- Temperature & Humidity Text Logs -->
         <div class="logs-section">
-            <h3>Temperature & Humidity Logs (Every 30 Minutes)</h3>
+            <h3>Temperature & Humidity Logs (Every 15 Minutes)</h3>
             <div style="margin-bottom: 10px; font-size: 12px; color: #666;">
                 Uses the same selected date as Sensor Readings below.
                 <span id="sensorTextDateLabel" style="margin-left: 8px;"></span>
             </div>
             <div class="logs-container" id="sensorTextLogsContainer">
-                <div class="log-line">Loading temperature/humidity logs...</div>
+                <div class="log-line">Loading temperature/humidity/IR logs...</div>
             </div>
         </div>
 
@@ -532,12 +532,21 @@
             return null;
         }
 
+        function parseRelayValue(rawValue) {
+            if (rawValue === null || rawValue === undefined) return null;
+            const value = String(rawValue).trim().toLowerCase();
+            if (value === '') return null;
+            if (value === 'on' || value === '1' || value === 'true' || value === 'active') return 'ON';
+            if (value === 'off' || value === '0' || value === 'false' || value === 'inactive') return 'OFF';
+            return null;
+        }
+
         function roundOne(value) {
             if (value === null || value === undefined || Number.isNaN(Number(value))) return null;
             return Math.round(Number(value) * 10) / 10;
         }
 
-        function buildThirtyMinuteTextLogs(readings) {
+        function buildFifteenMinuteTextLogs(readings) {
             const buckets = new Map();
             readings.forEach((reading, index) => {
                 const rawTs = reading && reading.timestamp ? reading.timestamp : null;
@@ -550,7 +559,8 @@
                     const m = String(parsed.getMonth() + 1).padStart(2, '0');
                     const d = String(parsed.getDate()).padStart(2, '0');
                     const hh = String(parsed.getHours()).padStart(2, '0');
-                    const bucketMinute = parsed.getMinutes() < 30 ? '00' : '30';
+                    const minute = parsed.getMinutes();
+                    const bucketMinute = String(Math.floor(minute / 15) * 15).padStart(2, '0');
                     key = `${y}-${m}-${d} ${hh}:${bucketMinute}`;
                     label = `${hh}:${bucketMinute}`;
                 } else {
@@ -568,7 +578,10 @@
                         humidity1Total: 0,
                         humidity1Count: 0,
                         humidity2Total: 0,
-                        humidity2Count: 0
+                        humidity2Count: 0,
+                        ir1Last: null,
+                        ir2Last: null,
+                        relayLast: null
                     });
                 }
 
@@ -577,10 +590,16 @@
                 const t2 = Number(reading.temp2);
                 const h1 = Number(reading.humidity1);
                 const h2 = Number(reading.humidity2);
+                const ir1 = parseIRValue(reading.ir1);
+                const ir2 = parseIRValue(reading.ir2);
+                const relay = parseRelayValue(reading.relay);
                 if (!Number.isNaN(t1)) { bucket.temp1Total += t1; bucket.temp1Count += 1; }
                 if (!Number.isNaN(t2)) { bucket.temp2Total += t2; bucket.temp2Count += 1; }
                 if (!Number.isNaN(h1)) { bucket.humidity1Total += h1; bucket.humidity1Count += 1; }
                 if (!Number.isNaN(h2)) { bucket.humidity2Total += h2; bucket.humidity2Count += 1; }
+                if (ir1 !== null) bucket.ir1Last = ir1;
+                if (ir2 !== null) bucket.ir2Last = ir2;
+                if (relay !== null) bucket.relayLast = relay;
             });
 
             return Array.from(buckets.entries())
@@ -594,7 +613,10 @@
                     const t2Txt = t2 === null ? '--' : `${t2.toFixed(1)} C`;
                     const h1Txt = h1 === null ? '--' : `${h1.toFixed(1)} %`;
                     const h2Txt = h2 === null ? '--' : `${h2.toFixed(1)} %`;
-                    return `${bucket.label} | T1 ${t1Txt}, H1 ${h1Txt} | T2 ${t2Txt}, H2 ${h2Txt}`;
+                    const ir1Txt = bucket.ir1Last === null ? '--' : (bucket.ir1Last === 1 ? 'Detected' : 'Clear');
+                    const ir2Txt = bucket.ir2Last === null ? '--' : (bucket.ir2Last === 1 ? 'Detected' : 'Clear');
+                    const tecTxt = bucket.relayLast === null ? '--' : bucket.relayLast;
+                    return `${bucket.label} | T1 ${t1Txt}, H1 ${h1Txt} | T2 ${t2Txt}, H2 ${h2Txt} | TEC ${tecTxt} | IR1 ${ir1Txt}, IR2 ${ir2Txt}`;
                 });
         }
 
@@ -732,13 +754,13 @@
             try {
                 const res = await fetch('/api/sensor-readings?date=' + encodeURIComponent(dateStr));
                 const data = await res.json();
-                const lines = buildThirtyMinuteTextLogs(data.readings || []);
+                const lines = buildFifteenMinuteTextLogs(data.readings || []);
                 document.getElementById('sensorTextDateLabel').textContent = 'Date: ' + dateStr;
-                renderLogs('sensorTextLogsContainer', lines, `No temperature/humidity logs on ${dateStr}`);
+                renderLogs('sensorTextLogsContainer', lines, `No temperature/humidity/IR logs on ${dateStr}`);
             } catch (error) {
                 console.error('Error loading sensor text logs:', error);
                 const c = document.getElementById('sensorTextLogsContainer');
-                if (c) c.innerHTML = '<div class="log-line">Error loading temperature/humidity logs</div>';
+                if (c) c.innerHTML = '<div class="log-line">Error loading temperature/humidity/IR logs</div>';
             }
         }
 
@@ -850,7 +872,7 @@
         loadStockAlerts();
 
         setInterval(updateStatus, 5000);
-        setInterval(loadTodaySensorData, 3600000);
+        setInterval(loadTodaySensorData, 900000);
         setInterval(loadStockAlerts, 10000);
     </script>
 </body>

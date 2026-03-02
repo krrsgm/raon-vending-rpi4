@@ -295,4 +295,14 @@ def get_sensor_logger(logs_dir="logs"):
     global _sensor_logger_instance
     if _sensor_logger_instance is None:
         _sensor_logger_instance = SensorDataLogger(logs_dir=logs_dir)
+    else:
+        # Allow callers to realign logs path when processes/cwd differ.
+        try:
+            requested = os.path.abspath(logs_dir)
+            current = os.path.abspath(getattr(_sensor_logger_instance, "logs_dir", logs_dir))
+            if requested != current:
+                _sensor_logger_instance.logs_dir = logs_dir
+                os.makedirs(logs_dir, exist_ok=True)
+        except Exception:
+            pass
     return _sensor_logger_instance

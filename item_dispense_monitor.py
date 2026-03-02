@@ -331,7 +331,33 @@ class ItemDispenseMonitor:
         while self.running:
             try:
                 current_time = time.time()
-                
+
+                # Read all IR sensors once per cycle so UI can stay live even when
+                # there are no active dispense jobs.
+                sensor_readings = []
+                for ir_pin in self.ir_sensor_pins:
+                    sensor = self.sensors.get(ir_pin)
+                    if sensor:
+                        item_present = sensor.read()
+                        sensor_readings.append((ir_pin, item_present))
+
+                # Push IR status updates continuously.
+                if sensor_readings and self._on_ir_status_update:
+                    try:
+                        sensor_1 = sensor_readings[0][1] if len(sensor_readings) > 0 else None
+                        sensor_2 = sensor_readings[1][1] if len(sensor_readings) > 1 else None
+                        self._on_ir_status_update(
+                            sensor_1=sensor_1,
+                            sensor_2=sensor_2,
+                            detection_mode=self.detection_mode,
+                            last_detection=None
+                        )
+                    except Exception as e:
+                        print(f"[ItemDispenseMonitor] IR status callback error: {e}")
+
+                # Reuse the latest reading for all active slots in this cycle.
+                item_detected_absent = self._check_item_detected(sensor_readings)
+
                 with self._lock:
                     slots_to_check = list(self.active_dispenses.keys())
                 
@@ -357,31 +383,6 @@ class ItemDispenseMonitor:
                                                   slot_id, f"✓ {item_name} simulated as dispensed (after {elapsed_time:.1f}s)")
                             print(f"[ItemDispenseMonitor] ✓ Slot {slot_id}: {item_name} simulated as dispensed after {elapsed_time:.1f}s")
                             continue
-                    
-                    # Read all IR sensors to detect if item has fallen into bin
-                    sensor_readings = []
-                    for ir_pin in self.ir_sensor_pins:
-                        sensor = self.sensors.get(ir_pin)
-                        if sensor:
-                            item_present = sensor.read()
-                            sensor_readings.append((ir_pin, item_present))
-                    
-                    # Update IR status callback with current sensor state
-                    if sensor_readings and self._on_ir_status_update:
-                        try:
-                            sensor_1 = sensor_readings[0][1] if len(sensor_readings) > 0 else None
-                            sensor_2 = sensor_readings[1][1] if len(sensor_readings) > 1 else None
-                            self._on_ir_status_update(
-                                sensor_1=sensor_1,
-                                sensor_2=sensor_2,
-                                detection_mode=self.detection_mode,
-                                last_detection=None
-                            )
-                        except Exception as e:
-                            print(f"[ItemDispenseMonitor] IR status callback error: {e}")
-                    
-                    # Check detection based on mode
-                    item_detected_absent = self._check_item_detected(sensor_readings)
                     
                     if item_detected_absent:
                         # Item has been successfully detected in the catch area

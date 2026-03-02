@@ -109,7 +109,7 @@ class MainApp(tk.Tk):
         # Extract items from assigned slots for display in admin and kiosk
         self.items = self._extract_items_from_slots(self.assigned_slots)
         self.items_file_path = get_absolute_path("item_list.json")  # For legacy support
-        self.currency_symbol = self.config.get("currency_symbol", "$")
+        self.currency_symbol = self.config.get("currency_symbol", "\u20b1")
         self.title("Vending Machine UI")
         # Initialize TEC/Dispense/Stock after first paint to reduce startup lag
         self.stock_tracker = None
@@ -584,7 +584,7 @@ class MainApp(tk.Tk):
             print(f"[MainApp] Failed to initialize Stock Tracker: {e}")
             self.stock_tracker = None
     
-        # Device uses ESP32-controlled MUX boards for slots 1..48
+        # Device uses ESP32-controlled MUX boards for slots 1..40
     
     
     def _on_tec_status_update(self, enabled, active, target_temp, current_temp):
@@ -781,13 +781,13 @@ class MainApp(tk.Tk):
         try:
             with open(file_path, "r") as file:
                 data = json.load(file)
-            # Clamp assigned_items.json to 48 slots if older 64-slot data exists
+            # Clamp assigned_items.json to 40 slots if older data exists
             try:
                 if isinstance(data, list) and os.path.basename(file_path) == "assigned_items.json":
-                    if len(data) > 48:
-                        data = data[:48]
-                    elif len(data) < 48:
-                        data = data + [None] * (48 - len(data))
+                    if len(data) > 40:
+                        data = data[:40]
+                    elif len(data) < 40:
+                        data = data + [None] * (40 - len(data))
             except Exception:
                 pass
             return data
@@ -813,7 +813,7 @@ class MainApp(tk.Tk):
                 f"Warning: {file_path} not found. Generating a new one with default items."
             )
             default_config = {
-                "currency_symbol": "$",
+                "currency_symbol": "\u20b1",
                 "esp32_host": "serial:/dev/ttyS0"
             }
             with open(file_path, "w") as file:
@@ -1246,6 +1246,44 @@ class MainApp(tk.Tk):
         self.frames["KioskFrame"].populate_items()
         return True
 
+    def _parse_active_slots_from_status(self, status_msg):
+        """Parse ESP32 STATUS response ('1,5,12' or 'NONE') into a set of slot numbers."""
+        text = str(status_msg or "").strip()
+        if not text or text.upper() == "NONE":
+            return set()
+        active_slots = set()
+        for token in text.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                active_slots.add(int(token))
+            except Exception:
+                continue
+        return active_slots
+
+    def _wait_for_slot_rotation_complete(self, host, slot_number, timeout_sec=18.0, poll_interval_sec=0.15):
+        """
+        Wait until slot is no longer active in ESP32 STATUS.
+        Firmware stops the motor after 2 limit-switch pulses (or failsafe timeout).
+        """
+        try:
+            from esp32_client import send_command
+        except Exception:
+            return False
+
+        deadline = time.time() + max(1.0, float(timeout_sec))
+        while time.time() < deadline:
+            try:
+                status_msg = send_command(host, "STATUS", timeout=1.0)
+                active_slots = self._parse_active_slots_from_status(status_msg)
+                if int(slot_number) not in active_slots:
+                    return True
+            except Exception:
+                pass
+            time.sleep(max(0.05, float(poll_interval_sec)))
+        return False
+
     def vend_slots_for(self, item_name, quantity=1):
         """Find assigned slots for item_name and pulse the ESP32 outputs.
 
@@ -1293,20 +1331,26 @@ class MainApp(tk.Tk):
         host = self.config.get('esp32_host') if isinstance(self.config, dict) else None
         if not host:
             host = '192.168.4.1'  # common AP fallback; set in config for your network
-        pulse_ms = 4000  # Motor pulse duration in milliseconds
+        pulse_timeout_ms = 15000  # Failsafe timeout; normal stop is 2 limit-switch pulses
+        try:
+            pulse_timeout_ms = int(
+                self.config.get('hardware', {}).get('vend_rotation_failsafe_ms', 15000)
+            ) if isinstance(self.config, dict) else 15000
+        except Exception:
+            pulse_timeout_ms = 15000
         
         # Get dispense timeout from config
         dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 15.0) if isinstance(self.config, dict) else 15.0
         
         print(f'[VEND] Found {len(matches)} slots for "{item_name}": {matches}')
-        print(f'[VEND] Using ESP32 host: {host}, pulse_ms: {pulse_ms}')
+        print(f'[VEND] Using ESP32 host: {host}, rotation_failsafe_ms: {pulse_timeout_ms}')
         
         # Round-robin distribute pulses
         for i in range(quantity):
             slot_number = matches[i % len(matches)]
             try:
                 with self._vend_lock:
-                    print(f'[VEND] Pulsing slot {slot_number} for {pulse_ms}ms (item: {item_name}, quantity item {i+1}/{quantity})')
+                    print(f'[VEND] Pulsing slot {slot_number} (2-pulse rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name}, quantity item {i+1}/{quantity})')
                     
                     # Start monitoring dispense for this slot if dispense monitor is available
                     if self.dispense_monitor:
@@ -1321,7 +1365,7 @@ class MainApp(tk.Tk):
                         print(f'[VEND] WARNING: Dispense monitor not available - no IR sensor verification')
                     
                     try:
-                        # ESP32 controls the MUX boards for slots 1-48
+                        # ESP32 controls the MUX boards for slots 1-40
                         from esp32_client import send_command, pulse_slot
                         try:
                             # quick STATUS check
@@ -1335,7 +1379,7 @@ class MainApp(tk.Tk):
                         # Attempt pulse and validate response; retry once on non-OK
                         result = None
                         try:
-                            result = pulse_slot(host, slot_number, pulse_ms, timeout=3.0)
+                            result = pulse_slot(host, slot_number, pulse_timeout_ms, timeout=3.0)
                             print(f'[VEND] Pulse response: {result}')
                         except Exception as e:
                             print(f'[VEND] WARNING: pulse_slot raised: {e}')
@@ -1344,7 +1388,7 @@ class MainApp(tk.Tk):
                             print(f'[VEND] Info: pulse response not OK, retrying once for slot {slot_number}')
                             try:
                                 time.sleep(0.05)
-                                result = pulse_slot(host, slot_number, pulse_ms, timeout=3.0)
+                                result = pulse_slot(host, slot_number, pulse_timeout_ms, timeout=3.0)
                                 print(f'[VEND] Retry pulse response: {result}')
                             except Exception as e:
                                 print(f'[VEND] Retry failed: {e}')
@@ -1353,17 +1397,21 @@ class MainApp(tk.Tk):
                             print(f'[VEND] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')
                         else:
                             print(f'[VEND] ERROR: ESP32 did not confirm pulse for slot {slot_number}. Response: {result}')
-                        # Ensure the pulse completes before issuing the next one.
-                        # Without this, back-to-back PULSE commands extend a single
-                        # ON window on the ESP32 instead of creating distinct pulses.
-                        try:
-                            time.sleep(max(0.0, float(pulse_ms) / 1000.0))
-                        except Exception:
-                            pass
+                        # Wait for firmware to finish the rotation (2 limit pulses).
+                        wait_timeout_sec = max(5.0, (pulse_timeout_ms / 1000.0) + 2.0)
+                        completed = self._wait_for_slot_rotation_complete(
+                            host=host,
+                            slot_number=slot_number,
+                            timeout_sec=wait_timeout_sec
+                        )
+                        if completed:
+                            print(f'[VEND] Slot {slot_number} rotation complete (2 pulses detected).')
+                        else:
+                            print(f'[VEND] WARNING: Slot {slot_number} completion not confirmed before timeout.')
                     except Exception as e:
                         print(f'[VEND] CRITICAL ERROR: Failed to send pulse for slot {slot_number}: {e}')
                         print(f'[VEND]   Slot: {slot_number}')
-                        print(f'[VEND]   Pulse duration: {pulse_ms}ms')
+                        print(f'[VEND]   Rotation failsafe: {pulse_timeout_ms}ms')
                         import traceback
                         traceback.print_exc()
             except Exception as e:
@@ -1384,7 +1432,10 @@ class MainApp(tk.Tk):
         
         This method groups items by their assigned slots and dispenses them slot-by-slot
         in ascending order. For items assigned to the same slot, all are dispensed from
-        that slot before moving to the next slot. Each item gets 4 seconds (4000ms) to dispense.
+        that slot before moving to the next slot.
+
+        Each dispense is controlled by firmware limit-switch logic:
+        2 limit-switch pulses = 1 full spring rotation (with failsafe timeout).
         
         Args:
             cart_items (list): List of dicts with 'item' (item object) and 'quantity' (int)
@@ -1471,12 +1522,18 @@ class MainApp(tk.Tk):
         host = self.config.get('esp32_host') if isinstance(self.config, dict) else None
         if not host:
             host = '192.168.4.1'
-        pulse_ms = 4000  # 4 seconds per item as requested
+        pulse_timeout_ms = 15000  # Failsafe timeout; normal stop is 2 limit-switch pulses
+        try:
+            pulse_timeout_ms = int(
+                self.config.get('hardware', {}).get('vend_rotation_failsafe_ms', 15000)
+            ) if isinstance(self.config, dict) else 15000
+        except Exception:
+            pulse_timeout_ms = 15000
         
         # Get dispense timeout from config
         dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 15.0) if isinstance(self.config, dict) else 15.0
         
-        print(f'[VEND-ORG] Using ESP32 host: {host}, pulse_ms: {pulse_ms}')
+        print(f'[VEND-ORG] Using ESP32 host: {host}, rotation_failsafe_ms: {pulse_timeout_ms}')
         
         # Dispense each slot completely before moving to the next
         for slot_number in sorted_slots:
@@ -1487,7 +1544,7 @@ class MainApp(tk.Tk):
                 item_name = item_entry.get('name', 'Unknown')
                 try:
                     with self._vend_lock:
-                        print(f'[VEND-ORG] Pulsing slot {slot_number} for {pulse_ms}ms (item: {item_name})')
+                        print(f'[VEND-ORG] Pulsing slot {slot_number} (2-pulse rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name})')
                         
                         # Start monitoring dispense for this slot if available
                         if self.dispense_monitor:
@@ -1502,7 +1559,7 @@ class MainApp(tk.Tk):
                             print(f'[VEND-ORG] WARNING: Dispense monitor not available - no IR sensor verification')
                         
                         try:
-                            # ESP32 controls the MUX boards for slots 1-48
+                            # ESP32 controls the MUX boards for slots 1-40
                             from esp32_client import send_command, pulse_slot
                             try:
                                 # Quick STATUS check
@@ -1516,7 +1573,7 @@ class MainApp(tk.Tk):
                             # Attempt pulse and validate response
                             result = None
                             try:
-                                result = pulse_slot(host, slot_number, pulse_ms, timeout=3.0)
+                                result = pulse_slot(host, slot_number, pulse_timeout_ms, timeout=3.0)
                                 print(f'[VEND-ORG] Pulse response: {result}')
                             except Exception as e:
                                 print(f'[VEND-ORG] WARNING: pulse_slot raised: {e}')
@@ -1526,7 +1583,7 @@ class MainApp(tk.Tk):
                                 print(f'[VEND-ORG] Info: pulse response not OK, retrying once for slot {slot_number}')
                                 try:
                                     time.sleep(0.05)
-                                    result = pulse_slot(host, slot_number, pulse_ms, timeout=3.0)
+                                    result = pulse_slot(host, slot_number, pulse_timeout_ms, timeout=3.0)
                                     print(f'[VEND-ORG] Retry pulse response: {result}')
                                 except Exception as e:
                                     print(f'[VEND-ORG] Retry failed: {e}')
@@ -1535,12 +1592,17 @@ class MainApp(tk.Tk):
                                 print(f'[VEND-ORG] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')
                             else:
                                 print(f'[VEND-ORG] ERROR: ESP32 did not confirm pulse for slot {slot_number}. Response: {result}')
-                            # Ensure the pulse completes before issuing the next one.
-                            # Without this, repeated PULSE commands collapse into one.
-                            try:
-                                time.sleep(max(0.0, float(pulse_ms) / 1000.0))
-                            except Exception:
-                                pass
+                            # Wait for firmware to finish the rotation (2 limit pulses).
+                            wait_timeout_sec = max(5.0, (pulse_timeout_ms / 1000.0) + 2.0)
+                            completed = self._wait_for_slot_rotation_complete(
+                                host=host,
+                                slot_number=slot_number,
+                                timeout_sec=wait_timeout_sec
+                            )
+                            if completed:
+                                print(f'[VEND-ORG] Slot {slot_number} rotation complete (2 pulses detected).')
+                            else:
+                                print(f'[VEND-ORG] WARNING: Slot {slot_number} completion not confirmed before timeout.')
                         except Exception as e:
                             print(f'[VEND-ORG] CRITICAL ERROR: Failed to send pulse for slot {slot_number}: {e}')
                             import traceback

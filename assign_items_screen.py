@@ -8,6 +8,7 @@ except Exception:
 import json
 import os
 import io
+import time
 from esp32_client import pulse_slot, send_command
 from fix_paths import get_absolute_path
 import copy
@@ -54,7 +55,7 @@ class PriceStockDialog(tk.Toplevel):
         ttk.Label(frame, text=f"Item: {item_name}", font=("Helvetica", 10)).grid(row=1, column=0, columnspan=3, sticky="w", pady=(0,8))
         
         # Price
-        ttk.Label(frame, text="Price ($):").grid(row=2, column=0, sticky="w", pady=4)
+        ttk.Label(frame, text="Price (\u20b1):").grid(row=2, column=0, sticky="w", pady=4)
         self.price_entry = ttk.Entry(frame, width=20)
         self.price_entry.grid(row=2, column=1, columnspan=2, sticky="ew", pady=4)
         self.price_entry.insert(0, str(self.item_data.get('price', 0.0)))
@@ -352,7 +353,7 @@ class EditSlotDialog(tk.Toplevel):
                 preview = f"""Code: {item.get('code', '')}
 Name: {item.get('name', '')}
 Category: {item.get('category', '')}
-Price: ${item.get('price', 0):.2f}
+Price: \u20b1{item.get('price', 0):.2f}
 Quantity: {item.get('quantity', 1)}
 Low Stock Threshold: {item.get('low_stock_threshold', 3)}
 Image: {item.get('image', '(none)')}
@@ -508,9 +509,9 @@ class CustomizeDialog(tk.Toplevel):
 
 
 class AssignItemsScreen(tk.Frame):
-    """Admin screen presenting a 6x8 grid (48 slots) of assignable items."""
+    """Admin screen presenting a 5x8 grid (40 slots) of assignable items."""
 
-    GRID_ROWS = 6
+    GRID_ROWS = 5
     GRID_COLS = 8
     MAX_SLOTS = GRID_ROWS * GRID_COLS
     SAVE_FILENAME = 'assigned_items.json'
@@ -809,12 +810,12 @@ class AssignItemsScreen(tk.Frame):
             self.mode_label.config(text='Preset', foreground='green')
 
     def auto_assign_current_term(self):
-        """Auto-populate all 48 slots with products from current term in assigned_items.json."""
+        """Auto-populate all slots with products from current term in assigned_items.json."""
         term_idx = self.current_term
         
         # Confirm action
         if not tk.messagebox.askyesno("Auto-assign Term", 
-            f"This will populate all 48 slots with products from Term {term_idx+1}.\nContinue?", parent=self):
+            f"This will populate all {self.MAX_SLOTS} slots with products from Term {term_idx+1}.\nContinue?", parent=self):
             return
         
         for slot_idx in range(self.MAX_SLOTS):
@@ -834,7 +835,7 @@ class AssignItemsScreen(tk.Frame):
         
         self._publish_assignments()
         tk.messagebox.showinfo("Auto-assign Complete", 
-            f"All 48 slots populated with Term {term_idx+1} products!", parent=self)
+            f"All {self.MAX_SLOTS} slots populated with Term {term_idx+1} products!", parent=self)
 
     def edit_slot(self, idx):
         # If this slot appears empty in-memory, try reloading from disk to get latest persisted assignments
@@ -969,8 +970,42 @@ class AssignItemsScreen(tk.Frame):
         except Exception as e:
             return False, str(e)
 
+    def _parse_active_slots_from_status(self, status_msg):
+        """Parse STATUS response (e.g. '1,5,12' or 'NONE') into a set of slot numbers."""
+        text = str(status_msg or "").strip()
+        if not text or text.upper() == "NONE":
+            return set()
+        active = set()
+        for token in text.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                active.add(int(token))
+            except Exception:
+                continue
+        return active
+
+    def _wait_for_slot_rotation_complete(self, esp32_host, slot_num, timeout_sec=18.0, poll_interval_sec=0.15):
+        """
+        Wait until a slot is no longer active in STATUS.
+        In firmware, this corresponds to a completed rotation (2 limit-switch pulses)
+        or a failsafe timeout.
+        """
+        deadline = time.time() + max(1.0, float(timeout_sec))
+        while time.time() < deadline:
+            try:
+                status_msg = send_command(esp32_host, "STATUS", timeout=1.0)
+                active = self._parse_active_slots_from_status(status_msg)
+                if slot_num not in active:
+                    return True
+            except Exception:
+                pass
+            time.sleep(max(0.05, float(poll_interval_sec)))
+        return False
+
     def test_motor(self, idx):
-        """Test the motor for the given slot by pulsing it."""
+        """Test one full spring rotation for the given slot (2 limit pulses)."""
         import logging
         
         slot_num = idx + 1  # Slots are 1-indexed
@@ -1010,36 +1045,58 @@ class AssignItemsScreen(tk.Frame):
             
             print(f"[TEST MOTOR] ESP32 connection OK. Status: {status_msg}")
             
-            # Pulse the motor for 800ms with longer timeout for serial
+            # Trigger one full spring rotation; firmware stops at 2 limit pulses.
             print(f"[TEST MOTOR] Pulsing slot {slot_num}...")
-            # Ensure machine supports only slots 1-48
-            if slot_num < 1 or slot_num > 48:
+            # Ensure machine supports only slots 1-40
+            if slot_num < 1 or slot_num > self.MAX_SLOTS:
                 messagebox.showerror(
                     "Motor Test - Unsupported Slot",
-                    f"Slot {slot_num} is out of range. This machine supports slots 1-48 only.",
+                    f"Slot {slot_num} is out of range. This machine supports slots 1-{self.MAX_SLOTS} only.",
                     parent=self
                 )
-                print(f"[TEST MOTOR] ERROR: Slot {slot_num} out of supported range (1-48)")
+                print(f"[TEST MOTOR] ERROR: Slot {slot_num} out of supported range (1-{self.MAX_SLOTS})")
                 return
 
-            # For supported slots (1-48) use ESP32
-            result = pulse_slot(esp32_host, slot_num, 800, timeout=3.0)
+            # For supported slots (1-40) use ESP32
+            failsafe_ms = 15000
+            try:
+                hw = config.get('hardware', {}) if isinstance(config, dict) else {}
+                failsafe_ms = int(hw.get('vend_rotation_failsafe_ms', 15000))
+            except Exception:
+                failsafe_ms = 15000
+
+            # Use PULSE with failsafe timeout; completion is based on limit pulses.
+            result = pulse_slot(esp32_host, slot_num, failsafe_ms, timeout=3.0)
             
             # Validate response - should contain "OK"
             if result and "OK" in result.upper():
-                messagebox.showinfo(
-                    "✓ Motor Test Success", 
-                    f"Slot {slot_num} motor pulsed for 800ms\n\nESP32 Response: {result}",
-                    parent=self
+                wait_timeout_sec = max(5.0, (failsafe_ms / 1000.0) + 2.0)
+                completed = self._wait_for_slot_rotation_complete(
+                    esp32_host=esp32_host,
+                    slot_num=slot_num,
+                    timeout_sec=wait_timeout_sec
                 )
-                print(f"[TEST MOTOR] SUCCESS: Slot {slot_num} pulsed, response: {result}")
+                if completed:
+                    messagebox.showinfo(
+                        "Motor Test Success",
+                        f"Slot {slot_num} completed one rotation (2 limit-switch pulses).\n\nESP32 Response: {result}",
+                        parent=self
+                    )
+                    print(f"[TEST MOTOR] SUCCESS: Slot {slot_num} completed one rotation via 2 pulses.")
+                else:
+                    messagebox.showwarning(
+                        "Motor Test Warning",
+                        f"Slot {slot_num} command acknowledged, but rotation completion was not confirmed before timeout.\n\n"
+                        f"Failsafe timeout: {failsafe_ms} ms\nESP32 Response: {result}",
+                        parent=self
+                    )
+                    print(f"[TEST MOTOR] WARNING: Slot {slot_num} completion not confirmed within timeout.")
             else:
                 messagebox.showerror(
-                    "✗ Motor Test Failed", 
-                    f"Slot {slot_num} did not receive proper confirmation from ESP32\n\nResponse: {result if result else 'No response'}\n\nMake sure:\n- RXTX cable is connected between ESP32 and Raspberry Pi\n- ESP32 firmware is loaded and running\n- Slot number is valid (1-48)",
+                    "Motor Test Failed",
+                    f"Slot {slot_num} did not receive proper confirmation from ESP32\n\nResponse: {result if result else 'No response'}\n\nMake sure:\n- RXTX cable is connected between ESP32 and Raspberry Pi\n- ESP32 firmware is loaded and running\n- Slot number is valid (1-{self.MAX_SLOTS})",
                     parent=self
                 )
-                print(f"[TEST MOTOR] FAILED: No valid response from ESP32 for slot {slot_num}. Got: {result}")
                 
         except TimeoutError as e:
             messagebox.showerror(
@@ -1110,7 +1167,7 @@ class AssignItemsScreen(tk.Frame):
         Returns a description string with category and specs hint.
         """
         if not item_name:
-            return f"Price: ₱{item_price:.2f}"
+            return f"Price: \u20b1{item_price:.2f}"
         
         categories = self._get_categories_from_item_name(item_name)
         category_text = ', '.join(categories) if categories else 'Miscellaneous'
@@ -1129,7 +1186,7 @@ class AssignItemsScreen(tk.Frame):
         
         # Get description from primary category
         base_desc = desc_map.get(categories[0] if categories else 'Misc', 'Electronic component')
-        return f"{base_desc} - ₱{item_price:.2f}"
+        return f"{base_desc} - \u20b1{item_price:.2f}"
 
     def refresh_slot(self, idx):
         r, c = self._slot_to_position(idx)
@@ -1149,7 +1206,7 @@ class AssignItemsScreen(tk.Frame):
             # Get auto-detected categories from item name
             item_categories = self._get_categories_from_item_name(data.get('name', ''))
             category_text = ', '.join(item_categories) if item_categories else 'Misc'
-            slot_ui['details'].config(text=f"{category_text} | {data.get('quantity',0)} pcs | ${data.get('price',0):.2f}")
+            slot_ui['details'].config(text=f"{category_text} | {data.get('quantity',0)} pcs | \u20b1{data.get('price',0):.2f}")
         else:
             slot_ui['name'].config(text='Empty')
             slot_ui['details'].config(text='')

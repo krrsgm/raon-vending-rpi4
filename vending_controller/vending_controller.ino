@@ -1,6 +1,6 @@
 /*
   vending_controller.ino
-  ESP32 Vending Controller for 64-output vending machine using 4 x CD74HC4067 multiplexers.
+  ESP32 Vending Controller for a 40-slot vending machine.
   Integrated with Allan 123A-Pro Coin Acceptor.
   
   RXTX Communication (Raspberry Pi ↔ ESP32):
@@ -48,7 +48,7 @@ DHT dht2(DHTPIN2, DHTTYPE);
 // ============================================================================
 
 const unsigned long BAUD_RATE = 115200;
-const int NUM_OUTPUTS = 48;          // 3 multiplexers × 16 channels
+const int NUM_OUTPUTS = 40;          // Active slots: 1-40
 const int MOTORS_PER_MUX = 16;       // channels per multiplexer
 const int NUM_MUXES = 3;             // number of multiplexers
 
@@ -82,14 +82,14 @@ const int MUX2_S2 = 33;
 const int MUX2_S3 = 32;
 const int MUX2_SIG = 22;
 
-// Multiplexer 3: Slots 33-48
+// Multiplexer 3: Slots 33-40 (channels 0-7 used)
 const int MUX3_S0 = 15;
 const int MUX3_S1 = 2;
 const int MUX3_S2 = 4;
 const int MUX3_S3 = 16;
 const int MUX3_SIG = 21;
 
-// Note: This firmware is for a 48-output machine (3 × CD74HC4067 multiplexers).
+// Note: This firmware is configured for 40 active outputs.
 // Multiplexer 4 (slots 49-64) is not used in this configuration.
 
 // ============================================================================

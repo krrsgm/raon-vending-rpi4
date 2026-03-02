@@ -14,7 +14,7 @@
     - GET_BALANCE, RESET_BALANCE, SET_COIN_VALUE, SET_OUTPUT, STATUS
     
   Protocol (RXTX text-based commands, terminated with newline):
-    - PULSE <slot> <ms>   : pulse output for <ms> milliseconds (slot numbers 1..64)
+    - PULSE <slot> [timeout_ms] : run output until 2 limit-switch pulses (with optional failsafe timeout)
     - OPEN <slot>         : set output on continuously
     - CLOSE <slot>        : set output off
     - OPENALL             : set all outputs on
@@ -22,7 +22,7 @@
     - STATUS              : returns comma-separated list of ON slots (1-based)
     
   Example commands:
-    PULSE 12 800\n        → pulse slot 12 for 800ms
+    PULSE 12\n            → run slot 12 until 2 limit-switch pulses
     STATUS\n              → returns "1,5,12\n" if slots 1, 5, 12 are on
 */
 
@@ -30,7 +30,6 @@
 #include <Arduino.h>
 #include <CD74HC4067.h>
 #include "DHT.h"
-#include "esp_timer.h"
 
 // DHT22 sensor configuration
 #define DHTPIN1 36
@@ -39,15 +38,9 @@
 DHT dht1(DHTPIN1, DHTTYPE);
 DHT dht2(DHTPIN2, DHTTYPE);
 
-// IR sensor configuration (Sharp GP2Y0A21YK0F analog)
+// IR sensor configuration
 #define IRPIN1 34
 #define IRPIN2 35
-// Tune for your bin geometry. ESP32 ADC defaults to 12-bit (0-4095).
-// Use hysteresis to avoid flicker.
-const int IR_BLOCKED_THRESHOLD = 2200; // enter BLOCKED
-const int IR_CLEAR_THRESHOLD   = 1900; // return to CLEAR
-const int IR_SAMPLE_COUNT = 5;
-const int IR_SAMPLE_DELAY_MS = 2;
 
 
 // ============================================================================
@@ -63,15 +56,14 @@ const int NUM_MUXES = 3;             // number of multiplexers
 const int SERIAL2_RX_PIN = 3;        // ESP32 receives from Pi TX (GPIO 14)
 const int SERIAL2_TX_PIN = 1;        // ESP32 sends to Pi RX (GPIO 15)
 
+// DISPENSE / LIMIT SWITCH CONFIGURATION
 // ============================================================================
-// PWM global motor speed control (shared for all motors on external parallel wiring)
-const int PWM_PIN = 19;              // GPIO19 - PWM output to control motor speed
-const int PWM_DEFAULT_DUTY = 230;    // default speed (~200 of 255)
-
-// ============================================================================
-// MOTOR PULSE CONFIGURATION
-// ============================================================================
-const unsigned long DEFAULT_PULSE_MS = 3900;  // Default pulse duration (3900ms = 3.9 seconds)
+const int MUX1_LIMIT_PIN = 17;                // Limit switch for MUX1
+const int MUX2_LIMIT_PIN = 18;                // Limit switch for MUX2
+const int MUX3_LIMIT_PIN = 19;                // Limit switch for MUX3
+const int REQUIRED_LIMIT_PULSES = 2;          // 2 pulses = one full 360 deg spring turn
+const unsigned long LIMIT_DEBOUNCE_MS = 40;   // Mechanical switch debounce
+const unsigned long LIMIT_FAILSAFE_MS = 15000; // Safety timeout if limit pulses are missing
 // ============================================================================
 // MULTIPLEXER PIN DEFINITIONS
 // ============================================================================
@@ -104,7 +96,7 @@ const int MUX3_SIG = 21;
 // COIN ACCEPTOR PIN CONFIGURATION (ESP32)
 // ============================================================================
 const int COIN_PIN = 5;        // GPIO 5 - coin detect input (from Allan 123A-Pro)
-const int COUNTER_PIN = 18;    // GPIO 18 - optional counter feedback
+const int COUNTER_PIN = -1;    // optional counter feedback disabled (GPIO18 used by MUX2 limit)
 
 // ============================================================================
 // STATE TRACKING
@@ -114,13 +106,11 @@ unsigned long active_until[NUM_OUTPUTS];  // when each pulse expires
 bool outputs_state[NUM_OUTPUTS];          // current ON/OFF state
 String inputBuffer2 = "";                 // RXTX command buffer
 String inputBuffer = "";                  // USB Serial command buffer
-int last_ir1_state = -1;                  // 1 = BLOCKED, 0 = CLEAR
-int last_ir2_state = -1;                  // 1 = BLOCKED, 0 = CLEAR
-
-// Pulse timing handled by a periodic ESP32 timer for consistent motor cutoff.
-const uint64_t PULSE_TIMER_INTERVAL_US = 1000; // 1ms tick
-esp_timer_handle_t pulse_timer = nullptr;
-portMUX_TYPE output_mux = portMUX_INITIALIZER_UNLOCKED;
+const int LIMIT_PINS[NUM_MUXES] = {MUX1_LIMIT_PIN, MUX2_LIMIT_PIN, MUX3_LIMIT_PIN};
+int active_slot_by_mux[NUM_MUXES] = {-1, -1, -1};
+int limit_pulse_count[NUM_MUXES] = {0, 0, 0};
+int last_limit_state[NUM_MUXES] = {HIGH, HIGH, HIGH};
+unsigned long last_limit_edge_ms[NUM_MUXES] = {0, 0, 0};
 
 // --- Coin Acceptor State ---
 volatile float received_amount = 0.0;
@@ -152,7 +142,7 @@ CD74HC4067 mux3(MUX3_S0, MUX3_S1, MUX3_S2, MUX3_S3);
 void setOutput(int idx, bool on);
 void processCommand(String cmd, Stream &out);
 void processCoinCommand(String command);
-void pulse_timer_callback(void *arg);
+void clearMuxTrackingForSlot(int idx);
 
 // ============================================================================
 // COIN ACCEPTOR INTERRUPT HANDLER
@@ -203,6 +193,11 @@ void setup() {
 
   // Multiplexer 4 not present — no ESP32 pin configuration required
 
+  // Limit switch inputs (one per multiplexer)
+  pinMode(MUX1_LIMIT_PIN, INPUT_PULLUP);
+  pinMode(MUX2_LIMIT_PIN, INPUT_PULLUP);
+  pinMode(MUX3_LIMIT_PIN, INPUT_PULLUP);
+
   // Initialize coin acceptor pin
   pinMode(COIN_PIN, INPUT_PULLUP);
   if (COUNTER_PIN >= 0) {
@@ -216,6 +211,12 @@ void setup() {
     outputs_state[i] = false;
     setOutput(i, false);
   }
+  for (int mux = 0; mux < NUM_MUXES; mux++) {
+    active_slot_by_mux[mux] = -1;
+    limit_pulse_count[mux] = 0;
+    last_limit_state[mux] = digitalRead(LIMIT_PINS[mux]);
+    last_limit_edge_ms[mux] = 0;
+  }
 
   // Initialize USB serial for debugging
   Serial.begin(BAUD_RATE);
@@ -224,22 +225,6 @@ void setup() {
   // Initialize Serial2 (RXTX) for Raspberry Pi communication
   // Explicitly bind to GPIO 3 (RX) and GPIO 1 (TX)
   Serial2.begin(BAUD_RATE, SERIAL_8N1, SERIAL2_RX_PIN, SERIAL2_TX_PIN);
-  
-  // Initialize PWM pin for global motor speed control using analogWrite
-  pinMode(PWM_PIN, OUTPUT);
-  analogWrite(PWM_PIN, PWM_DEFAULT_DUTY);
-
-  // Start periodic pulse timer for consistent motor cutoffs
-  esp_timer_create_args_t pulse_timer_args = {};
-  pulse_timer_args.callback = &pulse_timer_callback;
-  pulse_timer_args.arg = nullptr;
-  pulse_timer_args.dispatch_method = ESP_TIMER_TASK;
-  pulse_timer_args.name = "pulse_timer";
-  if (esp_timer_create(&pulse_timer_args, &pulse_timer) == ESP_OK) {
-    esp_timer_start_periodic(pulse_timer, PULSE_TIMER_INTERVAL_US);
-  } else {
-    Serial.println("ERR: pulse timer init failed");
-  }
   
   Serial.println("==============================================================");
   Serial.println("ESP32 Vending Controller - RXTX + Coin Acceptor");
@@ -263,9 +248,6 @@ void setup() {
   // Initialize IR sensor pins
   pinMode(IRPIN1, INPUT);
   pinMode(IRPIN2, INPUT);
-
-  // Widen ADC range (up to ~3.3V) for Sharp analog outputs.
-  analogSetAttenuation(ADC_11db);
 }
 
 // ============================================================================
@@ -325,6 +307,41 @@ void loop() {
     }
   }
 
+  // Handle mux limit switches (2 pulses = stop active slot on that mux)
+  unsigned long now = millis();
+  for (int mux = 0; mux < NUM_MUXES; mux++) {
+    int current_state = digitalRead(LIMIT_PINS[mux]);
+    bool falling_edge = (last_limit_state[mux] == HIGH && current_state == LOW);
+
+    if (falling_edge && (now - last_limit_edge_ms[mux] >= LIMIT_DEBOUNCE_MS)) {
+      last_limit_edge_ms[mux] = now;
+
+      if (active_slot_by_mux[mux] >= 0) {
+        limit_pulse_count[mux]++;
+        if (limit_pulse_count[mux] >= REQUIRED_LIMIT_PULSES) {
+          int idx = active_slot_by_mux[mux];
+          active_until[idx] = 0;
+          setOutput(idx, false);
+          active_slot_by_mux[mux] = -1;
+          limit_pulse_count[mux] = 0;
+        }
+      }
+    }
+
+    last_limit_state[mux] = current_state;
+  }
+
+  // Failsafe timeout in case limit switch pulses are not detected
+  for (int i = 0; i < NUM_OUTPUTS; i++) {
+    if (active_until[i] != 0 && now >= active_until[i]) {
+      active_until[i] = 0;
+      if (outputs_state[i]) {
+        setOutput(i, false);
+        clearMuxTrackingForSlot(i);
+      }
+    }
+  }
+
   // Read and print DHT22 and IR sensor values every 2 seconds
   static unsigned long lastSensorRead = 0;
   if (millis() - lastSensorRead > 2000) {
@@ -340,33 +357,14 @@ void loop() {
     Serial.print(t2); Serial.print("C ");
     Serial.print(h2); Serial.println("%");
 
-    // IR sensors (analog distance)
-    int ir1 = ir_blocked_from_adc(IRPIN1, last_ir1_state) ? 1 : 0;
-    int ir2 = ir_blocked_from_adc(IRPIN2, last_ir2_state) ? 1 : 0;
+    // IR sensors
+    int ir1 = digitalRead(IRPIN1);
+    int ir2 = digitalRead(IRPIN2);
     Serial.print("IR1 (GPIO34): ");
-    Serial.println(ir1 == 1 ? "BLOCKED" : "CLEAR");
+    Serial.println(ir1 == LOW ? "BLOCKED" : "CLEAR");
     Serial.print("IR2 (GPIO35): ");
-    Serial.println(ir2 == 1 ? "BLOCKED" : "CLEAR");
-    last_ir1_state = ir1;
-    last_ir2_state = ir2;
+    Serial.println(ir2 == LOW ? "BLOCKED" : "CLEAR");
   }
-}
-
-int read_ir_avg(int pin) {
-  long sum = 0;
-  for (int i = 0; i < IR_SAMPLE_COUNT; i++) {
-    sum += analogRead(pin);
-    delay(IR_SAMPLE_DELAY_MS);
-  }
-  return (int)(sum / IR_SAMPLE_COUNT);
-}
-
-bool ir_blocked_from_adc(int pin, int last_state) {
-  int reading = read_ir_avg(pin);
-  if (last_state == 1) {
-    return reading >= IR_CLEAR_THRESHOLD;
-  }
-  return reading >= IR_BLOCKED_THRESHOLD;
 }
 
 // ============================================================================
@@ -376,7 +374,6 @@ bool ir_blocked_from_adc(int pin, int last_state) {
 void setOutput(int idx, bool on) {
   if (idx < 0 || idx >= NUM_OUTPUTS) return;
 
-  portENTER_CRITICAL(&output_mux);
   // Determine which multiplexer and channel
   int mux_num = idx / MOTORS_PER_MUX;      // 0-3
   int channel = idx % MOTORS_PER_MUX;      // 0-15
@@ -402,19 +399,14 @@ void setOutput(int idx, bool on) {
       // Out of range for this firmware (supports 0..47 indices)
       break;
   }
-  portEXIT_CRITICAL(&output_mux);
 }
 
-void pulse_timer_callback(void *arg) {
-  (void)arg;
-  unsigned long now = millis();
-  for (int i = 0; i < NUM_OUTPUTS; i++) {
-    if (active_until[i] != 0 && now >= active_until[i]) {
-      active_until[i] = 0;
-      if (outputs_state[i]) {
-        setOutput(i, false);
-      }
-    }
+void clearMuxTrackingForSlot(int idx) {
+  if (idx < 0 || idx >= NUM_OUTPUTS) return;
+  int mux_num = idx / MOTORS_PER_MUX;
+  if (mux_num >= 0 && mux_num < NUM_MUXES && active_slot_by_mux[mux_num] == idx) {
+    active_slot_by_mux[mux_num] = -1;
+    limit_pulse_count[mux_num] = 0;
   }
 }
 
@@ -530,14 +522,30 @@ void processCommand(String cmd, Stream &out) {
   String command = parts[0];
   command.toUpperCase();
 
-  // PULSE <slot> <ms> - pulse for specified milliseconds (uses DEFAULT_PULSE_MS from ESP32 config)
+  // PULSE <slot> [timeout_ms] - run until 2 mux limit-switch pulses (timeout is failsafe)
   if (command == "PULSE") {
     if (partCount >= 2) {
       int slot = parts[1].toInt();
       if (slot >= 1 && slot <= NUM_OUTPUTS) {
         int idx = slot - 1;
-        active_until[idx] = millis() + DEFAULT_PULSE_MS;  // Use DEFAULT_PULSE_MS from ESP32 config
-        outputs_state[idx] = true;
+        int mux_num = idx / MOTORS_PER_MUX;
+        unsigned long timeout_ms = LIMIT_FAILSAFE_MS;
+        if (partCount >= 3) {
+          unsigned long parsed = (unsigned long)parts[2].toInt();
+          if (parsed > 0) timeout_ms = parsed;
+        }
+
+        if (mux_num >= 0 && mux_num < NUM_MUXES) {
+          if (active_slot_by_mux[mux_num] >= 0) {
+            int previous_idx = active_slot_by_mux[mux_num];
+            active_until[previous_idx] = 0;
+            setOutput(previous_idx, false);
+          }
+          active_slot_by_mux[mux_num] = idx;
+          limit_pulse_count[mux_num] = 0;
+        }
+
+        active_until[idx] = millis() + timeout_ms;
         setOutput(idx, true);
         out.println("OK");
       } else {
@@ -553,6 +561,8 @@ void processCommand(String cmd, Stream &out) {
     if (partCount >= 2) {
       int slot = parts[1].toInt();
       if (slot >= 1 && slot <= NUM_OUTPUTS) {
+        clearMuxTrackingForSlot(slot - 1);
+        active_until[slot - 1] = 0;
         setOutput(slot - 1, true);
         out.println("OK");
       } else {
@@ -568,6 +578,8 @@ void processCommand(String cmd, Stream &out) {
     if (partCount >= 2) {
       int slot = parts[1].toInt();
       if (slot >= 1 && slot <= NUM_OUTPUTS) {
+        clearMuxTrackingForSlot(slot - 1);
+        active_until[slot - 1] = 0;
         setOutput(slot - 1, false);
         out.println("OK");
       } else {
@@ -581,6 +593,8 @@ void processCommand(String cmd, Stream &out) {
   // OPENALL - turn all on
   else if (command == "OPENALL") {
     for (int i = 0; i < NUM_OUTPUTS; i++) {
+      clearMuxTrackingForSlot(i);
+      active_until[i] = 0;
       setOutput(i, true);
     }
     out.println("OK");
@@ -588,6 +602,8 @@ void processCommand(String cmd, Stream &out) {
   // CLOSEALL - turn all off
   else if (command == "CLOSEALL") {
     for (int i = 0; i < NUM_OUTPUTS; i++) {
+      clearMuxTrackingForSlot(i);
+      active_until[i] = 0;
       setOutput(i, false);
     }
     out.println("OK");

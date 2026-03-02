@@ -16,6 +16,16 @@
     - CLOSE <denom>
     - STATUS
     - STOP
+    IR CALIBRATION:
+    - IR_READ
+    - IR_STATUS
+    - IR_SET <sensor> <blocked_enter> <clear_exit>
+    - IR_POLARITY <sensor> HIGHER|LOWER
+    - IR_CAL_EMPTY [seconds]
+    - IR_CAL_ITEM [seconds]
+    - IR_SUGGEST
+    - IR_APPLY
+    - IR_RESET_CAL
 
   Adjust `ONE_MOTOR_PIN`, `FIVE_MOTOR_PIN`, `ONE_SENSOR_PIN`, `FIVE_SENSOR_PIN`,
   and `pulsePin` to match wiring. This build uses USB Serial only (no RX/TX Serial2).
@@ -62,8 +72,8 @@ const int IR2_PIN = A1;  // Analog input
 // Sharp GP2Y0A21YK0F outputs higher voltage when an object is closer.
 // Calibrate thresholds for your chute geometry (max distance ~26cm).
 // Use a little hysteresis to avoid flicker.
-const int IR_BLOCKED_THRESHOLD = 350; // 0-1023 (5V ADC), enter BLOCKED
-const int IR_CLEAR_THRESHOLD   = 300; // 0-1023 (5V ADC), return to CLEAR
+const int IR_DEFAULT_BLOCKED_THRESHOLD = 350; // 0-1023 (5V ADC), enter BLOCKED
+const int IR_DEFAULT_CLEAR_THRESHOLD   = 300; // 0-1023 (5V ADC), return to CLEAR
 const int IR_SAMPLE_COUNT = 5;
 const int IR_SAMPLE_DELAY_MS = 2;
 const int TEC_RELAY_PIN = 8; // D8
@@ -77,6 +87,21 @@ int last_ir1_state = -1; // 1 = BLOCKED, 0 = CLEAR
 int last_ir2_state = -1; // 1 = BLOCKED, 0 = CLEAR
 unsigned long last_motor_active_ms = 0;
 const unsigned long IR_ARM_DELAY_MS = 800; // wait after motors stop before reporting IR
+int ir_blocked_threshold[2] = {IR_DEFAULT_BLOCKED_THRESHOLD, IR_DEFAULT_BLOCKED_THRESHOLD};
+int ir_clear_threshold[2] = {IR_DEFAULT_CLEAR_THRESHOLD, IR_DEFAULT_CLEAR_THRESHOLD};
+bool ir_blocked_is_higher[2] = {true, true};
+
+struct IrCaptureStats {
+  long sum[2];
+  int count[2];
+  int min_v[2];
+  int max_v[2];
+};
+
+IrCaptureStats ir_empty_stats;
+IrCaptureStats ir_item_stats;
+bool ir_has_empty_stats = false;
+bool ir_has_item_stats = false;
 
 // --- Coin Hopper Pin Configuration ---
 // The dispenser wiring uses digital pins 9/10 for the 1p/5p motors and 11/12 for
@@ -220,17 +245,216 @@ int read_ir_avg(int pin) {
   return (int)(sum / IR_SAMPLE_COUNT);
 }
 
-bool ir_blocked_from_adc(int pin, int last_state) {
-  int reading = read_ir_avg(pin);
-  if (last_state == 1) {
-    return reading >= IR_CLEAR_THRESHOLD;
+int clamp_adc(int value) {
+  if (value < 0) return 0;
+  if (value > 1023) return 1023;
+  return value;
+}
+
+void reset_ir_capture_stats(IrCaptureStats &stats) {
+  for (int i = 0; i < 2; i++) {
+    stats.sum[i] = 0;
+    stats.count[i] = 0;
+    stats.min_v[i] = 1023;
+    stats.max_v[i] = 0;
   }
-  return reading >= IR_BLOCKED_THRESHOLD;
+}
+
+void add_ir_capture_sample(IrCaptureStats &stats, int idx, int value) {
+  int v = clamp_adc(value);
+  stats.sum[idx] += v;
+  stats.count[idx]++;
+  if (v < stats.min_v[idx]) stats.min_v[idx] = v;
+  if (v > stats.max_v[idx]) stats.max_v[idx] = v;
+}
+
+int ir_capture_mean(const IrCaptureStats &stats, int idx) {
+  if (stats.count[idx] <= 0) return 0;
+  return (int)(stats.sum[idx] / stats.count[idx]);
+}
+
+void print_ir_capture_stats(Stream &out, const char *label, const IrCaptureStats &stats) {
+  out.print(label);
+  out.println(":");
+  for (int i = 0; i < 2; i++) {
+    out.print("IR");
+    out.print(i + 1);
+    out.print(" mean=");
+    out.print(ir_capture_mean(stats, i));
+    out.print(" min=");
+    out.print(stats.min_v[i]);
+    out.print(" max=");
+    out.print(stats.max_v[i]);
+    out.print(" samples=");
+    out.println(stats.count[i]);
+  }
+}
+
+void print_ir_config(Stream &out) {
+  for (int i = 0; i < 2; i++) {
+    out.print("IR");
+    out.print(i + 1);
+    out.print(" cfg blocked_enter=");
+    out.print(ir_blocked_threshold[i]);
+    out.print(" clear_exit=");
+    out.print(ir_clear_threshold[i]);
+    out.print(" polarity=");
+    out.println(ir_blocked_is_higher[i] ? "HIGHER" : "LOWER");
+  }
+}
+
+int read_ir_sensor_by_index(int sensor_idx) {
+  int pin = (sensor_idx == 0) ? IR1_PIN : IR2_PIN;
+  return read_ir_avg(pin);
+}
+
+bool ir_blocked_from_adc(int sensor_idx, int last_state, int *reading_out) {
+  int reading = read_ir_sensor_by_index(sensor_idx);
+  if (reading_out != nullptr) {
+    *reading_out = reading;
+  }
+
+  if (ir_blocked_is_higher[sensor_idx]) {
+    if (last_state == 1) {
+      return reading >= ir_clear_threshold[sensor_idx];
+    }
+    return reading >= ir_blocked_threshold[sensor_idx];
+  }
+
+  if (last_state == 1) {
+    return reading <= ir_clear_threshold[sensor_idx];
+  }
+  return reading <= ir_blocked_threshold[sensor_idx];
+}
+
+bool ir_blocked_from_adc(int sensor_idx, int last_state) {
+  return ir_blocked_from_adc(sensor_idx, last_state, nullptr);
+}
+
+bool can_run_ir_calibration() {
+  return !job_one.active && !job_five.active && !sequence_active;
+}
+
+void capture_ir_window(const char *label, int seconds, IrCaptureStats &stats, Stream &out) {
+  if (seconds < 1) seconds = 1;
+  if (seconds > 60) seconds = 60;
+
+  reset_ir_capture_stats(stats);
+
+  out.print("IR capture start: ");
+  out.print(label);
+  out.print(" for ");
+  out.print(seconds);
+  out.println("s");
+  out.println("Keep the scene stable during capture.");
+
+  unsigned long start_ms = millis();
+  unsigned long last_progress_ms = 0;
+  unsigned long duration_ms = (unsigned long)seconds * 1000UL;
+
+  while (millis() - start_ms < duration_ms) {
+    int ir1 = read_ir_sensor_by_index(0);
+    int ir2 = read_ir_sensor_by_index(1);
+    add_ir_capture_sample(stats, 0, ir1);
+    add_ir_capture_sample(stats, 1, ir2);
+
+    unsigned long now = millis();
+    if (now - last_progress_ms >= 500) {
+      last_progress_ms = now;
+      out.print("t=");
+      out.print((now - start_ms) / 1000.0, 1);
+      out.print("s IR1=");
+      out.print(ir1);
+      out.print(" IR2=");
+      out.println(ir2);
+    }
+    delay(40);
+  }
+
+  out.print("IR capture done: ");
+  out.println(label);
+  print_ir_capture_stats(out, label, stats);
+}
+
+void compute_ir_suggestion(int sensor_idx, int &blocked_enter, int &clear_exit, bool &blocked_is_higher) {
+  int empty_mean = ir_capture_mean(ir_empty_stats, sensor_idx);
+  int item_mean = ir_capture_mean(ir_item_stats, sensor_idx);
+  long delta = (long)item_mean - (long)empty_mean;
+
+  blocked_is_higher = (delta >= 0);
+  blocked_enter = clamp_adc((int)(empty_mean + ((delta * 65L) / 100L)));
+  clear_exit = clamp_adc((int)(empty_mean + ((delta * 45L) / 100L)));
+}
+
+void report_ir_suggestion(Stream &out, bool apply_now) {
+  if (!ir_has_empty_stats || !ir_has_item_stats) {
+    out.println("ERR run IR_CAL_EMPTY and IR_CAL_ITEM first");
+    return;
+  }
+
+  out.println("IR threshold suggestion:");
+  for (int i = 0; i < 2; i++) {
+    int empty_mean = ir_capture_mean(ir_empty_stats, i);
+    int item_mean = ir_capture_mean(ir_item_stats, i);
+    long delta = (long)item_mean - (long)empty_mean;
+    long sep = (delta >= 0) ? delta : -delta;
+
+    int blocked_enter = 0;
+    int clear_exit = 0;
+    bool blocked_is_higher = true;
+    compute_ir_suggestion(i, blocked_enter, clear_exit, blocked_is_higher);
+
+    out.print("IR");
+    out.print(i + 1);
+    out.print(": empty_mean=");
+    out.print(empty_mean);
+    out.print(" item_mean=");
+    out.print(item_mean);
+    out.print(" delta=");
+    out.println(delta);
+    out.print("  blocked_enter=");
+    out.print(blocked_enter);
+    out.print(" clear_exit=");
+    out.print(clear_exit);
+    out.print(" polarity=");
+    out.println(blocked_is_higher ? "HIGHER" : "LOWER");
+
+    if (sep < 40) {
+      out.println("  warning: low separation (<40 ADC), adjust sensor position.");
+    }
+
+    if (apply_now) {
+      ir_blocked_threshold[i] = blocked_enter;
+      ir_clear_threshold[i] = clear_exit;
+      ir_blocked_is_higher[i] = blocked_is_higher;
+    }
+  }
+
+  if (apply_now) {
+    out.println("OK IR thresholds updated");
+    last_ir1_state = -1;
+    last_ir2_state = -1;
+  }
+}
+
+void report_ir_live(Stream &out) {
+  int ir1_reading = 0;
+  int ir2_reading = 0;
+  bool ir1_blocked = ir_blocked_from_adc(0, last_ir1_state, &ir1_reading);
+  bool ir2_blocked = ir_blocked_from_adc(1, last_ir2_state, &ir2_reading);
+  out.print("IR1: ");
+  out.print(ir1_blocked ? "BLOCKED" : "CLEAR");
+  out.print(" ADC=");
+  out.print(ir1_reading);
+  out.print(" | IR2: ");
+  out.print(ir2_blocked ? "BLOCKED" : "CLEAR");
+  out.print(" ADC=");
+  out.println(ir2_reading);
 }
 
 void report_ir_state(Stream &out) {
-  bool ir1_blocked = ir_blocked_from_adc(IR1_PIN, last_ir1_state);
-  bool ir2_blocked = ir_blocked_from_adc(IR2_PIN, last_ir2_state);
+  bool ir1_blocked = ir_blocked_from_adc(0, last_ir1_state);
+  bool ir2_blocked = ir_blocked_from_adc(1, last_ir2_state);
   out.print("IR1: ");
   out.println(ir1_blocked ? "BLOCKED" : "CLEAR");
   out.print("IR2: ");
@@ -334,6 +558,98 @@ void processLine(String line, Stream &out) {
         out.println("ERR bad denom");
       }
     }
+  } else if (cmd == "IR_READ") {
+    report_ir_live(out);
+  } else if (cmd == "IR_STATUS") {
+    print_ir_config(out);
+    if (ir_has_empty_stats) {
+      print_ir_capture_stats(out, "empty", ir_empty_stats);
+    }
+    if (ir_has_item_stats) {
+      print_ir_capture_stats(out, "item", ir_item_stats);
+    }
+  } else if (cmd == "IR_SET") {
+    if (partCount >= 4) {
+      int sensor = parts[1].toInt();
+      int blocked_enter = parts[2].toInt();
+      int clear_exit = parts[3].toInt();
+      if (sensor < 1 || sensor > 2) {
+        out.println("ERR sensor must be 1 or 2");
+        return;
+      }
+      if (blocked_enter < 0 || blocked_enter > 1023 || clear_exit < 0 || clear_exit > 1023) {
+        out.println("ERR thresholds must be 0..1023");
+        return;
+      }
+      int idx = sensor - 1;
+      ir_blocked_threshold[idx] = blocked_enter;
+      ir_clear_threshold[idx] = clear_exit;
+      last_ir1_state = -1;
+      last_ir2_state = -1;
+      out.println("OK IR_SET");
+      print_ir_config(out);
+    } else {
+      out.println("ERR usage: IR_SET <sensor> <blocked_enter> <clear_exit>");
+    }
+  } else if (cmd == "IR_POLARITY") {
+    if (partCount >= 3) {
+      int sensor = parts[1].toInt();
+      String mode = parts[2];
+      mode.toUpperCase();
+      if (sensor < 1 || sensor > 2) {
+        out.println("ERR sensor must be 1 or 2");
+        return;
+      }
+      int idx = sensor - 1;
+      if (mode == "HIGHER") {
+        ir_blocked_is_higher[idx] = true;
+      } else if (mode == "LOWER") {
+        ir_blocked_is_higher[idx] = false;
+      } else {
+        out.println("ERR mode must be HIGHER or LOWER");
+        return;
+      }
+      last_ir1_state = -1;
+      last_ir2_state = -1;
+      out.println("OK IR_POLARITY");
+      print_ir_config(out);
+    } else {
+      out.println("ERR usage: IR_POLARITY <sensor> HIGHER|LOWER");
+    }
+  } else if (cmd == "IR_CAL_EMPTY") {
+    if (!can_run_ir_calibration()) {
+      out.println("ERR machine busy, stop dispensing before IR calibration");
+      return;
+    }
+    int seconds = 8;
+    if (partCount >= 2) {
+      int parsed = parts[1].toInt();
+      if (parsed > 0) seconds = parsed;
+    }
+    capture_ir_window("empty", seconds, ir_empty_stats, out);
+    ir_has_empty_stats = true;
+  } else if (cmd == "IR_CAL_ITEM") {
+    if (!can_run_ir_calibration()) {
+      out.println("ERR machine busy, stop dispensing before IR calibration");
+      return;
+    }
+    int seconds = 8;
+    if (partCount >= 2) {
+      int parsed = parts[1].toInt();
+      if (parsed > 0) seconds = parsed;
+    }
+    capture_ir_window("item", seconds, ir_item_stats, out);
+    ir_has_item_stats = true;
+  } else if (cmd == "IR_SUGGEST") {
+    report_ir_suggestion(out, false);
+  } else if (cmd == "IR_APPLY") {
+    report_ir_suggestion(out, true);
+  } else if (cmd == "IR_RESET_CAL") {
+    reset_ir_capture_stats(ir_empty_stats);
+    reset_ir_capture_stats(ir_item_stats);
+    ir_has_empty_stats = false;
+    ir_has_item_stats = false;
+    out.println("OK IR calibration capture reset");
   } else if (cmd == "STATUS"){
     report_status(out);
     report_balance(out);
@@ -469,6 +785,8 @@ void setup(){
   // Initialize shared sensor pins
   pinMode(IR1_PIN, INPUT);
   pinMode(IR2_PIN, INPUT);
+  reset_ir_capture_stats(ir_empty_stats);
+  reset_ir_capture_stats(ir_item_stats);
   pinMode(TEC_RELAY_PIN, OUTPUT);
   digitalWrite(TEC_RELAY_PIN, TEC_RELAY_INACTIVE_LEVEL);
   dht1.begin();
@@ -481,6 +799,7 @@ void setup(){
   
   delay(50);
   Serial.println("Arduino Bill Acceptor & Coin Hopper ready");
+  Serial.println("IR calibration cmds: IR_STATUS, IR_READ, IR_CAL_EMPTY, IR_CAL_ITEM, IR_SUGGEST, IR_APPLY");
 }
 
 void loop(){
@@ -652,8 +971,8 @@ void loop(){
 
   // Suppress IR reporting while motors are active and for a short settle period after
   if (now_ms - last_motor_active_ms >= IR_ARM_DELAY_MS) {
-    int ir1_state = ir_blocked_from_adc(IR1_PIN, last_ir1_state) ? 1 : 0;
-    int ir2_state = ir_blocked_from_adc(IR2_PIN, last_ir2_state) ? 1 : 0;
+    int ir1_state = ir_blocked_from_adc(0, last_ir1_state) ? 1 : 0;
+    int ir2_state = ir_blocked_from_adc(1, last_ir2_state) ? 1 : 0;
     if (ir1_state != last_ir1_state) {
       Serial.print("IR1: ");
       Serial.println(ir1_state == 1 ? "BLOCKED" : "CLEAR");

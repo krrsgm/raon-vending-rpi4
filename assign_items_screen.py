@@ -986,17 +986,31 @@ class AssignItemsScreen(tk.Frame):
                 continue
         return active
 
-    def _wait_for_slot_rotation_complete(self, esp32_host, slot_num, timeout_sec=18.0, poll_interval_sec=0.15):
+    def _read_limit_status(self, esp32_host):
+        """Read limit-pin debug status from ESP32."""
+        try:
+            return send_command(esp32_host, "LIMIT_STATUS", timeout=1.0)
+        except Exception as e:
+            return f"ERR LIMIT_STATUS: {e}"
+
+    def _wait_for_slot_rotation_complete(self, esp32_host, slot_num, timeout_sec=18.0, poll_interval_sec=0.15, debug=False):
         """
         Wait until a slot is no longer active in STATUS.
         In firmware, this corresponds to a completed rotation (2 limit-switch pulses)
         or a failsafe timeout.
         """
         deadline = time.time() + max(1.0, float(timeout_sec))
+        last_debug_ts = 0.0
         while time.time() < deadline:
             try:
                 status_msg = send_command(esp32_host, "STATUS", timeout=1.0)
                 active = self._parse_active_slots_from_status(status_msg)
+                if debug:
+                    now_ts = time.time()
+                    if now_ts - last_debug_ts >= 0.6:
+                        limit_dbg = self._read_limit_status(esp32_host)
+                        print(f"[TEST MOTOR] Slot {slot_num} LIMIT_STATUS: {limit_dbg}")
+                        last_debug_ts = now_ts
                 if slot_num not in active:
                     return True
             except Exception:
@@ -1044,6 +1058,7 @@ class AssignItemsScreen(tk.Frame):
                 return
             
             print(f"[TEST MOTOR] ESP32 connection OK. Status: {status_msg}")
+            print(f"[TEST MOTOR] Slot {slot_num} LIMIT_STATUS before pulse: {self._read_limit_status(esp32_host)}")
             
             # Trigger one full spring rotation; firmware stops at 2 limit pulses.
             print(f"[TEST MOTOR] Pulsing slot {slot_num}...")
@@ -1074,8 +1089,10 @@ class AssignItemsScreen(tk.Frame):
                 completed = self._wait_for_slot_rotation_complete(
                     esp32_host=esp32_host,
                     slot_num=slot_num,
-                    timeout_sec=wait_timeout_sec
+                    timeout_sec=wait_timeout_sec,
+                    debug=True
                 )
+                print(f"[TEST MOTOR] Slot {slot_num} LIMIT_STATUS after pulse: {self._read_limit_status(esp32_host)}")
                 if completed:
                     messagebox.showinfo(
                         "Motor Test Success",

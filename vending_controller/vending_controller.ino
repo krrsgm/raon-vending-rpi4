@@ -20,6 +20,7 @@
     - OPENALL             : set all outputs on
     - CLOSEALL            : set all outputs off
     - STATUS              : returns comma-separated list of ON slots (1-based)
+    - LIMIT_STATUS        : returns pin states for GPIO17/18/19 with active slot and pulse count per mux
     
   Example commands:
     PULSE 12\n            → run slot 12 until 2 limit-switch pulses
@@ -143,6 +144,7 @@ void setOutput(int idx, bool on);
 void processCommand(String cmd, Stream &out);
 void processCoinCommand(String command);
 void clearMuxTrackingForSlot(int idx);
+String getLimitStatusString();
 
 // ============================================================================
 // COIN ACCEPTOR INTERRUPT HANDLER
@@ -331,6 +333,21 @@ void loop() {
     last_limit_state[mux] = current_state;
   }
 
+  // Debug output while dispensing: show limit pin states and assigned active slot per mux.
+  static unsigned long lastLimitDebugPrintMs = 0;
+  bool any_mux_active = false;
+  for (int mux = 0; mux < NUM_MUXES; mux++) {
+    if (active_slot_by_mux[mux] >= 0) {
+      any_mux_active = true;
+      break;
+    }
+  }
+  if (any_mux_active && (now - lastLimitDebugPrintMs >= 400)) {
+    lastLimitDebugPrintMs = now;
+    Serial.print("[LIMIT DBG] ");
+    Serial.println(getLimitStatusString());
+  }
+
   // Failsafe timeout in case limit switch pulses are not detected
   for (int i = 0; i < NUM_OUTPUTS; i++) {
     if (active_until[i] != 0 && now >= active_until[i]) {
@@ -408,6 +425,34 @@ void clearMuxTrackingForSlot(int idx) {
     active_slot_by_mux[mux_num] = -1;
     limit_pulse_count[mux_num] = 0;
   }
+}
+
+String getLimitStatusString() {
+  String msg = "";
+
+  msg += "P17=";
+  msg += (digitalRead(MUX1_LIMIT_PIN) == LOW) ? "LOW" : "HIGH";
+  msg += ",P18=";
+  msg += (digitalRead(MUX2_LIMIT_PIN) == LOW) ? "LOW" : "HIGH";
+  msg += ",P19=";
+  msg += (digitalRead(MUX3_LIMIT_PIN) == LOW) ? "LOW" : "HIGH";
+
+  msg += " | M1_SLOT=";
+  if (active_slot_by_mux[0] >= 0) msg += String(active_slot_by_mux[0] + 1);
+  else msg += "NONE";
+  msg += ",M1_PULSES=" + String(limit_pulse_count[0]);
+
+  msg += " | M2_SLOT=";
+  if (active_slot_by_mux[1] >= 0) msg += String(active_slot_by_mux[1] + 1);
+  else msg += "NONE";
+  msg += ",M2_PULSES=" + String(limit_pulse_count[1]);
+
+  msg += " | M3_SLOT=";
+  if (active_slot_by_mux[2] >= 0) msg += String(active_slot_by_mux[2] + 1);
+  else msg += "NONE";
+  msg += ",M3_PULSES=" + String(limit_pulse_count[2]);
+
+  return msg;
 }
 
 // ============================================================================
@@ -618,6 +663,10 @@ void processCommand(String cmd, Stream &out) {
       }
     }
     out.println(csv.length() > 0 ? csv : "NONE");
+  }
+  // LIMIT_STATUS - return limit pin states and active slot/pulse counters per mux
+  else if (command == "LIMIT_STATUS") {
+    out.println(getLimitStatusString());
   }
   // Unknown command
   else {

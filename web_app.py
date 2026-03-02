@@ -355,6 +355,213 @@ def _build_ir_dispense_logs(date_str, sales_struct):
     return ir_logs
 
 
+def _extract_hhmmss(text):
+    """Extract HH:MM:SS text from a line."""
+    try:
+        m = re.search(r'(\d{2}:\d{2}:\d{2})', str(text))
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return "??:??:??"
+
+
+def _parse_money_value(text, label):
+    """Parse a numeric money value from a labeled field."""
+    try:
+        pattern = rf"{re.escape(label)}:\s*[^0-9\-]*([0-9]+(?:\.[0-9]+)?)"
+        m = re.search(pattern, str(text), re.IGNORECASE)
+        if m:
+            return float(m.group(1))
+    except Exception:
+        pass
+    return 0.0
+
+
+def _parse_transaction_line(text):
+    """Parse a TRANSACTION log line into structured fields."""
+    line = str(text).strip()
+    if "TRANSACTION |" not in line or "Items:" not in line:
+        return None
+
+    items_text = "Unknown Item"
+    try:
+        m_items = re.search(r"Items:\s*(.*?)\s*\|\s*Coins:", line, re.IGNORECASE)
+        if m_items:
+            parsed_items = m_items.group(1).strip()
+            if parsed_items:
+                items_text = parsed_items
+    except Exception:
+        pass
+
+    return {
+        'raw': line,
+        'hhmmss': _extract_hhmmss(line),
+        'seconds': _extract_log_seconds(line),
+        'items': items_text,
+        'coins': _parse_money_value(line, "Coins"),
+        'bills': _parse_money_value(line, "Bills"),
+        'total': _parse_money_value(line, "Total"),
+        'change': _parse_money_value(line, "Change"),
+    }
+
+
+def _parse_transaction_time_line(text):
+    """Parse a TRANSACTION_TIME line."""
+    line = str(text).strip()
+    if "TRANSACTION_TIME" not in line:
+        return None
+
+    duration_text = "N/A"
+    try:
+        m_duration = re.search(r"Duration:\s*([^|]+)", line, re.IGNORECASE)
+        if m_duration:
+            duration_text = m_duration.group(1).strip()
+    except Exception:
+        pass
+
+    return {
+        'seconds': _extract_log_seconds(line),
+        'duration': duration_text,
+    }
+
+
+def _parse_dispense_result_line(text):
+    """Parse DISPENSE_RESULT line from sales log."""
+    line = str(text).strip()
+    if "DISPENSE_RESULT" not in line:
+        return None
+
+    try:
+        m = re.search(
+            r"DISPENSE_RESULT\s*\|\s*Slot:\s*([^|]+)\s*\|\s*Item:\s*([^|]+)\s*\|\s*Status:\s*([A-Za-z_]+)",
+            line,
+            re.IGNORECASE
+        )
+        if not m:
+            return None
+        return {
+            'seconds': _extract_log_seconds(line),
+            'slot': m.group(1).strip(),
+            'item': m.group(2).strip(),
+            'status': m.group(3).strip().upper(),
+        }
+    except Exception:
+        return None
+
+
+def _load_ir_sensor_status_events(date_str):
+    """Load IR status snapshots from sensor_data csv for a date."""
+    sensor_log_file = os.path.join(_resolve_logs_dir(), f"sensor_data_{date_str}.csv")
+    if not os.path.exists(sensor_log_file):
+        return []
+
+    events = []
+    try:
+        import csv
+        with open(sensor_log_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                ir1 = _parse_ir_detected(row.get('IR_Sensor1_Detection'))
+                ir2 = _parse_ir_detected(row.get('IR_Sensor2_Detection'))
+                if ir1 is None and ir2 is None:
+                    continue
+
+                ir1_text = "DETECTED" if ir1 is True else ("CLEAR" if ir1 is False else "--")
+                ir2_text = "DETECTED" if ir2 is True else ("CLEAR" if ir2 is False else "--")
+                ts_raw = row.get('DateTime', row.get('Timestamp', '')) or ''
+                events.append({
+                    'seconds': _extract_log_seconds(ts_raw),
+                    'status': f"IR1 {ir1_text}, IR2 {ir2_text}",
+                })
+    except Exception as e:
+        logger.error(f"Error loading IR sensor status events: {e}")
+        return []
+
+    return events
+
+
+def _match_duration_for_transaction(txn, tx_time_events, used_indexes):
+    """Match a transaction duration from TRANSACTION_TIME logs."""
+    txn_sec = txn.get('seconds')
+    if not tx_time_events:
+        return "N/A"
+
+    best_idx = None
+    best_delta = None
+
+    if txn_sec is not None:
+        for i, ev in enumerate(tx_time_events):
+            if i in used_indexes:
+                continue
+            ev_sec = ev.get('seconds')
+            if ev_sec is None:
+                continue
+            delta = abs(ev_sec - txn_sec)
+            if best_delta is None or delta < best_delta:
+                best_delta = delta
+                best_idx = i
+
+    if best_idx is not None and best_delta is not None and best_delta <= 300:
+        used_indexes.add(best_idx)
+        return tx_time_events[best_idx].get('duration', "N/A")
+
+    for i, ev in enumerate(tx_time_events):
+        if i in used_indexes:
+            continue
+        used_indexes.add(i)
+        return ev.get('duration', "N/A")
+
+    return "N/A"
+
+
+def _match_ir_status_for_transaction(txn, ir_sensor_events, dispense_events):
+    """Match IR status for a transaction using sensor snapshots, then dispense results."""
+    txn_sec = txn.get('seconds')
+    txn_items = str(txn.get('items', '')).lower()
+
+    if txn_sec is not None and ir_sensor_events:
+        nearest = None
+        nearest_delta = None
+        for ev in ir_sensor_events:
+            ev_sec = ev.get('seconds')
+            if ev_sec is None:
+                continue
+            delta = abs(ev_sec - txn_sec)
+            if nearest_delta is None or delta < nearest_delta:
+                nearest = ev
+                nearest_delta = delta
+        if nearest and nearest_delta is not None and nearest_delta <= 90:
+            return nearest.get('status', 'N/A')
+
+    candidates = []
+    if txn_sec is not None:
+        for ev in dispense_events:
+            ev_sec = ev.get('seconds')
+            if ev_sec is None:
+                continue
+            if abs(ev_sec - txn_sec) <= 90:
+                candidates.append(ev)
+    elif dispense_events:
+        candidates = list(dispense_events)
+
+    if not candidates:
+        return "N/A"
+
+    item_matched = [ev for ev in candidates if ev.get('item', '').strip().lower() in txn_items]
+    if item_matched:
+        candidates = item_matched
+
+    statuses = [str(ev.get('status', '')).upper() for ev in candidates if ev.get('status')]
+    if not statuses:
+        return "N/A"
+    if any(s == 'FAILED' for s in statuses):
+        return "FAILED"
+    if any(s == 'SUCCESS' for s in statuses):
+        return "SUCCESS"
+    return "/".join(sorted(set(statuses)))
+
+
 # ============================================================================
 # ROUTES - INVENTORY DASHBOARD (Multi-Machine)
 # ============================================================================
@@ -425,36 +632,50 @@ def api_sales_logs():
         logs_dir = logger_inst.logs_dir
         log_file = os.path.join(logs_dir, f"sales_{date_str}.log")
         
-        logs = []
+        raw_logs = []
         if os.path.exists(log_file):
             try:
                 with open(log_file, 'r', encoding='utf-8') as f:
-                    logs = _filter_dashboard_sales_logs(f.readlines())
+                    raw_logs = [str(line).strip() for line in f if str(line).strip()]
             except Exception as e:
                 logger.error(f"Error reading log file: {e}")
 
-        # Build structured sales lines first so we can match nearby IR dispense events.
-        sales_struct = []
-        for line in logs:
-            sales_struct.append({
-                'line': str(line).strip(),
-                'seconds': _extract_log_seconds(line),
-                'item_name': _extract_item_name_from_sale_log(line)
-            })
+        transaction_events = []
+        tx_time_events = []
+        dispense_events = []
 
-        ir_struct = _build_ir_dispense_logs(date_str, sales_struct)
+        for line in raw_logs:
+            tx = _parse_transaction_line(line)
+            if tx:
+                transaction_events.append(tx)
+                continue
 
-        # Merge + sort by time (fallback keeps stable order for unknown timestamps).
-        merged = sales_struct + ir_struct
-        merged_with_idx = list(enumerate(merged))
-        merged_with_idx.sort(
-            key=lambda pair: (
-                pair[1].get('seconds') is None,
-                pair[1].get('seconds') if pair[1].get('seconds') is not None else 0,
-                pair[0]
+            tx_time = _parse_transaction_time_line(line)
+            if tx_time:
+                tx_time_events.append(tx_time)
+                continue
+
+            disp = _parse_dispense_result_line(line)
+            if disp:
+                dispense_events.append(disp)
+
+        ir_sensor_events = _load_ir_sensor_status_events(date_str)
+
+        merged_logs = []
+        used_duration_indexes = set()
+        for tx in transaction_events:
+            duration_text = _match_duration_for_transaction(tx, tx_time_events, used_duration_indexes)
+            ir_status_text = _match_ir_status_for_transaction(tx, ir_sensor_events, dispense_events)
+            merged_logs.append(
+                f"[{tx['hhmmss']}] "
+                f"Transaction Time: {duration_text} | "
+                f"Item: {tx['items']} | "
+                f"Coins: {tx['coins']:.2f} | "
+                f"Bills: {tx['bills']:.2f} | "
+                f"Total: {tx['total']:.2f} | "
+                f"Change: {tx['change']:.2f} | "
+                f"IR Status: {ir_status_text}"
             )
-        )
-        merged_logs = [pair[1].get('line', '') for pair in merged_with_idx if pair[1].get('line')]
 
         return jsonify({
             'logs': merged_logs,
@@ -463,39 +684,6 @@ def api_sales_logs():
         }), 200
     except Exception as e:
         logger.error(f"Sales logs error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/transaction-times')
-def api_transaction_times():
-    """API: Get per-transaction duration logs for a specific date."""
-    try:
-        logger_inst = get_logger() if get_logger else None
-        if not logger_inst:
-            return jsonify({'error': 'Logger not available'}), 500
-
-        from datetime import datetime as dt
-        date_str = request.args.get('date', dt.now().strftime("%Y-%m-%d"))
-        logs_dir = logger_inst.logs_dir
-        log_file = os.path.join(logs_dir, f"sales_{date_str}.log")
-
-        if not os.path.exists(log_file):
-            return jsonify({'logs': [], 'date': date_str, 'count': 0}), 200
-
-        tx_logs = []
-        with open(log_file, 'r', encoding='utf-8') as f:
-            for raw in f:
-                line = str(raw).strip()
-                if "TRANSACTION_TIME" in line:
-                    tx_logs.append(line)
-
-        return jsonify({
-            'logs': tx_logs,
-            'date': date_str,
-            'count': len(tx_logs)
-        }), 200
-    except Exception as e:
-        logger.error(f"Transaction times error: {e}")
         return jsonify({'error': str(e)}), 500
 
 

@@ -361,17 +361,6 @@
                 </div>
             </div>
         </div>
-        <!-- Transaction Time Logs -->
-        <div class="logs-section">
-            <h3>Transaction Time Logs</h3>
-            <div style="margin-bottom: 10px; font-size: 12px; color: #666;">
-                Uses the same selected date as Sales Logs.
-                <span id="transactionTimeDateLabel" style="margin-left: 8px;"></span>
-            </div>
-            <div class="logs-container" id="transactionTimeContainer">
-                <div class="log-line">Loading transaction times...</div>
-            </div>
-        </div>
         <!-- Temperature & Humidity Text Logs -->
         <div class="logs-section">
             <h3>Temperature & Humidity Logs (Every 15 Minutes)</h3>
@@ -380,7 +369,7 @@
                 <span id="sensorTextDateLabel" style="margin-left: 8px;"></span>
             </div>
             <div class="logs-container" id="sensorTextLogsContainer">
-                <div class="log-line">Loading temperature/humidity/IR logs...</div>
+                <div class="log-line">Loading temperature/humidity logs...</div>
             </div>
         </div>
 
@@ -546,31 +535,10 @@
             }
         }
 
-        async function loadTransactionTimesByDate(dateStr) {
-            if (!dateStr) return;
-            try {
-                const res = await fetch('/api/transaction-times?date=' + encodeURIComponent(dateStr));
-                const data = await res.json();
-                const lines = (data.logs || []).map(line => {
-                    const ts = (line.match(/\[(.*?)\]/) || [null, ''])[1];
-                    const dur = (line.match(/Duration:\s*([^|]+)/i) || [null, 'N/A'])[1].trim();
-                    return ts ? `[${ts}] ${dur}` : line;
-                });
-                renderLogs('transactionTimeContainer', lines, `No transaction time logs on ${dateStr}`);
-                const label = document.getElementById('transactionTimeDateLabel');
-                if (label) label.textContent = 'Date: ' + dateStr;
-            } catch (error) {
-                console.error('Error loading transaction time logs:', error);
-                const container = document.getElementById('transactionTimeContainer');
-                if (container) container.innerHTML = '<div class="log-line">Error loading transaction time logs</div>';
-            }
-        }
-
         async function loadLogsFromPicker() {
             const picker = document.getElementById('logsDatePicker');
             const selected = picker && picker.value ? picker.value : getTodayIsoDate();
             await loadSalesLogsByDate(selected, 'logsContainer', 'selectedDateLabel');
-            await loadTransactionTimesByDate(selected);
         }
 
         async function loadTodayLogsNow() {
@@ -578,7 +546,6 @@
             const picker = document.getElementById('logsDatePicker');
             if (picker) picker.value = today;
             await loadSalesLogsByDate(today, 'logsContainer', 'selectedDateLabel');
-            await loadTransactionTimesByDate(today);
         }
 
         function toTimeLabel(timestamp, fallbackIndex) {
@@ -651,8 +618,6 @@
                         humidity1Count: 0,
                         humidity2Total: 0,
                         humidity2Count: 0,
-                        ir1Last: null,
-                        ir2Last: null,
                         relayLast: null
                     });
                 }
@@ -662,15 +627,11 @@
                 const t2 = Number(reading.temp2);
                 const h1 = Number(reading.humidity1);
                 const h2 = Number(reading.humidity2);
-                const ir1 = parseIRValue(reading.ir1);
-                const ir2 = parseIRValue(reading.ir2);
                 const relay = parseRelayValue(reading.relay);
                 if (!Number.isNaN(t1)) { bucket.temp1Total += t1; bucket.temp1Count += 1; }
                 if (!Number.isNaN(t2)) { bucket.temp2Total += t2; bucket.temp2Count += 1; }
                 if (!Number.isNaN(h1)) { bucket.humidity1Total += h1; bucket.humidity1Count += 1; }
                 if (!Number.isNaN(h2)) { bucket.humidity2Total += h2; bucket.humidity2Count += 1; }
-                if (ir1 !== null) bucket.ir1Last = ir1;
-                if (ir2 !== null) bucket.ir2Last = ir2;
                 if (relay !== null) bucket.relayLast = relay;
             });
 
@@ -685,10 +646,8 @@
                     const t2Txt = t2 === null ? '--' : `${t2.toFixed(1)} C`;
                     const h1Txt = h1 === null ? '--' : `${h1.toFixed(1)} %`;
                     const h2Txt = h2 === null ? '--' : `${h2.toFixed(1)} %`;
-                    const ir1Txt = bucket.ir1Last === null ? '--' : (bucket.ir1Last === 1 ? 'Detected' : 'Clear');
-                    const ir2Txt = bucket.ir2Last === null ? '--' : (bucket.ir2Last === 1 ? 'Detected' : 'Clear');
                     const tecTxt = bucket.relayLast === null ? '--' : bucket.relayLast;
-                    return `${bucket.label} | T1 ${t1Txt}, H1 ${h1Txt} | T2 ${t2Txt}, H2 ${h2Txt} | TEC ${tecTxt} | IR1 ${ir1Txt}, IR2 ${ir2Txt}`;
+                    return `${bucket.label} | T1 ${t1Txt}, H1 ${h1Txt} | T2 ${t2Txt}, H2 ${h2Txt} | TEC ${tecTxt}`;
                 });
         }
 
@@ -828,11 +787,11 @@
                 const data = await res.json();
                 const lines = buildFifteenMinuteTextLogs(data.readings || []);
                 document.getElementById('sensorTextDateLabel').textContent = 'Date: ' + dateStr;
-                renderLogs('sensorTextLogsContainer', lines, `No temperature/humidity/IR logs on ${dateStr}`);
+                renderLogs('sensorTextLogsContainer', lines, `No temperature/humidity logs on ${dateStr}`);
             } catch (error) {
                 console.error('Error loading sensor text logs:', error);
                 const c = document.getElementById('sensorTextLogsContainer');
-                if (c) c.innerHTML = '<div class="log-line">Error loading temperature/humidity/IR logs</div>';
+                if (c) c.innerHTML = '<div class="log-line">Error loading temperature/humidity logs</div>';
             }
         }
 
@@ -926,7 +885,6 @@
                 const picker = document.getElementById('logsDatePicker');
                 const selectedDate = picker && picker.value ? picker.value : getTodayIsoDate();
                 await loadSalesLogsByDate(selectedDate, 'logsContainer', 'selectedDateLabel');
-                await loadTransactionTimesByDate(selectedDate);
 
                 await loadStockAlerts();
                 document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();

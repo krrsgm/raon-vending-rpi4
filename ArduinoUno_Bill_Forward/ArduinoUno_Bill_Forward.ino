@@ -90,16 +90,8 @@ const unsigned long IR_ARM_DELAY_MS = 800; // wait after motors stop before repo
 int ir_blocked_threshold[2] = {IR_DEFAULT_BLOCKED_THRESHOLD, IR_DEFAULT_BLOCKED_THRESHOLD};
 int ir_clear_threshold[2] = {IR_DEFAULT_CLEAR_THRESHOLD, IR_DEFAULT_CLEAR_THRESHOLD};
 bool ir_blocked_is_higher[2] = {true, true};
-
-struct IrCaptureStats {
-  long sum[2];
-  int count[2];
-  int min_v[2];
-  int max_v[2];
-};
-
-IrCaptureStats ir_empty_stats;
-IrCaptureStats ir_item_stats;
+int ir_empty_mean[2] = {0, 0};
+int ir_item_mean[2] = {0, 0};
 bool ir_has_empty_stats = false;
 bool ir_has_item_stats = false;
 
@@ -251,55 +243,27 @@ int clamp_adc(int value) {
   return value;
 }
 
-void reset_ir_capture_stats(IrCaptureStats &stats) {
-  for (int i = 0; i < 2; i++) {
-    stats.sum[i] = 0;
-    stats.count[i] = 0;
-    stats.min_v[i] = 1023;
-    stats.max_v[i] = 0;
-  }
-}
-
-void add_ir_capture_sample(IrCaptureStats &stats, int idx, int value) {
-  int v = clamp_adc(value);
-  stats.sum[idx] += v;
-  stats.count[idx]++;
-  if (v < stats.min_v[idx]) stats.min_v[idx] = v;
-  if (v > stats.max_v[idx]) stats.max_v[idx] = v;
-}
-
-int ir_capture_mean(const IrCaptureStats &stats, int idx) {
-  if (stats.count[idx] <= 0) return 0;
-  return (int)(stats.sum[idx] / stats.count[idx]);
-}
-
-void print_ir_capture_stats(Stream &out, const char *label, const IrCaptureStats &stats) {
+void print_ir_capture_means(Stream &out, const char *label, const int means[2]) {
   out.print(label);
-  out.println(":");
+  out.println(F(" means:"));
   for (int i = 0; i < 2; i++) {
-    out.print("IR");
+    out.print(F("IR"));
     out.print(i + 1);
-    out.print(" mean=");
-    out.print(ir_capture_mean(stats, i));
-    out.print(" min=");
-    out.print(stats.min_v[i]);
-    out.print(" max=");
-    out.print(stats.max_v[i]);
-    out.print(" samples=");
-    out.println(stats.count[i]);
+    out.print(F(" mean="));
+    out.println(means[i]);
   }
 }
 
 void print_ir_config(Stream &out) {
   for (int i = 0; i < 2; i++) {
-    out.print("IR");
+    out.print(F("IR"));
     out.print(i + 1);
-    out.print(" cfg blocked_enter=");
+    out.print(F(" cfg blocked_enter="));
     out.print(ir_blocked_threshold[i]);
-    out.print(" clear_exit=");
+    out.print(F(" clear_exit="));
     out.print(ir_clear_threshold[i]);
-    out.print(" polarity=");
-    out.println(ir_blocked_is_higher[i] ? "HIGHER" : "LOWER");
+    out.print(F(" polarity="));
+    out.println(ir_blocked_is_higher[i] ? F("HIGHER") : F("LOWER"));
   }
 }
 
@@ -335,18 +299,24 @@ bool can_run_ir_calibration() {
   return !job_one.active && !job_five.active && !sequence_active;
 }
 
-void capture_ir_window(const char *label, int seconds, IrCaptureStats &stats, Stream &out) {
+void capture_ir_window(const char *label, int seconds, int means_out[2], Stream &out) {
   if (seconds < 1) seconds = 1;
   if (seconds > 60) seconds = 60;
 
-  reset_ir_capture_stats(stats);
+  long sum1 = 0;
+  long sum2 = 0;
+  int min1 = 1023;
+  int min2 = 1023;
+  int max1 = 0;
+  int max2 = 0;
+  int samples = 0;
 
-  out.print("IR capture start: ");
+  out.print(F("IR capture start: "));
   out.print(label);
-  out.print(" for ");
+  out.print(F(" for "));
   out.print(seconds);
-  out.println("s");
-  out.println("Keep the scene stable during capture.");
+  out.println(F("s"));
+  out.println(F("Keep the scene stable during capture."));
 
   unsigned long start_ms = millis();
   unsigned long last_progress_ms = 0;
@@ -355,30 +325,60 @@ void capture_ir_window(const char *label, int seconds, IrCaptureStats &stats, St
   while (millis() - start_ms < duration_ms) {
     int ir1 = read_ir_sensor_by_index(0);
     int ir2 = read_ir_sensor_by_index(1);
-    add_ir_capture_sample(stats, 0, ir1);
-    add_ir_capture_sample(stats, 1, ir2);
+    ir1 = clamp_adc(ir1);
+    ir2 = clamp_adc(ir2);
+    sum1 += ir1;
+    sum2 += ir2;
+    if (ir1 < min1) min1 = ir1;
+    if (ir1 > max1) max1 = ir1;
+    if (ir2 < min2) min2 = ir2;
+    if (ir2 > max2) max2 = ir2;
+    samples++;
 
     unsigned long now = millis();
     if (now - last_progress_ms >= 500) {
       last_progress_ms = now;
-      out.print("t=");
+      out.print(F("t="));
       out.print((now - start_ms) / 1000.0, 1);
-      out.print("s IR1=");
+      out.print(F("s IR1="));
       out.print(ir1);
-      out.print(" IR2=");
+      out.print(F(" IR2="));
       out.println(ir2);
     }
     delay(40);
   }
 
-  out.print("IR capture done: ");
+  if (samples > 0) {
+    means_out[0] = (int)(sum1 / samples);
+    means_out[1] = (int)(sum2 / samples);
+  } else {
+    means_out[0] = 0;
+    means_out[1] = 0;
+  }
+
+  out.print(F("IR capture done: "));
   out.println(label);
-  print_ir_capture_stats(out, label, stats);
+  out.print(F("IR1 mean="));
+  out.print(means_out[0]);
+  out.print(F(" min="));
+  out.print(min1);
+  out.print(F(" max="));
+  out.print(max1);
+  out.print(F(" samples="));
+  out.println(samples);
+  out.print(F("IR2 mean="));
+  out.print(means_out[1]);
+  out.print(F(" min="));
+  out.print(min2);
+  out.print(F(" max="));
+  out.print(max2);
+  out.print(F(" samples="));
+  out.println(samples);
 }
 
 void compute_ir_suggestion(int sensor_idx, int &blocked_enter, int &clear_exit, bool &blocked_is_higher) {
-  int empty_mean = ir_capture_mean(ir_empty_stats, sensor_idx);
-  int item_mean = ir_capture_mean(ir_item_stats, sensor_idx);
+  int empty_mean = ir_empty_mean[sensor_idx];
+  int item_mean = ir_item_mean[sensor_idx];
   long delta = (long)item_mean - (long)empty_mean;
 
   blocked_is_higher = (delta >= 0);
@@ -388,14 +388,14 @@ void compute_ir_suggestion(int sensor_idx, int &blocked_enter, int &clear_exit, 
 
 void report_ir_suggestion(Stream &out, bool apply_now) {
   if (!ir_has_empty_stats || !ir_has_item_stats) {
-    out.println("ERR run IR_CAL_EMPTY and IR_CAL_ITEM first");
+    out.println(F("ERR run IR_CAL_EMPTY and IR_CAL_ITEM first"));
     return;
   }
 
-  out.println("IR threshold suggestion:");
+  out.println(F("IR threshold suggestion:"));
   for (int i = 0; i < 2; i++) {
-    int empty_mean = ir_capture_mean(ir_empty_stats, i);
-    int item_mean = ir_capture_mean(ir_item_stats, i);
+    int empty_mean = ir_empty_mean[i];
+    int item_mean = ir_item_mean[i];
     long delta = (long)item_mean - (long)empty_mean;
     long sep = (delta >= 0) ? delta : -delta;
 
@@ -404,23 +404,23 @@ void report_ir_suggestion(Stream &out, bool apply_now) {
     bool blocked_is_higher = true;
     compute_ir_suggestion(i, blocked_enter, clear_exit, blocked_is_higher);
 
-    out.print("IR");
+    out.print(F("IR"));
     out.print(i + 1);
-    out.print(": empty_mean=");
+    out.print(F(": empty_mean="));
     out.print(empty_mean);
-    out.print(" item_mean=");
+    out.print(F(" item_mean="));
     out.print(item_mean);
-    out.print(" delta=");
+    out.print(F(" delta="));
     out.println(delta);
-    out.print("  blocked_enter=");
+    out.print(F("  blocked_enter="));
     out.print(blocked_enter);
-    out.print(" clear_exit=");
+    out.print(F(" clear_exit="));
     out.print(clear_exit);
-    out.print(" polarity=");
-    out.println(blocked_is_higher ? "HIGHER" : "LOWER");
+    out.print(F(" polarity="));
+    out.println(blocked_is_higher ? F("HIGHER") : F("LOWER"));
 
     if (sep < 40) {
-      out.println("  warning: low separation (<40 ADC), adjust sensor position.");
+      out.println(F("  warning: low separation (<40 ADC), adjust sensor position."));
     }
 
     if (apply_now) {
@@ -431,7 +431,7 @@ void report_ir_suggestion(Stream &out, bool apply_now) {
   }
 
   if (apply_now) {
-    out.println("OK IR thresholds updated");
+    out.println(F("OK IR thresholds updated"));
     last_ir1_state = -1;
     last_ir2_state = -1;
   }
@@ -442,23 +442,23 @@ void report_ir_live(Stream &out) {
   int ir2_reading = 0;
   bool ir1_blocked = ir_blocked_from_adc(0, last_ir1_state, &ir1_reading);
   bool ir2_blocked = ir_blocked_from_adc(1, last_ir2_state, &ir2_reading);
-  out.print("IR1: ");
-  out.print(ir1_blocked ? "BLOCKED" : "CLEAR");
-  out.print(" ADC=");
+  out.print(F("IR1: "));
+  out.print(ir1_blocked ? F("BLOCKED") : F("CLEAR"));
+  out.print(F(" ADC="));
   out.print(ir1_reading);
-  out.print(" | IR2: ");
-  out.print(ir2_blocked ? "BLOCKED" : "CLEAR");
-  out.print(" ADC=");
+  out.print(F(" | IR2: "));
+  out.print(ir2_blocked ? F("BLOCKED") : F("CLEAR"));
+  out.print(F(" ADC="));
   out.println(ir2_reading);
 }
 
 void report_ir_state(Stream &out) {
   bool ir1_blocked = ir_blocked_from_adc(0, last_ir1_state);
   bool ir2_blocked = ir_blocked_from_adc(1, last_ir2_state);
-  out.print("IR1: ");
-  out.println(ir1_blocked ? "BLOCKED" : "CLEAR");
-  out.print("IR2: ");
-  out.println(ir2_blocked ? "BLOCKED" : "CLEAR");
+  out.print(F("IR1: "));
+  out.println(ir1_blocked ? F("BLOCKED") : F("CLEAR"));
+  out.print(F("IR2: "));
+  out.println(ir2_blocked ? F("BLOCKED") : F("CLEAR"));
 }
 
 void report_dht_readings(Stream &out, float t1, float h1, float t2, float h2) {
@@ -563,10 +563,10 @@ void processLine(String line, Stream &out) {
   } else if (cmd == "IR_STATUS") {
     print_ir_config(out);
     if (ir_has_empty_stats) {
-      print_ir_capture_stats(out, "empty", ir_empty_stats);
+      print_ir_capture_means(out, "empty", ir_empty_mean);
     }
     if (ir_has_item_stats) {
-      print_ir_capture_stats(out, "item", ir_item_stats);
+      print_ir_capture_means(out, "item", ir_item_mean);
     }
   } else if (cmd == "IR_SET") {
     if (partCount >= 4) {
@@ -574,11 +574,11 @@ void processLine(String line, Stream &out) {
       int blocked_enter = parts[2].toInt();
       int clear_exit = parts[3].toInt();
       if (sensor < 1 || sensor > 2) {
-        out.println("ERR sensor must be 1 or 2");
+        out.println(F("ERR sensor must be 1 or 2"));
         return;
       }
       if (blocked_enter < 0 || blocked_enter > 1023 || clear_exit < 0 || clear_exit > 1023) {
-        out.println("ERR thresholds must be 0..1023");
+        out.println(F("ERR thresholds must be 0..1023"));
         return;
       }
       int idx = sensor - 1;
@@ -586,10 +586,10 @@ void processLine(String line, Stream &out) {
       ir_clear_threshold[idx] = clear_exit;
       last_ir1_state = -1;
       last_ir2_state = -1;
-      out.println("OK IR_SET");
+      out.println(F("OK IR_SET"));
       print_ir_config(out);
     } else {
-      out.println("ERR usage: IR_SET <sensor> <blocked_enter> <clear_exit>");
+      out.println(F("ERR usage: IR_SET <sensor> <blocked_enter> <clear_exit>"));
     }
   } else if (cmd == "IR_POLARITY") {
     if (partCount >= 3) {
@@ -597,7 +597,7 @@ void processLine(String line, Stream &out) {
       String mode = parts[2];
       mode.toUpperCase();
       if (sensor < 1 || sensor > 2) {
-        out.println("ERR sensor must be 1 or 2");
+        out.println(F("ERR sensor must be 1 or 2"));
         return;
       }
       int idx = sensor - 1;
@@ -606,19 +606,19 @@ void processLine(String line, Stream &out) {
       } else if (mode == "LOWER") {
         ir_blocked_is_higher[idx] = false;
       } else {
-        out.println("ERR mode must be HIGHER or LOWER");
+        out.println(F("ERR mode must be HIGHER or LOWER"));
         return;
       }
       last_ir1_state = -1;
       last_ir2_state = -1;
-      out.println("OK IR_POLARITY");
+      out.println(F("OK IR_POLARITY"));
       print_ir_config(out);
     } else {
-      out.println("ERR usage: IR_POLARITY <sensor> HIGHER|LOWER");
+      out.println(F("ERR usage: IR_POLARITY <sensor> HIGHER|LOWER"));
     }
   } else if (cmd == "IR_CAL_EMPTY") {
     if (!can_run_ir_calibration()) {
-      out.println("ERR machine busy, stop dispensing before IR calibration");
+      out.println(F("ERR machine busy, stop dispensing before IR calibration"));
       return;
     }
     int seconds = 8;
@@ -626,11 +626,11 @@ void processLine(String line, Stream &out) {
       int parsed = parts[1].toInt();
       if (parsed > 0) seconds = parsed;
     }
-    capture_ir_window("empty", seconds, ir_empty_stats, out);
+    capture_ir_window("empty", seconds, ir_empty_mean, out);
     ir_has_empty_stats = true;
   } else if (cmd == "IR_CAL_ITEM") {
     if (!can_run_ir_calibration()) {
-      out.println("ERR machine busy, stop dispensing before IR calibration");
+      out.println(F("ERR machine busy, stop dispensing before IR calibration"));
       return;
     }
     int seconds = 8;
@@ -638,18 +638,18 @@ void processLine(String line, Stream &out) {
       int parsed = parts[1].toInt();
       if (parsed > 0) seconds = parsed;
     }
-    capture_ir_window("item", seconds, ir_item_stats, out);
+    capture_ir_window("item", seconds, ir_item_mean, out);
     ir_has_item_stats = true;
   } else if (cmd == "IR_SUGGEST") {
     report_ir_suggestion(out, false);
   } else if (cmd == "IR_APPLY") {
     report_ir_suggestion(out, true);
   } else if (cmd == "IR_RESET_CAL") {
-    reset_ir_capture_stats(ir_empty_stats);
-    reset_ir_capture_stats(ir_item_stats);
+    ir_empty_mean[0] = 0; ir_empty_mean[1] = 0;
+    ir_item_mean[0] = 0; ir_item_mean[1] = 0;
     ir_has_empty_stats = false;
     ir_has_item_stats = false;
-    out.println("OK IR calibration capture reset");
+    out.println(F("OK IR calibration capture reset"));
   } else if (cmd == "STATUS"){
     report_status(out);
     report_balance(out);
@@ -785,8 +785,6 @@ void setup(){
   // Initialize shared sensor pins
   pinMode(IR1_PIN, INPUT);
   pinMode(IR2_PIN, INPUT);
-  reset_ir_capture_stats(ir_empty_stats);
-  reset_ir_capture_stats(ir_item_stats);
   pinMode(TEC_RELAY_PIN, OUTPUT);
   digitalWrite(TEC_RELAY_PIN, TEC_RELAY_INACTIVE_LEVEL);
   dht1.begin();
@@ -795,11 +793,11 @@ void setup(){
   Serial.begin(BAUD_RATE);
   
   // This build uses USB Serial only; Serial2 (RX/TX) disabled
-  Serial.println("Using USB Serial only; RX/TX Serial2 disabled");
+  Serial.println(F("Using USB Serial only; RX/TX Serial2 disabled"));
   
   delay(50);
-  Serial.println("Arduino Bill Acceptor & Coin Hopper ready");
-  Serial.println("IR calibration cmds: IR_STATUS, IR_READ, IR_CAL_EMPTY, IR_CAL_ITEM, IR_SUGGEST, IR_APPLY");
+  Serial.println(F("Arduino Bill Acceptor & Coin Hopper ready"));
+  Serial.println(F("IR calibration cmds: IR_STATUS, IR_READ, IR_CAL_EMPTY, IR_CAL_ITEM, IR_SUGGEST, IR_APPLY"));
 }
 
 void loop(){

@@ -14,6 +14,11 @@ import sys
 import time
 
 try:
+    from arduino_serial_utils import detect_arduino_serial_port
+except Exception:
+    detect_arduino_serial_port = None
+
+try:
     import serial
     import serial.tools.list_ports
     SERIAL_AVAILABLE = True
@@ -41,7 +46,16 @@ UNO_IR1_LABEL = "IR1 (A0)"
 UNO_IR2_LABEL = "IR2 (A1)"
 
 
-def autodetect_serial_port():
+def autodetect_serial_port(preferred_port=None):
+    # Use the same helper used by kiosk/main flows.
+    if detect_arduino_serial_port:
+        try:
+            detected = detect_arduino_serial_port(preferred_port=preferred_port)
+            if detected:
+                return detected
+        except Exception:
+            pass
+
     if not SERIAL_AVAILABLE:
         return None
     ports = list(serial.tools.list_ports.comports())
@@ -59,7 +73,21 @@ def read_from_serial(port, duration=30):
         ser = serial.Serial(port, 115200, timeout=1)
     except Exception as e:
         print(f"[ERROR] Could not open serial port {port}: {e}")
-        return
+        alt_port = autodetect_serial_port(preferred_port=None)
+        if alt_port and alt_port != port:
+            print(f"[INFO] Retrying with kiosk-style auto-detected port: {alt_port}")
+            try:
+                ser = serial.Serial(alt_port, 115200, timeout=1)
+                port = alt_port
+            except Exception as e2:
+                print(f"[ERROR] Could not open fallback port {alt_port}: {e2}")
+                if "permission denied" in str(e2).lower():
+                    print("[HINT] Port is busy or access is restricted. Close other app using the Arduino port.")
+                return
+        else:
+            if "permission denied" in str(e).lower():
+                print("[HINT] Port is busy or access is restricted. Close other app using the Arduino port.")
+            return
 
     print(f"[INFO] Reading IR sensor states from {port} for {duration}s")
     print(f"{'Time (s)':>8} | {UNO_IR1_LABEL:>10} | {'ADC':>4} | {UNO_IR2_LABEL:>10} | {'ADC':>4}")
@@ -182,7 +210,11 @@ def main():
     print("=" * 50)
 
     if args.mode == "serial":
-        port = autodetect_serial_port() if args.port.lower() == "auto" else args.port
+        if args.port.lower() == "auto":
+            port = autodetect_serial_port(preferred_port=None)
+        else:
+            # Keep explicit port first, but resolve through same helper used by kiosk.
+            port = autodetect_serial_port(preferred_port=args.port) or args.port
         if not port:
             print("[ERROR] No serial port found for Arduino IR stream")
             sys.exit(1)

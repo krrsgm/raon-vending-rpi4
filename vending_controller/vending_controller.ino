@@ -64,6 +64,7 @@ const int MUX2_LIMIT_PIN = 18;                // Limit switch for MUX2
 const int MUX3_LIMIT_PIN = 19;                // Limit switch for MUX3
 const int REQUIRED_LIMIT_PULSES = 2;          // 2 pulses = one full 360 deg spring turn
 const unsigned long LIMIT_DEBOUNCE_MS = 40;   // Mechanical switch debounce
+const unsigned long LIMIT_MIN_PULSE_SPACING_MS = 120; // Reject extra pulse noise/bounce
 const unsigned long LIMIT_FAILSAFE_MS = 15000; // Safety timeout if limit pulses are missing
 // ============================================================================
 // MULTIPLEXER PIN DEFINITIONS
@@ -112,6 +113,8 @@ int active_slot_by_mux[NUM_MUXES] = {-1, -1, -1};
 int limit_pulse_count[NUM_MUXES] = {0, 0, 0};
 int last_limit_state[NUM_MUXES] = {HIGH, HIGH, HIGH};
 unsigned long last_limit_edge_ms[NUM_MUXES] = {0, 0, 0};
+bool limit_ready_for_fall[NUM_MUXES] = {true, true, true};
+unsigned long last_counted_pulse_ms[NUM_MUXES] = {0, 0, 0};
 
 // --- Coin Acceptor State ---
 volatile float received_amount = 0.0;
@@ -218,6 +221,9 @@ void setup() {
     limit_pulse_count[mux] = 0;
     last_limit_state[mux] = digitalRead(LIMIT_PINS[mux]);
     last_limit_edge_ms[mux] = 0;
+    // If pin is already LOW at boot, wait for a HIGH release before first count.
+    limit_ready_for_fall[mux] = (last_limit_state[mux] == HIGH);
+    last_counted_pulse_ms[mux] = 0;
   }
 
   // Initialize USB serial for debugging
@@ -310,15 +316,31 @@ void loop() {
   }
 
   // Handle mux limit switches (2 pulses = stop active slot on that mux)
+  // Edge policy:
+  // - Count only debounced FALLING edges.
+  // - Require a debounced RISING edge between counted FALLING edges.
+  // - Enforce a minimum spacing between counted pulses.
   unsigned long now = millis();
   for (int mux = 0; mux < NUM_MUXES; mux++) {
     int current_state = digitalRead(LIMIT_PINS[mux]);
+    bool rising_edge = (last_limit_state[mux] == LOW && current_state == HIGH);
     bool falling_edge = (last_limit_state[mux] == HIGH && current_state == LOW);
+
+    if (rising_edge && (now - last_limit_edge_ms[mux] >= LIMIT_DEBOUNCE_MS)) {
+      last_limit_edge_ms[mux] = now;
+      // Re-arm so next valid falling edge can be counted.
+      limit_ready_for_fall[mux] = true;
+    }
 
     if (falling_edge && (now - last_limit_edge_ms[mux] >= LIMIT_DEBOUNCE_MS)) {
       last_limit_edge_ms[mux] = now;
 
-      if (active_slot_by_mux[mux] >= 0) {
+      if (active_slot_by_mux[mux] >= 0 &&
+          limit_ready_for_fall[mux] &&
+          (now - last_counted_pulse_ms[mux] >= LIMIT_MIN_PULSE_SPACING_MS)) {
+        // Consume arm; require next rising edge before another count.
+        limit_ready_for_fall[mux] = false;
+        last_counted_pulse_ms[mux] = now;
         limit_pulse_count[mux]++;
         if (limit_pulse_count[mux] >= REQUIRED_LIMIT_PULSES) {
           int idx = active_slot_by_mux[mux];
@@ -424,6 +446,11 @@ void clearMuxTrackingForSlot(int idx) {
   if (mux_num >= 0 && mux_num < NUM_MUXES && active_slot_by_mux[mux_num] == idx) {
     active_slot_by_mux[mux_num] = -1;
     limit_pulse_count[mux_num] = 0;
+    int state_now = digitalRead(LIMIT_PINS[mux_num]);
+    last_limit_state[mux_num] = state_now;
+    limit_ready_for_fall[mux_num] = (state_now == HIGH);
+    last_counted_pulse_ms[mux_num] = 0;
+    last_limit_edge_ms[mux_num] = 0;
   }
 }
 
@@ -586,8 +613,14 @@ void processCommand(String cmd, Stream &out) {
             active_until[previous_idx] = 0;
             setOutput(previous_idx, false);
           }
+          int state_now = digitalRead(LIMIT_PINS[mux_num]);
           active_slot_by_mux[mux_num] = idx;
           limit_pulse_count[mux_num] = 0;
+          // Reset per-vend pulse edge state so each vend starts from a clean baseline.
+          last_limit_state[mux_num] = state_now;
+          limit_ready_for_fall[mux_num] = (state_now == HIGH);
+          last_counted_pulse_ms[mux_num] = 0;
+          last_limit_edge_ms[mux_num] = 0;
         }
 
         active_until[idx] = millis() + timeout_ms;

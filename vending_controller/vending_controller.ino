@@ -63,7 +63,8 @@ const int MUX1_LIMIT_PIN = 17;                // Limit switch for MUX1
 const int MUX2_LIMIT_PIN = 18;                // Limit switch for MUX2
 const int MUX3_LIMIT_PIN = 19;                // Limit switch for MUX3
 const int REQUIRED_LIMIT_PULSES = 2;          // click + unclick = one full 360 deg spring turn
-const unsigned long LIMIT_EVENT_DEBOUNCE_US = 8000; // reject rapid switch bounce on change events
+const unsigned long LIMIT_EVENT_DEBOUNCE_US = 12000; // reject rapid switch bounce on change events
+const unsigned long LIMIT_HALF_CYCLE_MIN_US = 30000; // min time between click and unclick for a valid cycle
 const unsigned long LIMIT_FAILSAFE_MS = 15000; // Safety timeout if limit pulses are missing
 // ============================================================================
 // MULTIPLEXER PIN DEFINITIONS
@@ -113,6 +114,9 @@ int limit_pulse_count[NUM_MUXES] = {0, 0, 0};
 volatile int limit_irq_pulse_count[NUM_MUXES] = {0, 0, 0};
 volatile unsigned long limit_last_event_us[NUM_MUXES] = {0, 0, 0};
 volatile int limit_last_state_irq[NUM_MUXES] = {HIGH, HIGH, HIGH};
+volatile int limit_start_state[NUM_MUXES] = {HIGH, HIGH, HIGH};
+volatile bool limit_seen_opposite[NUM_MUXES] = {false, false, false};
+volatile unsigned long limit_opposite_seen_us[NUM_MUXES] = {0, 0, 0};
 
 // --- Coin Acceptor State ---
 volatile float received_amount = 0.0;
@@ -182,8 +186,27 @@ void IRAM_ATTR handleLimitPulse(uint8_t mux) {
   }
   limit_last_state_irq[mux] = current_state;
   limit_last_event_us[mux] = now_us;
-  if (active_slot_by_mux[mux] >= 0) {
-    limit_irq_pulse_count[mux]++;
+  if (active_slot_by_mux[mux] < 0) {
+    return;
+  }
+
+  // Count one full click+unclick cycle only when signal returns to start state.
+  // This avoids treating a single bouncing edge as a full rotation.
+  int start_state = limit_start_state[mux];
+  if (!limit_seen_opposite[mux]) {
+    if (current_state != start_state) {
+      limit_seen_opposite[mux] = true;
+      limit_opposite_seen_us[mux] = now_us;
+    }
+    return;
+  }
+
+  if (current_state == start_state) {
+    if ((now_us - limit_opposite_seen_us[mux]) >= LIMIT_HALF_CYCLE_MIN_US) {
+      limit_irq_pulse_count[mux] += REQUIRED_LIMIT_PULSES;
+      limit_seen_opposite[mux] = false;
+      limit_opposite_seen_us[mux] = 0;
+    }
   }
 }
 
@@ -247,6 +270,9 @@ void setup() {
     limit_irq_pulse_count[mux] = 0;
     limit_last_event_us[mux] = 0;
     limit_last_state_irq[mux] = digitalRead(LIMIT_PINS[mux]);
+    limit_start_state[mux] = limit_last_state_irq[mux];
+    limit_seen_opposite[mux] = false;
+    limit_opposite_seen_us[mux] = 0;
   }
 
   // Initialize USB serial for debugging
@@ -360,6 +386,10 @@ void loop() {
         noInterrupts();
         limit_irq_pulse_count[mux] = 0;
         limit_last_event_us[mux] = 0;
+        limit_seen_opposite[mux] = false;
+        limit_opposite_seen_us[mux] = 0;
+        limit_start_state[mux] = digitalRead(LIMIT_PINS[mux]);
+        limit_last_state_irq[mux] = limit_start_state[mux];
         interrupts();
       }
     }
@@ -459,6 +489,10 @@ void clearMuxTrackingForSlot(int idx) {
     noInterrupts();
     limit_irq_pulse_count[mux_num] = 0;
     limit_last_event_us[mux_num] = 0;
+    limit_start_state[mux_num] = digitalRead(LIMIT_PINS[mux_num]);
+    limit_last_state_irq[mux_num] = limit_start_state[mux_num];
+    limit_seen_opposite[mux_num] = false;
+    limit_opposite_seen_us[mux_num] = 0;
     interrupts();
   }
 }
@@ -627,6 +661,10 @@ void processCommand(String cmd, Stream &out) {
           noInterrupts();
           limit_irq_pulse_count[mux_num] = 0;
           limit_last_event_us[mux_num] = 0;
+          limit_start_state[mux_num] = digitalRead(LIMIT_PINS[mux_num]);
+          limit_last_state_irq[mux_num] = limit_start_state[mux_num];
+          limit_seen_opposite[mux_num] = false;
+          limit_opposite_seen_us[mux_num] = 0;
           interrupts();
           active_slot_by_mux[mux_num] = idx;
           limit_pulse_count[mux_num] = 0;

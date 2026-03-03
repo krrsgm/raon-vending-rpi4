@@ -1411,9 +1411,11 @@ class MainApp(tk.Tk):
         print(f'[VEND] Found {len(selected_matches)} slot(s) for "{item_name}": {selected_matches}')
         print(f'[VEND] Using ESP32 host: {host}, rotation_failsafe_ms: {pulse_timeout_ms}')
         
-        # Round-robin distribute pulses
+        # Round-robin distribute pulses; stop immediately on first unconfirmed dispense.
+        successful_dispenses = 0
         for i in range(quantity):
             slot_number = selected_matches[i % len(selected_matches)]
+            dispense_completed = False
             try:
                 with self._vend_lock:
                     print(f'[VEND] Pulsing slot {slot_number} (2-pulse rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name}, quantity item {i+1}/{quantity})')
@@ -1467,6 +1469,7 @@ class MainApp(tk.Tk):
                         )
                         if completed:
                             print(f'[VEND] Slot {slot_number} rotation complete (2 pulses detected).')
+                            dispense_completed = True
                         else:
                             print(f'[VEND] WARNING: Slot {slot_number} completion not confirmed before timeout.')
                     except Exception as e:
@@ -1480,6 +1483,12 @@ class MainApp(tk.Tk):
                 import traceback
                 traceback.print_exc()
 
+            if dispense_completed:
+                successful_dispenses += 1
+            else:
+                print(f'[VEND] STOP: Required dispenses not met for "{item_name}". Completed {successful_dispenses}/{quantity}.')
+                break
+
             # Small settle delay to keep MUX switching safe between pulses
             try:
                 settle_ms = int(self.config.get('hardware', {}).get('vend_settle_ms', 200))
@@ -1487,6 +1496,11 @@ class MainApp(tk.Tk):
                     time.sleep(settle_ms / 1000.0)
             except Exception:
                 time.sleep(0.2)
+
+        if successful_dispenses < int(quantity):
+            print(f'[VEND] INCOMPLETE: "{item_name}" dispensed {successful_dispenses}/{quantity}.')
+        else:
+            print(f'[VEND] COMPLETE: "{item_name}" dispensed {successful_dispenses}/{quantity}.')
 
     def vend_cart_items_organized(self, cart_items):
         """Dispense multiple items organized by slot in ascending order.
@@ -1605,17 +1619,26 @@ class MainApp(tk.Tk):
         
         print(f'[VEND-ORG] Using ESP32 host: {host}, rotation_failsafe_ms: {pulse_timeout_ms}')
         
-        # Dispense each slot completely before moving to the next
+        # Dispense each slot completely before moving to the next.
+        # Only move forward when required count is confirmed for the current slot.
+        total_required = sum(len(v) for v in slot_to_items.values())
+        total_dispensed = 0
+        stop_all_dispense = False
+
         for slot_number in sorted_slots:
             items_for_slot = slot_to_items[slot_number]
-            print(f'[VEND-ORG] Processing slot {slot_number}: {len(items_for_slot)} item(s) to dispense')
-            
-            for item_entry in items_for_slot:
+            required_for_slot = len(items_for_slot)
+            dispensed_for_slot = 0
+            print(f'[VEND-ORG] Processing slot {slot_number}: required {required_for_slot} item(s)')
+
+            while dispensed_for_slot < required_for_slot:
+                item_entry = items_for_slot[dispensed_for_slot]
                 item_name = item_entry.get('name', 'Unknown')
+                dispense_completed = False
                 try:
                     with self._vend_lock:
-                        print(f'[VEND-ORG] Pulsing slot {slot_number} (2-pulse rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name})')
-                        
+                        print(f'[VEND-ORG] Pulsing slot {slot_number} (2-pulse rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name}, dispense {dispensed_for_slot+1}/{required_for_slot})')
+
                         # Start monitoring dispense for this slot if available
                         if self.dispense_monitor:
                             self._track_pending_dispense(slot_number, item_name)
@@ -1627,7 +1650,7 @@ class MainApp(tk.Tk):
                             print(f'[VEND-ORG] IR sensor monitoring started for slot {slot_number}, timeout={dispense_timeout}s')
                         else:
                             print(f'[VEND-ORG] WARNING: Dispense monitor not available - no IR sensor verification')
-                        
+
                         try:
                             # ESP32 controls the MUX boards for slots 1-40
                             from esp32_client import send_command, pulse_slot
@@ -1639,7 +1662,7 @@ class MainApp(tk.Tk):
                                 time.sleep(0.05)
                             except Exception as e:
                                 print(f'[VEND-ORG] WARNING: ESP32 STATUS check failed: {e}')
-                            
+
                             # Attempt pulse and validate response
                             result = None
                             try:
@@ -1647,12 +1670,12 @@ class MainApp(tk.Tk):
                                 print(f'[VEND-ORG] Pulse response: {result}')
                             except Exception as e:
                                 print(f'[VEND-ORG] WARNING: pulse_slot raised: {e}')
-                            
+
                             # Do not retry here: PULSE is non-idempotent and a delayed/lost ACK
                             # can otherwise cause an unintended extra rotation.
                             if not result or "OK" not in str(result).upper():
                                 print(f'[VEND-ORG] WARNING: pulse response not OK for slot {slot_number}; monitoring completion without retry')
-                            
+
                             if result and "OK" in str(result).upper():
                                 print(f'[VEND-ORG] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')
                             else:
@@ -1666,17 +1689,26 @@ class MainApp(tk.Tk):
                             )
                             if completed:
                                 print(f'[VEND-ORG] Slot {slot_number} rotation complete (2 pulses detected).')
+                                dispense_completed = True
                             else:
                                 print(f'[VEND-ORG] WARNING: Slot {slot_number} completion not confirmed before timeout.')
                         except Exception as e:
                             print(f'[VEND-ORG] CRITICAL ERROR: Failed to send pulse for slot {slot_number}: {e}')
                             import traceback
                             traceback.print_exc()
-                        
+
                 except Exception as e:
                     print(f'[VEND-ORG] CRITICAL ERROR: Exception vending slot {slot_number}: {e}')
                     import traceback
                     traceback.print_exc()
+
+                if dispense_completed:
+                    dispensed_for_slot += 1
+                    total_dispensed += 1
+                else:
+                    print(f'[VEND-ORG] STOP: Slot {slot_number} completed {dispensed_for_slot}/{required_for_slot}. Halting remaining dispensing.')
+                    stop_all_dispense = True
+                    break
 
                 # Small settle delay to keep MUX switching safe between pulses
                 try:
@@ -1685,6 +1717,15 @@ class MainApp(tk.Tk):
                         time.sleep(settle_ms / 1000.0)
                 except Exception:
                     time.sleep(0.2)
+
+            print(f'[VEND-ORG] Slot {slot_number} summary: {dispensed_for_slot}/{required_for_slot} dispensed.')
+            if stop_all_dispense:
+                break
+
+        if stop_all_dispense:
+            print(f'[VEND-ORG] INCOMPLETE: Dispensed {total_dispensed}/{total_required} requested item(s).')
+        else:
+            print(f'[VEND-ORG] COMPLETE: Dispensed {total_dispensed}/{total_required} requested item(s).')
 
     def update_item(self, original_item_name, updated_item_data):
         """Updates an existing item in the master list and saves to JSON."""

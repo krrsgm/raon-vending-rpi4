@@ -15,6 +15,7 @@
     
   Protocol (RXTX text-based commands, terminated with newline):
     - PULSE <slot> [timeout_ms] : run output until 2 limit-switch events (click + unclick)
+                                  and at least minimum motor run time
     - OPEN <slot>         : set output on continuously
     - CLOSE <slot>        : set output off
     - OPENALL             : set all outputs on
@@ -66,6 +67,7 @@ const int REQUIRED_LIMIT_PULSES = 2;          // click + unclick = one full 360 
 const unsigned long LIMIT_EVENT_DEBOUNCE_US = 12000; // reject rapid switch bounce on change events
 const unsigned long LIMIT_HALF_CYCLE_MIN_US = 30000; // min time between click and unclick for a valid cycle
 const unsigned long LIMIT_FAILSAFE_MS = 15000; // Safety timeout if limit pulses are missing
+const unsigned long MIN_ROTATION_MS = 3000;    // Require motor ON for >=3s before counting full rotation complete
 // ============================================================================
 // MULTIPLEXER PIN DEFINITIONS
 // ============================================================================
@@ -105,6 +107,7 @@ const int COUNTER_PIN = -1;    // optional counter feedback disabled (GPIO18 use
 // ============================================================================
 
 unsigned long active_until[NUM_OUTPUTS];  // failsafe stop deadline per active output
+unsigned long active_started_at[NUM_OUTPUTS]; // motor start timestamp per active output
 bool outputs_state[NUM_OUTPUTS];          // current ON/OFF state
 String inputBuffer2 = "";                 // RXTX command buffer
 String inputBuffer = "";                  // USB Serial command buffer
@@ -261,6 +264,7 @@ void setup() {
   // Initialize all outputs to OFF
   for (int i = 0; i < NUM_OUTPUTS; i++) {
     active_until[i] = 0;
+    active_started_at[i] = 0;
     outputs_state[i] = false;
     setOutput(i, false);
   }
@@ -379,18 +383,22 @@ void loop() {
       limit_pulse_count[mux] += new_pulses;
       if (limit_pulse_count[mux] >= REQUIRED_LIMIT_PULSES) {
         int idx = active_slot_by_mux[mux];
-        active_until[idx] = 0;
-        setOutput(idx, false);
-        active_slot_by_mux[mux] = -1;
-        limit_pulse_count[mux] = 0;
-        noInterrupts();
-        limit_irq_pulse_count[mux] = 0;
-        limit_last_event_us[mux] = 0;
-        limit_seen_opposite[mux] = false;
-        limit_opposite_seen_us[mux] = 0;
-        limit_start_state[mux] = digitalRead(LIMIT_PINS[mux]);
-        limit_last_state_irq[mux] = limit_start_state[mux];
-        interrupts();
+        unsigned long elapsed_ms = now - active_started_at[idx];
+        if (elapsed_ms >= MIN_ROTATION_MS) {
+          active_until[idx] = 0;
+          active_started_at[idx] = 0;
+          setOutput(idx, false);
+          active_slot_by_mux[mux] = -1;
+          limit_pulse_count[mux] = 0;
+          noInterrupts();
+          limit_irq_pulse_count[mux] = 0;
+          limit_last_event_us[mux] = 0;
+          limit_seen_opposite[mux] = false;
+          limit_opposite_seen_us[mux] = 0;
+          limit_start_state[mux] = digitalRead(LIMIT_PINS[mux]);
+          limit_last_state_irq[mux] = limit_start_state[mux];
+          interrupts();
+        }
       }
     }
   }
@@ -414,6 +422,7 @@ void loop() {
   for (int i = 0; i < NUM_OUTPUTS; i++) {
     if (active_until[i] != 0 && now >= active_until[i]) {
       active_until[i] = 0;
+      active_started_at[i] = 0;
       if (outputs_state[i]) {
         setOutput(i, false);
         clearMuxTrackingForSlot(i);
@@ -482,6 +491,7 @@ void setOutput(int idx, bool on) {
 
 void clearMuxTrackingForSlot(int idx) {
   if (idx < 0 || idx >= NUM_OUTPUTS) return;
+  active_started_at[idx] = 0;
   int mux_num = idx / MOTORS_PER_MUX;
   if (mux_num >= 0 && mux_num < NUM_MUXES && active_slot_by_mux[mux_num] == idx) {
     active_slot_by_mux[mux_num] = -1;
@@ -637,8 +647,9 @@ void processCommand(String cmd, Stream &out) {
   String command = parts[0];
   command.toUpperCase();
 
-  // PULSE <slot> [timeout_ms] - run until 2 mux limit-switch events.
-  // Optional timeout argument is accepted for compatibility but ignored.
+  // PULSE <slot> [timeout_ms] - run until 2 mux limit-switch events
+  // and minimum rotation runtime are both satisfied.
+  // Optional timeout argument sets the failsafe stop timeout in milliseconds.
   if (command == "PULSE") {
     if (partCount >= 2) {
       int slot = parts[1].toInt();
@@ -655,6 +666,7 @@ void processCommand(String cmd, Stream &out) {
           if (active_slot_by_mux[mux_num] >= 0) {
             int previous_idx = active_slot_by_mux[mux_num];
             active_until[previous_idx] = 0;
+            active_started_at[previous_idx] = 0;
             setOutput(previous_idx, false);
           }
           // Reset per-vend limit pulse tracking so each vend starts from a clean baseline.
@@ -670,7 +682,9 @@ void processCommand(String cmd, Stream &out) {
           limit_pulse_count[mux_num] = 0;
         }
 
-        active_until[idx] = millis() + timeout_ms;
+        unsigned long start_ms = millis();
+        active_started_at[idx] = start_ms;
+        active_until[idx] = start_ms + timeout_ms;
         setOutput(idx, true);
         out.println("OK");
       } else {
@@ -688,6 +702,7 @@ void processCommand(String cmd, Stream &out) {
       if (slot >= 1 && slot <= NUM_OUTPUTS) {
         clearMuxTrackingForSlot(slot - 1);
         active_until[slot - 1] = 0;
+        active_started_at[slot - 1] = 0;
         setOutput(slot - 1, true);
         out.println("OK");
       } else {
@@ -705,6 +720,7 @@ void processCommand(String cmd, Stream &out) {
       if (slot >= 1 && slot <= NUM_OUTPUTS) {
         clearMuxTrackingForSlot(slot - 1);
         active_until[slot - 1] = 0;
+        active_started_at[slot - 1] = 0;
         setOutput(slot - 1, false);
         out.println("OK");
       } else {
@@ -720,6 +736,7 @@ void processCommand(String cmd, Stream &out) {
     for (int i = 0; i < NUM_OUTPUTS; i++) {
       clearMuxTrackingForSlot(i);
       active_until[i] = 0;
+      active_started_at[i] = 0;
       setOutput(i, true);
     }
     out.println("OK");
@@ -729,6 +746,7 @@ void processCommand(String cmd, Stream &out) {
     for (int i = 0; i < NUM_OUTPUTS; i++) {
       clearMuxTrackingForSlot(i);
       active_until[i] = 0;
+      active_started_at[i] = 0;
       setOutput(i, false);
     }
     out.println("OK");

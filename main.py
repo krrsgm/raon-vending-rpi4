@@ -1401,6 +1401,12 @@ class MainApp(tk.Tk):
         
         # Get dispense timeout from config
         dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 15.0) if isinstance(self.config, dict) else 15.0
+        try:
+            same_slot_pause_ms = int(self.config.get('hardware', {}).get('vend_same_slot_pause_ms', 300))
+        except Exception:
+            same_slot_pause_ms = 300
+        if same_slot_pause_ms < 0:
+            same_slot_pause_ms = 0
         
         selected_matches = list(matches)
         try:
@@ -1493,6 +1499,11 @@ class MainApp(tk.Tk):
             else:
                 print(f'[VEND] STOP: Required dispenses not met for "{item_name}". Completed {successful_dispenses}/{quantity}.')
                 break
+
+            # Apply a brief stop between repeated rotations on the same slot.
+            if len(selected_matches) == 1 and successful_dispenses < int(quantity) and same_slot_pause_ms > 0:
+                print(f'[VEND] Same-slot pause: {same_slot_pause_ms}ms before next rotation on slot {slot_number}.')
+                time.sleep(same_slot_pause_ms / 1000.0)
 
             # Small settle delay to keep MUX switching safe between pulses
             try:
@@ -1621,6 +1632,12 @@ class MainApp(tk.Tk):
         
         # Get dispense timeout from config
         dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 15.0) if isinstance(self.config, dict) else 15.0
+        try:
+            same_slot_pause_ms = int(self.config.get('hardware', {}).get('vend_same_slot_pause_ms', 300))
+        except Exception:
+            same_slot_pause_ms = 300
+        if same_slot_pause_ms < 0:
+            same_slot_pause_ms = 0
         
         print(f'[VEND-ORG] Using ESP32 host: {host}, rotation_failsafe_ms: {pulse_timeout_ms}')
         
@@ -1714,6 +1731,11 @@ class MainApp(tk.Tk):
                     print(f'[VEND-ORG] STOP: Slot {slot_number} completed {dispensed_for_slot}/{required_for_slot}. Halting remaining dispensing.')
                     stop_all_dispense = True
                     break
+
+                # Same-slot multi-vend: stop briefly after each full rotation before next.
+                if dispensed_for_slot < required_for_slot and same_slot_pause_ms > 0:
+                    print(f'[VEND-ORG] Same-slot pause: {same_slot_pause_ms}ms before next rotation on slot {slot_number}.')
+                    time.sleep(same_slot_pause_ms / 1000.0)
 
                 # Small settle delay to keep MUX switching safe between pulses
                 try:

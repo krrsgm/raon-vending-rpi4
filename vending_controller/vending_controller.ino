@@ -62,8 +62,7 @@ const int SERIAL2_TX_PIN = 1;        // ESP32 sends to Pi RX (GPIO 15)
 const int MUX1_LIMIT_PIN = 17;                // Limit switch for MUX1
 const int MUX2_LIMIT_PIN = 18;                // Limit switch for MUX2
 const int MUX3_LIMIT_PIN = 19;                // Limit switch for MUX3
-const int REQUIRED_LIMIT_PULSES = 2;          // 2 pulses = one full 360 deg spring turn
-const unsigned long LIMIT_ISR_DEBOUNCE_US = 8000; // Reject limit-switch bounce/noise in ISR
+const int REQUIRED_LIMIT_PULSES = 2;          // 2 state changes (HIGH->LOW + LOW->HIGH) = one full 360 deg turn
 const unsigned long LIMIT_FAILSAFE_MS = 15000; // Safety timeout if limit pulses are missing
 // ============================================================================
 // MULTIPLEXER PIN DEFINITIONS
@@ -107,10 +106,11 @@ unsigned long active_until[NUM_OUTPUTS];  // when each pulse expires
 bool outputs_state[NUM_OUTPUTS];          // current ON/OFF state
 String inputBuffer2 = "";                 // RXTX command buffer
 String inputBuffer = "";                  // USB Serial command buffer
+const int LIMIT_PINS[NUM_MUXES] = {MUX1_LIMIT_PIN, MUX2_LIMIT_PIN, MUX3_LIMIT_PIN};
 volatile int active_slot_by_mux[NUM_MUXES] = {-1, -1, -1};
 int limit_pulse_count[NUM_MUXES] = {0, 0, 0};
 volatile int limit_irq_pulse_count[NUM_MUXES] = {0, 0, 0};
-volatile unsigned long last_limit_irq_us[NUM_MUXES] = {0, 0, 0};
+volatile int limit_last_state_irq[NUM_MUXES] = {HIGH, HIGH, HIGH};
 
 // --- Coin Acceptor State ---
 volatile float received_amount = 0.0;
@@ -144,7 +144,7 @@ void processCommand(String cmd, Stream &out);
 void processCoinCommand(String command);
 void clearMuxTrackingForSlot(int idx);
 String getLimitStatusString();
-void IRAM_ATTR handleLimitPulse(uint8_t mux);
+void IRAM_ATTR handleLimitChange(uint8_t mux);
 void IRAM_ATTR limit1_interrupt();
 void IRAM_ATTR limit2_interrupt();
 void IRAM_ATTR limit3_interrupt();
@@ -169,20 +169,19 @@ void IRAM_ATTR coin_interrupt() {
   }
 }
 
-void IRAM_ATTR handleLimitPulse(uint8_t mux) {
-  unsigned long now_us = micros();
-  if ((now_us - last_limit_irq_us[mux]) < LIMIT_ISR_DEBOUNCE_US) {
-    return;
-  }
-  last_limit_irq_us[mux] = now_us;
-  if (active_slot_by_mux[mux] >= 0) {
-    limit_irq_pulse_count[mux]++;
+void IRAM_ATTR handleLimitChange(uint8_t mux) {
+  int current_state = digitalRead(LIMIT_PINS[mux]);
+  if (current_state != limit_last_state_irq[mux]) {
+    limit_last_state_irq[mux] = current_state;
+    if (active_slot_by_mux[mux] >= 0) {
+      limit_irq_pulse_count[mux]++;
+    }
   }
 }
 
-void IRAM_ATTR limit1_interrupt() { handleLimitPulse(0); }
-void IRAM_ATTR limit2_interrupt() { handleLimitPulse(1); }
-void IRAM_ATTR limit3_interrupt() { handleLimitPulse(2); }
+void IRAM_ATTR limit1_interrupt() { handleLimitChange(0); }
+void IRAM_ATTR limit2_interrupt() { handleLimitChange(1); }
+void IRAM_ATTR limit3_interrupt() { handleLimitChange(2); }
 
 // ============================================================================
 // SETUP
@@ -217,9 +216,9 @@ void setup() {
   pinMode(MUX1_LIMIT_PIN, INPUT_PULLUP);
   pinMode(MUX2_LIMIT_PIN, INPUT_PULLUP);
   pinMode(MUX3_LIMIT_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(MUX1_LIMIT_PIN), limit1_interrupt, FALLING);
-  attachInterrupt(digitalPinToInterrupt(MUX2_LIMIT_PIN), limit2_interrupt, FALLING);
-  attachInterrupt(digitalPinToInterrupt(MUX3_LIMIT_PIN), limit3_interrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(MUX1_LIMIT_PIN), limit1_interrupt, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(MUX2_LIMIT_PIN), limit2_interrupt, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(MUX3_LIMIT_PIN), limit3_interrupt, CHANGE);
 
   // Initialize coin acceptor pin
   pinMode(COIN_PIN, INPUT_PULLUP);
@@ -238,7 +237,7 @@ void setup() {
     active_slot_by_mux[mux] = -1;
     limit_pulse_count[mux] = 0;
     limit_irq_pulse_count[mux] = 0;
-    last_limit_irq_us[mux] = 0;
+    limit_last_state_irq[mux] = digitalRead(LIMIT_PINS[mux]);
   }
 
   // Initialize USB serial for debugging
@@ -330,8 +329,8 @@ void loop() {
     }
   }
 
-  // Handle mux limit switches (2 pulses = stop active slot on that mux).
-  // Pulses are captured in ISR on FALLING edge and consumed here.
+  // Handle mux limit switches (2 state changes = stop active slot on that mux).
+  // State changes are captured in ISR on CHANGE and consumed here.
   unsigned long now = millis();
   for (int mux = 0; mux < NUM_MUXES; mux++) {
     int new_pulses = 0;
@@ -350,6 +349,7 @@ void loop() {
         limit_pulse_count[mux] = 0;
         noInterrupts();
         limit_irq_pulse_count[mux] = 0;
+        limit_last_state_irq[mux] = digitalRead(LIMIT_PINS[mux]);
         interrupts();
       }
     }
@@ -448,7 +448,7 @@ void clearMuxTrackingForSlot(int idx) {
     limit_pulse_count[mux_num] = 0;
     noInterrupts();
     limit_irq_pulse_count[mux_num] = 0;
-    last_limit_irq_us[mux_num] = 0;
+    limit_last_state_irq[mux_num] = digitalRead(LIMIT_PINS[mux_num]);
     interrupts();
   }
 }
@@ -612,13 +612,13 @@ void processCommand(String cmd, Stream &out) {
             active_until[previous_idx] = 0;
             setOutput(previous_idx, false);
           }
-          active_slot_by_mux[mux_num] = idx;
-          limit_pulse_count[mux_num] = 0;
           // Reset per-vend pulse state so each vend starts from a clean baseline.
           noInterrupts();
           limit_irq_pulse_count[mux_num] = 0;
-          last_limit_irq_us[mux_num] = 0;
+          limit_last_state_irq[mux_num] = digitalRead(LIMIT_PINS[mux_num]);
           interrupts();
+          active_slot_by_mux[mux_num] = idx;
+          limit_pulse_count[mux_num] = 0;
         }
 
         active_until[idx] = millis() + timeout_ms;

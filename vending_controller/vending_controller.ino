@@ -64,7 +64,7 @@ const int MUX2_LIMIT_PIN = 18;                // Limit switch for MUX2
 const int MUX3_LIMIT_PIN = 19;                // Limit switch for MUX3
 const int REQUIRED_LIMIT_PULSES = 2;          // 2 pulses = one full 360 deg spring turn
 const unsigned long LIMIT_EDGE_DEBOUNCE_US = 3000;  // reject rapid edge bounce on CHANGE interrupt
-const unsigned long LIMIT_MIN_PULSE_SPACING_US = 20000; // minimum gap between counted falling pulses
+const unsigned long LIMIT_MIN_PULSE_SPACING_US = 8000;  // minimum gap between counted falling pulses
 const unsigned long LIMIT_FAILSAFE_MS = 15000; // Safety timeout if limit pulses are missing
 // ============================================================================
 // MULTIPLEXER PIN DEFINITIONS

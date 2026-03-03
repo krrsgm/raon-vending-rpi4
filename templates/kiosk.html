@@ -221,7 +221,7 @@
 </head>
 <body>
     <div class="header">
-        <h1>🤖 RAON Vending Machine</h1>
+        <h1>RAON Vending Machine</h1>
         <p>{{ machine.name }} - Select items and pay</p>
     </div>
     
@@ -239,7 +239,7 @@
                     <div style="width: 100%; height: 120px; background: #ddd; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #999;">No Image</div>
                     {% endif %}
                     <h3>{{ item.name }}</h3>
-                    <div class="price">{{ currency }}{{ item.price }}</div>
+                    <div class="price">{{ currency | default('₱', true) }}{{ '%.2f'|format(item.price|float) }}</div>
                     <div class="stock">
                         {% if item.quantity > 0 %}
                             Stock: {{ item.quantity }}
@@ -254,7 +254,7 @@
         
         <div class="cart-section">
             <div class="cart-header">
-                <h2>🛒 Cart</h2>
+                <h2>Cart</h2>
             </div>
             
             <div id="cartItems" style="min-height: 200px;">
@@ -264,11 +264,11 @@
             <div class="cart-summary">
                 <div class="summary-row">
                     <span>Subtotal:</span>
-                    <span id="subtotal">₱0.00</span>
+                    <span id="subtotal">{{ currency | default('₱', true) }}0.00</span>
                 </div>
                 <div class="summary-row total">
                     <span>Total:</span>
-                    <span id="total">₱0.00</span>
+                    <span id="total">{{ currency | default('₱', true) }}0.00</span>
                 </div>
             </div>
             
@@ -285,9 +285,9 @@
             
             <div id="paymentRequired" style="display: block;">
                 <div style="font-size: 14px; margin-bottom: 10px;">Amount Required:</div>
-                <div class="amount-display" id="amountRequired">₱0.00</div>
+                <div class="amount-display" id="amountRequired">{{ currency | default('₱', true) }}0.00</div>
                 <div style="font-size: 14px; margin-bottom: 10px;">Received:</div>
-                <div class="amount-display" id="amountReceived">₱0.00</div>
+                <div class="amount-display" id="amountReceived">{{ currency | default('₱', true) }}0.00</div>
                 <div class="progress-bar">
                     <div class="progress-fill" id="progressFill"></div>
                 </div>
@@ -295,7 +295,7 @@
             </div>
             
             <div id="paymentComplete" style="display: none;">
-                <div style="font-size: 24px; margin: 20px 0;">✓</div>
+                <div style="font-size: 24px; margin: 20px 0;">OK</div>
                 <div class="complete-message">Payment confirmed!</div>
                 <div style="font-size: 14px; color: #666; margin-top: 10px;">Dispensing your items...</div>
             </div>
@@ -311,6 +311,8 @@
     
     <script>
         const machineId = "{{ machine.machine_id }}";
+        const currencySymbol = {{ (currency | default('₱', true)) | tojson }};
+        const formatCurrency = (value) => `${currencySymbol}${Number(value || 0).toFixed(2)}`;
         let cart = {};
         let paymentInProgress = false;
         
@@ -353,7 +355,7 @@
                     html += `
                         <div class="cart-item">
                             <div class="cart-item-name">${name} x${item.quantity}</div>
-                            <div style="color: #667eea; font-weight: bold;">₱${itemTotal.toFixed(2)}</div>
+                            <div style="color: #667eea; font-weight: bold;">${formatCurrency(itemTotal)}</div>
                             <div class="cart-item-qty">
                                 <button class="qty-btn" onclick="updateQty('${name}', -1)">-</button>
                                 <button class="qty-btn" onclick="updateQty('${name}', 1)">+</button>
@@ -366,8 +368,8 @@
                 document.getElementById('checkoutBtn').disabled = false;
             }
             
-            document.getElementById('subtotal').textContent = '₱' + total.toFixed(2);
-            document.getElementById('total').textContent = '₱' + total.toFixed(2);
+            document.getElementById('subtotal').textContent = formatCurrency(total);
+            document.getElementById('total').textContent = formatCurrency(total);
         }
         
         function startPayment() {
@@ -399,7 +401,7 @@
         
         function openPaymentModal(total) {
             document.getElementById('paymentModal').classList.add('show');
-            document.getElementById('amountRequired').textContent = '₱' + total.toFixed(2);
+            document.getElementById('amountRequired').textContent = formatCurrency(total);
         }
         
         function pollPaymentStatus(required) {
@@ -407,7 +409,7 @@
                 fetch('/api/payment/status')
                     .then(r => r.json())
                     .then(data => {
-                        document.getElementById('amountReceived').textContent = '₱' + data.received.toFixed(2);
+                        document.getElementById('amountReceived').textContent = formatCurrency(data.received);
                         
                         const percentage = Math.min(100, (data.received / required) * 100);
                         document.getElementById('progressFill').style.width = percentage + '%';

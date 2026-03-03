@@ -6,7 +6,7 @@ Provides:
   - API for payment/vending control integration
 """
 
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, make_response
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func
 from datetime import datetime, timedelta
@@ -15,6 +15,8 @@ import os
 import sys
 import time
 import re
+import io
+import csv
 from threading import Thread, Lock
 import logging
 
@@ -366,6 +368,17 @@ def _extract_hhmmss(text):
     return "??:??:??"
 
 
+def _normalize_date_str(date_value):
+    """Normalize date input to YYYY-MM-DD; fallback to local today."""
+    try:
+        text = str(date_value or "").strip()
+        if not text:
+            raise ValueError("empty")
+        return datetime.strptime(text, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except Exception:
+        return datetime.now().strftime("%Y-%m-%d")
+
+
 def _parse_money_value(text, label):
     """Parse a numeric money value from a labeled field."""
     try:
@@ -562,6 +575,57 @@ def _match_ir_status_for_transaction(txn, ir_sensor_events, dispense_events):
     return "/".join(sorted(set(statuses)))
 
 
+def _build_sales_rows_for_date(date_str, logs_dir):
+    """Build structured sales rows for dashboard display/export."""
+    log_file = os.path.join(logs_dir, f"sales_{date_str}.log")
+    raw_logs = []
+    if os.path.exists(log_file):
+        try:
+            with open(log_file, 'r', encoding='utf-8') as f:
+                raw_logs = [str(line).strip() for line in f if str(line).strip()]
+        except Exception as e:
+            logger.error(f"Error reading sales log file: {e}")
+
+    transaction_events = []
+    tx_time_events = []
+    dispense_events = []
+
+    for line in raw_logs:
+        tx = _parse_transaction_line(line)
+        if tx:
+            transaction_events.append(tx)
+            continue
+
+        tx_time = _parse_transaction_time_line(line)
+        if tx_time:
+            tx_time_events.append(tx_time)
+            continue
+
+        disp = _parse_dispense_result_line(line)
+        if disp:
+            dispense_events.append(disp)
+
+    ir_sensor_events = _load_ir_sensor_status_events(date_str)
+
+    rows = []
+    used_duration_indexes = set()
+    for tx in transaction_events:
+        duration_text = _match_duration_for_transaction(tx, tx_time_events, used_duration_indexes)
+        ir_status_text = _match_ir_status_for_transaction(tx, ir_sensor_events, dispense_events)
+        rows.append({
+            'time': tx['hhmmss'],
+            'transaction_time': duration_text,
+            'item': tx['items'],
+            'coins': tx['coins'],
+            'bills': tx['bills'],
+            'total': tx['total'],
+            'change': tx['change'],
+            'ir_status': ir_status_text,
+        })
+
+    return rows
+
+
 # ============================================================================
 # ROUTES - INVENTORY DASHBOARD (Multi-Machine)
 # ============================================================================
@@ -626,55 +690,22 @@ def api_sales_logs():
         logger_inst = get_logger() if get_logger else None
         if not logger_inst:
             return jsonify({'error': 'Logger not available'}), 500
-        
-        from datetime import datetime as dt
-        date_str = request.args.get('date', dt.now().strftime("%Y-%m-%d"))
+
+        date_str = _normalize_date_str(request.args.get('date'))
         logs_dir = logger_inst.logs_dir
-        log_file = os.path.join(logs_dir, f"sales_{date_str}.log")
-        
-        raw_logs = []
-        if os.path.exists(log_file):
-            try:
-                with open(log_file, 'r', encoding='utf-8') as f:
-                    raw_logs = [str(line).strip() for line in f if str(line).strip()]
-            except Exception as e:
-                logger.error(f"Error reading log file: {e}")
-
-        transaction_events = []
-        tx_time_events = []
-        dispense_events = []
-
-        for line in raw_logs:
-            tx = _parse_transaction_line(line)
-            if tx:
-                transaction_events.append(tx)
-                continue
-
-            tx_time = _parse_transaction_time_line(line)
-            if tx_time:
-                tx_time_events.append(tx_time)
-                continue
-
-            disp = _parse_dispense_result_line(line)
-            if disp:
-                dispense_events.append(disp)
-
-        ir_sensor_events = _load_ir_sensor_status_events(date_str)
+        rows = _build_sales_rows_for_date(date_str, logs_dir)
 
         merged_logs = []
-        used_duration_indexes = set()
-        for tx in transaction_events:
-            duration_text = _match_duration_for_transaction(tx, tx_time_events, used_duration_indexes)
-            ir_status_text = _match_ir_status_for_transaction(tx, ir_sensor_events, dispense_events)
+        for row in rows:
             merged_logs.append(
-                f"[{tx['hhmmss']}] "
-                f"Transaction Time: {duration_text} | "
-                f"Item: {tx['items']} | "
-                f"Coins: {tx['coins']:.2f} | "
-                f"Bills: {tx['bills']:.2f} | "
-                f"Total: {tx['total']:.2f} | "
-                f"Change: {tx['change']:.2f} | "
-                f"IR Status: {ir_status_text}"
+                f"[{row['time']}] "
+                f"Transaction Time: {row['transaction_time']} | "
+                f"Item: {row['item']} | "
+                f"Coins: {row['coins']:.2f} | "
+                f"Bills: {row['bills']:.2f} | "
+                f"Total: {row['total']:.2f} | "
+                f"Change: {row['change']:.2f} | "
+                f"IR Status: {row['ir_status']}"
             )
 
         return jsonify({
@@ -883,6 +914,99 @@ def api_sensor_readings_previous_day():
         }), 200
     except Exception as e:
         logger.error(f"Previous day sensor readings error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/export/sales.csv')
+def api_export_sales_csv():
+    """Export structured sales logs as CSV for a selected date."""
+    try:
+        logger_inst = get_logger() if get_logger else None
+        logs_dir = logger_inst.logs_dir if logger_inst and getattr(logger_inst, 'logs_dir', None) else _resolve_logs_dir()
+        date_str = _normalize_date_str(request.args.get('date'))
+        rows = _build_sales_rows_for_date(date_str, logs_dir)
+
+        out = io.StringIO()
+        writer = csv.writer(out)
+        writer.writerow([
+            "Date",
+            "Time",
+            "Transaction_Time",
+            "Item",
+            "Coins",
+            "Bills",
+            "Total",
+            "Change",
+            "IR_Status",
+        ])
+        for row in rows:
+            writer.writerow([
+                date_str,
+                row.get('time', ''),
+                row.get('transaction_time', ''),
+                row.get('item', ''),
+                f"{float(row.get('coins', 0.0) or 0.0):.2f}",
+                f"{float(row.get('bills', 0.0) or 0.0):.2f}",
+                f"{float(row.get('total', 0.0) or 0.0):.2f}",
+                f"{float(row.get('change', 0.0) or 0.0):.2f}",
+                row.get('ir_status', ''),
+            ])
+
+        response = make_response(out.getvalue())
+        response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+        response.headers['Content-Disposition'] = f'attachment; filename=sales_{date_str}.csv'
+        return response
+    except Exception as e:
+        logger.error(f"Export sales CSV error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/export/sensor.csv')
+def api_export_sensor_csv():
+    """Export sensor readings as CSV for a selected date."""
+    try:
+        date_str = _normalize_date_str(request.args.get('date'))
+        sensor_log_dir = _resolve_logs_dir()
+        sensor_log_file = os.path.join(sensor_log_dir, f"sensor_data_{date_str}.csv")
+
+        out = io.StringIO()
+        writer = csv.writer(out)
+        writer.writerow([
+            "Date",
+            "Timestamp",
+            "Temp1_C",
+            "Humidity1_Pct",
+            "Temp2_C",
+            "Humidity2_Pct",
+            "IR1",
+            "IR2",
+            "Relay_Status",
+            "Target_Temp_C",
+        ])
+
+        if os.path.exists(sensor_log_file):
+            with open(sensor_log_file, 'r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    writer.writerow([
+                        date_str,
+                        row.get('DateTime', row.get('Timestamp', '')),
+                        row.get('Sensor1_Temp_C', ''),
+                        row.get('Sensor1_Humidity_Pct', ''),
+                        row.get('Sensor2_Temp_C', ''),
+                        row.get('Sensor2_Humidity_Pct', ''),
+                        row.get('IR_Sensor1_Detection', ''),
+                        row.get('IR_Sensor2_Detection', ''),
+                        row.get('Relay_Status', ''),
+                        row.get('Target_Temp_C', ''),
+                    ])
+
+        response = make_response(out.getvalue())
+        response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+        response.headers['Content-Disposition'] = f'attachment; filename=sensor_data_{date_str}.csv'
+        return response
+    except Exception as e:
+        logger.error(f"Export sensor CSV error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -1240,8 +1364,8 @@ def get_realtime_status():
             items = Item.query.filter_by(machine_id=machine.id).all()
             
             # Calculate low stock items
-            # Calculate today's sales
-            today = datetime.utcnow().date()
+            # Calculate today's sales using local date (matches log file naming).
+            today = datetime.now().date()
             today_sales_sum = db.session.query(func.sum(Sale.coin_amount + Sale.bill_amount)).filter(
                 Sale.item_id.in_([i.id for i in items]),
                 func.date(Sale.timestamp) == today
@@ -1280,7 +1404,7 @@ def get_realtime_status():
 def get_today_sales():
     """Get today's sales summary"""
     try:
-        today = datetime.utcnow().date()
+        today = datetime.now().date()
         sales = Sale.query.filter(func.date(Sale.timestamp) == today).all()
         
         total_sales = sum(s.coin_amount + s.bill_amount for s in sales)
@@ -1306,7 +1430,7 @@ def get_today_sales():
 def get_sales_logs():
     """Get today's sales logs"""
     try:
-        today = datetime.utcnow().date()
+        today = datetime.now().date()
         sales = Sale.query.filter(func.date(Sale.timestamp) == today).order_by(Sale.timestamp.desc()).limit(100).all()
         
         logs = []

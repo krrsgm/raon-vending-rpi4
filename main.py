@@ -109,7 +109,9 @@ class MainApp(tk.Tk):
         # Extract items from assigned slots for display in admin and kiosk
         self.items = self._extract_items_from_slots(self.assigned_slots)
         self.items_file_path = get_absolute_path("item_list.json")  # For legacy support
-        self.currency_symbol = self.config.get("currency_symbol", "\u20b1")
+        self.currency_symbol = self._normalize_currency_symbol(
+            self.config.get("currency_symbol", "\u20b1")
+        )
         self.title("Vending Machine UI")
         # Initialize TEC/Dispense/Stock after first paint to reduce startup lag
         self.stock_tracker = None
@@ -779,7 +781,8 @@ class MainApp(tk.Tk):
     def load_items_from_json(self, file_path):
         """Loads item data from a JSON file."""
         try:
-            with open(file_path, "r") as file:
+            # Use utf-8-sig so files with UTF-8 BOM still parse correctly.
+            with open(file_path, "r", encoding="utf-8-sig") as file:
                 data = json.load(file)
             # Clamp assigned_items.json to 40 slots if older data exists
             try:
@@ -806,7 +809,8 @@ class MainApp(tk.Tk):
     def load_config_from_json(self, file_path):
         """Loads item data from a JSON file."""
         try:
-            with open(file_path, "r") as file:
+            # Use utf-8-sig so files with UTF-8 BOM still parse correctly.
+            with open(file_path, "r", encoding="utf-8-sig") as file:
                 return json.load(file)
         except FileNotFoundError:
             print(
@@ -822,6 +826,18 @@ class MainApp(tk.Tk):
         except json.JSONDecodeError:
             print(f"Error: Could not decode JSON from {file_path}.")
             return []
+
+    def _normalize_currency_symbol(self, value):
+        """Normalize configured currency symbol for consistent kiosk display."""
+        symbol = str(value or "").strip()
+        if not symbol:
+            return "\u20b1"
+
+        # Normalize common misconfigurations/encoding artifacts back to peso.
+        if symbol in {"$", "US$", "USD", "â‚±", "PHP", "Php", "php"}:
+            return "\u20b1"
+
+        return symbol
 
     def save_items_to_json(self):
         """Saves the current item list to the JSON file."""

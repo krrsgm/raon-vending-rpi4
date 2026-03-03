@@ -769,7 +769,7 @@ class AssignItemsScreen(tk.Frame):
             try:
                 if os.path.exists(self._save_path):
                     try:
-                        with open(self._save_path, 'r', encoding='utf-8') as f:
+                        with open(self._save_path, 'r', encoding='utf-8-sig') as f:
                             data = json.load(f)
                         # Migrate various persisted formats into per-slot 'terms' wrapper
                         if isinstance(data, list) and len(data) >= self.MAX_SLOTS:
@@ -845,7 +845,7 @@ class AssignItemsScreen(tk.Frame):
                 print(f"[DEBUG] edit_slot({idx+1}) _save_path={self._save_path} exists={os.path.exists(self._save_path)}")
                 if os.path.exists(self._save_path):
                     try:
-                        with open(self._save_path, 'r', encoding='utf-8') as _f:
+                        with open(self._save_path, 'r', encoding='utf-8-sig') as _f:
                             _data = json.load(_f)
                         first = _data[0] if isinstance(_data, list) and len(_data) > 0 else None
                         if first and isinstance(first, dict) and 'terms' in first:
@@ -872,7 +872,7 @@ class AssignItemsScreen(tk.Frame):
                     if p == self._save_path or not os.path.exists(p):
                         continue
                     try:
-                        with open(p, 'r', encoding='utf-8') as _f:
+                        with open(p, 'r', encoding='utf-8-sig') as _f:
                             _data = json.load(_f)
                         if isinstance(_data, list) and len(_data) >= self.MAX_SLOTS:
                             _data = _data[:self.MAX_SLOTS]
@@ -1373,7 +1373,7 @@ class AssignItemsScreen(tk.Frame):
     def load_slots(self):
         try:
             if os.path.exists(self._save_path):
-                with open(self._save_path, 'r') as f:
+                with open(self._save_path, 'r', encoding='utf-8-sig') as f:
                     data = json.load(f)
                 # Support multiple persisted formats and migrate to per-slot 'terms' wrapper
                 if isinstance(data, list) and len(data) >= self.MAX_SLOTS:
@@ -1544,7 +1544,7 @@ class AssignItemsScreen(tk.Frame):
                 if not p or not os.path.exists(p):
                     continue
                 try:
-                    with open(p, 'r', encoding='utf-8') as f:
+                    with open(p, 'r', encoding='utf-8-sig') as f:
                         data = json.load(f)
                     if isinstance(data, list) and len(data) >= slot_idx+1:
                         entry = data[slot_idx]

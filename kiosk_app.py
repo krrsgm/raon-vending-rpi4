@@ -4,6 +4,7 @@ from PIL import Image
 import os
 import io
 import platform
+from collections import deque
 from dht22_handler import DHT22Display
 from system_status_panel import SystemStatusPanel
 from fix_paths import get_absolute_path
@@ -28,8 +29,13 @@ class KioskFrame(tk.Frame):
         self._clicked_item_data = None
         self._resize_job = None
         self.image_cache = {} # To prevent images from being garbage-collected
-        self._deferred_image_queue = []
+        self._deferred_image_queue = deque()
         self._deferred_loader_job = None
+        self._image_path_cache = {}  # raw image path -> resolved absolute path or None
+        self._missing_image_paths_logged = set()
+        self._last_layout_signature = None
+        self._last_num_cols = None
+        self._scrollable_frame = None
         # Tunable: how many images to load per batch and delay between batches (ms)
         self._deferred_batch = int(getattr(controller, 'config', {}).get('deferred_image_batch', 12))
         self._deferred_delay = int(getattr(controller, 'config', {}).get('deferred_image_delay_ms', 20))
@@ -232,43 +238,7 @@ class KioskFrame(tk.Frame):
 
         image_path = item_data.get("image")
         if image_path:
-            # Normalize path separators (convert backslash to forward slash for cross-platform consistency)
-            image_path = image_path.replace('\\', '/')
-            # Try to resolve the image path - could be relative or absolute
-            resolved_path = None
-            debug_log = []
-            debug_log.append(f"Looking for image: {image_path}")
-            
-            # If it's an absolute path, check if it exists
-            if os.path.isabs(image_path) and os.path.exists(image_path):
-                resolved_path = image_path
-                debug_log.append(f"✓ Found as absolute path")
-            else:
-                # Try as relative path from project root via get_absolute_path
-                abs_path = get_absolute_path(image_path)
-                debug_log.append(f"  get_absolute_path -> {abs_path}")
-                if os.path.exists(abs_path):
-                    resolved_path = abs_path
-                    debug_log.append(f"  ✓ Exists at get_absolute_path result")
-                else:
-                    debug_log.append(f"  ✗ Does not exist")
-                    
-                # Try as relative path from current directory
-                if not resolved_path and os.path.exists(image_path):
-                    resolved_path = image_path
-                    debug_log.append(f"✓ Found in current directory: {image_path}")
-                
-                # Also try from images/ directly if no images/ prefix
-                if not resolved_path and not image_path.startswith('images/'):
-                    fallback = f"images/{os.path.basename(image_path)}"
-                    abs_fallback = get_absolute_path(fallback)
-                    debug_log.append(f"  Trying fallback: {fallback} -> {abs_fallback}")
-                    if os.path.exists(abs_fallback):
-                        resolved_path = abs_fallback
-                        debug_log.append(f"  ✓ Found via fallback")
-                    elif os.path.exists(fallback):
-                        resolved_path = fallback
-                        debug_log.append(f"  ✓ Found fallback in cwd")
+            resolved_path = self._resolve_image_path(image_path)
             
             if resolved_path:
                 try:
@@ -288,12 +258,13 @@ class KioskFrame(tk.Frame):
                             self._deferred_loader_job = self.after(10, self._process_deferred_batch)
                 except Exception as e:
                     print(f"Error loading image {resolved_path}: {e}")
-                    print("\n".join(debug_log))
                     image_label.config(text="Image Error", font=self.fonts['image_placeholder'], fg=self.colors['gray_fg'])
             else:
                 # Show placeholder if image not found
-                print(f"Image not found: {image_path}")
-                print("\n".join(debug_log))
+                normalized = str(image_path).replace('\\', '/')
+                if normalized and normalized not in self._missing_image_paths_logged:
+                    self._missing_image_paths_logged.add(normalized)
+                    print(f"[KioskFrame] Image not found: {normalized}")
                 image_label.config(text="No Image", font=self.fonts['image_placeholder'], fg=self.colors['gray_fg'])
         else:
             # Show placeholder if no image
@@ -544,6 +515,7 @@ class KioskFrame(tk.Frame):
         # Scrollable canvas for items
         self.canvas = tk.Canvas(main_area, bg=self.colors['background'], highlightthickness=0)
         scrollable_frame = tk.Frame(self.canvas, bg=self.colors['background'])
+        self._scrollable_frame = scrollable_frame
         scrollable_frame.bind('<ButtonPress-1>', self.on_canvas_press)
         scrollable_frame.bind('<B1-Motion>', self.on_canvas_drag)
         # keep scrollregion in sync when children change
@@ -706,9 +678,11 @@ class KioskFrame(tk.Frame):
         if self._resize_job:
             self.after_cancel(self._resize_job)
 
-        # Schedule the grid population to run after a short delay
-        if abs(event.width - self._last_canvas_width) > 10:
-            self._resize_job = self.after(50, self.populate_items)
+        # Rebuild only when column count would actually change.
+        new_cols = self._compute_num_cols(int(getattr(event, 'width', 0) or 0))
+        if new_cols != self._last_num_cols:
+            self._resize_job = self.after(80, self.populate_items)
+        self._last_canvas_width = int(getattr(event, 'width', 0) or 0)
 
     def filter_by_category(self, event=None):
         """Filter items based on selected category."""
@@ -747,25 +721,12 @@ class KioskFrame(tk.Frame):
 
     def populate_items(self):
         """Clears and repopulates the scrollable frame with item cards."""
-        scrollable_frame = self.canvas.nametowidget(self.canvas.itemcget(self.canvas_window, 'window'))
+        scrollable_frame = self._scrollable_frame
+        if scrollable_frame is None:
+            return
 
-        # Clear existing items
-        for widget in scrollable_frame.winfo_children():
-            widget.destroy()
-
-        # --- Dynamic Column Calculation Based on Screen Size ---
-        # Calculate how many cards can fit in the available width
-        canvas_width = self.canvas.winfo_width()
-        if canvas_width < 2:
-            # Canvas not yet drawn, use default
-            num_cols = 4
-        else:
-            # Calculate columns: (available_width) / (card_width + spacing)
-            # spacing_half is on each side, so total spacing between cards is 2 * spacing_half
-            total_card_with_spacing = self.card_width + self.card_spacing
-            num_cols = max(1, canvas_width // total_card_with_spacing)
-            # Ensure at least 3 columns for better use of screen space, at most 8 for smaller screens
-            num_cols = max(3, min(8, num_cols))
+        num_cols = self._compute_num_cols(self.canvas.winfo_width())
+        self._last_num_cols = num_cols
 
         # Decide source of items: use assigned slots if present, otherwise master list
         assigned = getattr(self.controller, 'assigned_slots', None)
@@ -814,6 +775,23 @@ class KioskFrame(tk.Frame):
                         filtered_items.append(item)
                         break
 
+        # Skip expensive rebuild if visual layout is effectively unchanged.
+        layout_signature = self._build_items_layout_signature(filtered_items, selected_category, num_cols)
+        if layout_signature == self._last_layout_signature:
+            return
+        self._last_layout_signature = layout_signature
+
+        # Clear existing items and pending image jobs.
+        if self._deferred_loader_job:
+            try:
+                self.after_cancel(self._deferred_loader_job)
+            except Exception:
+                pass
+            self._deferred_loader_job = None
+        self._deferred_image_queue.clear()
+        for widget in scrollable_frame.winfo_children():
+            widget.destroy()
+
         # Repopulate grid with filtered item cards (4 columns)
         max_cols = num_cols
         
@@ -835,7 +813,9 @@ class KioskFrame(tk.Frame):
 
     def center_frame(self, event=None):
         """Callback function to center the scrollable frame inside the canvas."""
-        scrollable_frame = self.canvas.nametowidget(self.canvas.itemcget(self.canvas_window, 'window'))
+        scrollable_frame = self._scrollable_frame
+        if scrollable_frame is None:
+            return
         
         # Force the geometry manager to process layout changes
         scrollable_frame.update_idletasks()
@@ -853,6 +833,9 @@ class KioskFrame(tk.Frame):
         """Resets the kiosk screen to its initial state."""
         # Clear category cache since item list may have changed
         self._category_cache = {}
+        self._last_layout_signature = None
+        self._image_path_cache = {}
+        self._missing_image_paths_logged = set()
         
         # Rebuild category buttons from assigned items (fresh list after admin changes)
         try:
@@ -1006,7 +989,7 @@ class KioskFrame(tk.Frame):
         try:
             count = 0
             while self._deferred_image_queue and count < max(1, self._deferred_batch):
-                image_label = self._deferred_image_queue.pop(0)
+                image_label = self._deferred_image_queue.popleft()
                 try:
                     info = getattr(image_label, '_deferred_image', None)
                     if not info:
@@ -1046,3 +1029,61 @@ class KioskFrame(tk.Frame):
                 self._deferred_loader_job = None
         except Exception:
             self._deferred_loader_job = None
+
+    def _compute_num_cols(self, canvas_width):
+        """Compute grid columns for current canvas width."""
+        if canvas_width < 2:
+            return 4
+        total_card_with_spacing = max(1, self.card_width + self.card_spacing)
+        num_cols = max(1, canvas_width // total_card_with_spacing)
+        return max(3, min(8, num_cols))
+
+    def _build_items_layout_signature(self, items, selected_category, num_cols):
+        """Build a compact signature to skip redundant full-grid rebuilds."""
+        entries = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            try:
+                price_val = float(item.get('price', 0) or 0)
+            except Exception:
+                price_val = 0.0
+            try:
+                qty_val = int(item.get('quantity', 0) or 0)
+            except Exception:
+                qty_val = 0
+            entries.append((
+                item.get('name', ''),
+                price_val,
+                qty_val,
+                item.get('image', ''),
+            ))
+        return (str(selected_category or ''), int(num_cols), tuple(entries))
+
+    def _resolve_image_path(self, image_path):
+        """Resolve image path once and cache the result (or None)."""
+        raw = str(image_path or "").replace('\\', '/').strip()
+        if not raw:
+            return None
+        if raw in self._image_path_cache:
+            return self._image_path_cache[raw]
+
+        resolved_path = None
+        if os.path.isabs(raw) and os.path.exists(raw):
+            resolved_path = raw
+        else:
+            abs_path = get_absolute_path(raw)
+            if os.path.exists(abs_path):
+                resolved_path = abs_path
+            elif os.path.exists(raw):
+                resolved_path = raw
+            elif not raw.startswith('images/'):
+                fallback = f"images/{os.path.basename(raw)}"
+                abs_fallback = get_absolute_path(fallback)
+                if os.path.exists(abs_fallback):
+                    resolved_path = abs_fallback
+                elif os.path.exists(fallback):
+                    resolved_path = fallback
+
+        self._image_path_cache[raw] = resolved_path
+        return resolved_path

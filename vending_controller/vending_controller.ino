@@ -63,6 +63,8 @@ const int MUX1_LIMIT_PIN = 17;                // Limit switch for MUX1
 const int MUX2_LIMIT_PIN = 18;                // Limit switch for MUX2
 const int MUX3_LIMIT_PIN = 19;                // Limit switch for MUX3
 const int REQUIRED_LIMIT_PULSES = 2;          // 2 pulses = one full 360 deg spring turn
+const int LIMIT_CHANGES_PER_PULSE = 2;        // HIGH->LOW and LOW->HIGH
+const int REQUIRED_LIMIT_CHANGES = REQUIRED_LIMIT_PULSES * LIMIT_CHANGES_PER_PULSE;
 const unsigned long LIMIT_FAILSAFE_MS = 15000; // Safety timeout if limit pulses are missing
 // ============================================================================
 // MULTIPLEXER PIN DEFINITIONS
@@ -108,8 +110,9 @@ String inputBuffer2 = "";                 // RXTX command buffer
 String inputBuffer = "";                  // USB Serial command buffer
 const int LIMIT_PINS[NUM_MUXES] = {MUX1_LIMIT_PIN, MUX2_LIMIT_PIN, MUX3_LIMIT_PIN};
 volatile int active_slot_by_mux[NUM_MUXES] = {-1, -1, -1};
-int limit_pulse_count[NUM_MUXES] = {0, 0, 0};
-volatile int limit_irq_pulse_count[NUM_MUXES] = {0, 0, 0};
+int limit_change_count[NUM_MUXES] = {0, 0, 0};
+volatile int limit_irq_change_count[NUM_MUXES] = {0, 0, 0};
+volatile int limit_last_state_irq[NUM_MUXES] = {HIGH, HIGH, HIGH};
 
 // --- Coin Acceptor State ---
 volatile float received_amount = 0.0;
@@ -143,7 +146,7 @@ void processCommand(String cmd, Stream &out);
 void processCoinCommand(String command);
 void clearMuxTrackingForSlot(int idx);
 String getLimitStatusString();
-void IRAM_ATTR handleLimitPulse(uint8_t mux);
+void IRAM_ATTR handleLimitChange(uint8_t mux);
 void IRAM_ATTR limit1_interrupt();
 void IRAM_ATTR limit2_interrupt();
 void IRAM_ATTR limit3_interrupt();
@@ -168,15 +171,19 @@ void IRAM_ATTR coin_interrupt() {
   }
 }
 
-void IRAM_ATTR handleLimitPulse(uint8_t mux) {
-  if (active_slot_by_mux[mux] >= 0) {
-    limit_irq_pulse_count[mux]++;
+void IRAM_ATTR handleLimitChange(uint8_t mux) {
+  int current_state = digitalRead(LIMIT_PINS[mux]);
+  if (current_state != limit_last_state_irq[mux]) {
+    limit_last_state_irq[mux] = current_state;
+    if (active_slot_by_mux[mux] >= 0) {
+      limit_irq_change_count[mux]++;
+    }
   }
 }
 
-void IRAM_ATTR limit1_interrupt() { handleLimitPulse(0); }
-void IRAM_ATTR limit2_interrupt() { handleLimitPulse(1); }
-void IRAM_ATTR limit3_interrupt() { handleLimitPulse(2); }
+void IRAM_ATTR limit1_interrupt() { handleLimitChange(0); }
+void IRAM_ATTR limit2_interrupt() { handleLimitChange(1); }
+void IRAM_ATTR limit3_interrupt() { handleLimitChange(2); }
 
 // ============================================================================
 // SETUP
@@ -211,9 +218,9 @@ void setup() {
   pinMode(MUX1_LIMIT_PIN, INPUT_PULLUP);
   pinMode(MUX2_LIMIT_PIN, INPUT_PULLUP);
   pinMode(MUX3_LIMIT_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(MUX1_LIMIT_PIN), limit1_interrupt, FALLING);
-  attachInterrupt(digitalPinToInterrupt(MUX2_LIMIT_PIN), limit2_interrupt, FALLING);
-  attachInterrupt(digitalPinToInterrupt(MUX3_LIMIT_PIN), limit3_interrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(MUX1_LIMIT_PIN), limit1_interrupt, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(MUX2_LIMIT_PIN), limit2_interrupt, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(MUX3_LIMIT_PIN), limit3_interrupt, CHANGE);
 
   // Initialize coin acceptor pin
   pinMode(COIN_PIN, INPUT_PULLUP);
@@ -230,8 +237,9 @@ void setup() {
   }
   for (int mux = 0; mux < NUM_MUXES; mux++) {
     active_slot_by_mux[mux] = -1;
-    limit_pulse_count[mux] = 0;
-    limit_irq_pulse_count[mux] = 0;
+    limit_change_count[mux] = 0;
+    limit_irq_change_count[mux] = 0;
+    limit_last_state_irq[mux] = digitalRead(LIMIT_PINS[mux]);
   }
 
   // Initialize USB serial for debugging
@@ -323,26 +331,28 @@ void loop() {
     }
   }
 
-  // Handle mux limit switches (2 pulses = stop active slot on that mux).
-  // Pulses are captured in ISR on FALLING edge and consumed here.
+  // Handle mux limit switches.
+  // State changes are captured in ISR on CHANGE and consumed here.
+  // 2 pulses = 4 state changes (HIGH->LOW + LOW->HIGH per pulse).
   unsigned long now = millis();
   for (int mux = 0; mux < NUM_MUXES; mux++) {
-    int new_pulses = 0;
+    int new_changes = 0;
     noInterrupts();
-    new_pulses = limit_irq_pulse_count[mux];
-    limit_irq_pulse_count[mux] = 0;
+    new_changes = limit_irq_change_count[mux];
+    limit_irq_change_count[mux] = 0;
     interrupts();
 
-    if (new_pulses > 0 && active_slot_by_mux[mux] >= 0) {
-      limit_pulse_count[mux] += new_pulses;
-      if (limit_pulse_count[mux] >= REQUIRED_LIMIT_PULSES) {
+    if (new_changes > 0 && active_slot_by_mux[mux] >= 0) {
+      limit_change_count[mux] += new_changes;
+      if (limit_change_count[mux] >= REQUIRED_LIMIT_CHANGES) {
         int idx = active_slot_by_mux[mux];
         active_until[idx] = 0;
         setOutput(idx, false);
         active_slot_by_mux[mux] = -1;
-        limit_pulse_count[mux] = 0;
+        limit_change_count[mux] = 0;
         noInterrupts();
-        limit_irq_pulse_count[mux] = 0;
+        limit_irq_change_count[mux] = 0;
+        limit_last_state_irq[mux] = digitalRead(LIMIT_PINS[mux]);
         interrupts();
       }
     }
@@ -438,9 +448,10 @@ void clearMuxTrackingForSlot(int idx) {
   int mux_num = idx / MOTORS_PER_MUX;
   if (mux_num >= 0 && mux_num < NUM_MUXES && active_slot_by_mux[mux_num] == idx) {
     active_slot_by_mux[mux_num] = -1;
-    limit_pulse_count[mux_num] = 0;
+    limit_change_count[mux_num] = 0;
     noInterrupts();
-    limit_irq_pulse_count[mux_num] = 0;
+    limit_irq_change_count[mux_num] = 0;
+    limit_last_state_irq[mux_num] = digitalRead(LIMIT_PINS[mux_num]);
     interrupts();
   }
 }
@@ -458,17 +469,20 @@ String getLimitStatusString() {
   msg += " | M1_SLOT=";
   if (active_slot_by_mux[0] >= 0) msg += String(active_slot_by_mux[0] + 1);
   else msg += "NONE";
-  msg += ",M1_PULSES=" + String(limit_pulse_count[0]);
+  msg += ",M1_PULSES=" + String(limit_change_count[0] / LIMIT_CHANGES_PER_PULSE);
+  msg += ",M1_CHANGES=" + String(limit_change_count[0]);
 
   msg += " | M2_SLOT=";
   if (active_slot_by_mux[1] >= 0) msg += String(active_slot_by_mux[1] + 1);
   else msg += "NONE";
-  msg += ",M2_PULSES=" + String(limit_pulse_count[1]);
+  msg += ",M2_PULSES=" + String(limit_change_count[1] / LIMIT_CHANGES_PER_PULSE);
+  msg += ",M2_CHANGES=" + String(limit_change_count[1]);
 
   msg += " | M3_SLOT=";
   if (active_slot_by_mux[2] >= 0) msg += String(active_slot_by_mux[2] + 1);
   else msg += "NONE";
-  msg += ",M3_PULSES=" + String(limit_pulse_count[2]);
+  msg += ",M3_PULSES=" + String(limit_change_count[2] / LIMIT_CHANGES_PER_PULSE);
+  msg += ",M3_CHANGES=" + String(limit_change_count[2]);
 
   return msg;
 }
@@ -606,10 +620,11 @@ void processCommand(String cmd, Stream &out) {
           }
           // Reset per-vend pulse state so each vend starts from a clean baseline.
           noInterrupts();
-          limit_irq_pulse_count[mux_num] = 0;
+          limit_irq_change_count[mux_num] = 0;
+          limit_last_state_irq[mux_num] = digitalRead(LIMIT_PINS[mux_num]);
           interrupts();
           active_slot_by_mux[mux_num] = idx;
-          limit_pulse_count[mux_num] = 0;
+          limit_change_count[mux_num] = 0;
         }
 
         active_until[idx] = millis() + timeout_ms;

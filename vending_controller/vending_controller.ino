@@ -14,8 +14,8 @@
     - GET_BALANCE, RESET_BALANCE, SET_COIN_VALUE, SET_OUTPUT, STATUS
     
   Protocol (RXTX text-based commands, terminated with newline):
-    - PULSE <slot> [timeout_ms] : run output until 2 limit-switch events (click + unclick),
-                                  not less than 3s and not more than 4s runtime
+    - PULSE <slot> [timeout_ms] : run output until runtime window is met
+                                  (3.0s to 4.5s) and a limit pulse is detected in-window
     - OPEN <slot>         : set output on continuously
     - CLOSE <slot>        : set output off
     - OPENALL             : set all outputs on
@@ -68,7 +68,7 @@ const unsigned long LIMIT_EVENT_DEBOUNCE_US = 12000; // reject rapid switch boun
 const unsigned long LIMIT_HALF_CYCLE_MIN_US = 30000; // min time between click and unclick for a valid cycle
 const unsigned long LIMIT_FAILSAFE_MS = 15000; // Safety timeout if limit pulses are missing
 const unsigned long MIN_ROTATION_MS = 3000;    // Require motor ON for >=3s before counting full rotation complete
-const unsigned long MAX_ROTATION_MS = 4000;    // Force stop at 4s for consistent single-rotation runtime
+const unsigned long MAX_ROTATION_MS = 4500;    // Force stop at 4.5s for consistent single-rotation runtime
 // ============================================================================
 // MULTIPLEXER PIN DEFINITIONS
 // ============================================================================
@@ -382,24 +382,25 @@ void loop() {
 
     if (new_pulses > 0 && active_slot_by_mux[mux] >= 0) {
       limit_pulse_count[mux] += new_pulses;
-      if (limit_pulse_count[mux] >= REQUIRED_LIMIT_PULSES) {
-        int idx = active_slot_by_mux[mux];
-        unsigned long elapsed_ms = now - active_started_at[idx];
-        if (elapsed_ms >= MIN_ROTATION_MS) {
-          active_until[idx] = 0;
-          active_started_at[idx] = 0;
-          setOutput(idx, false);
-          active_slot_by_mux[mux] = -1;
-          limit_pulse_count[mux] = 0;
-          noInterrupts();
-          limit_irq_pulse_count[mux] = 0;
-          limit_last_event_us[mux] = 0;
-          limit_seen_opposite[mux] = false;
-          limit_opposite_seen_us[mux] = 0;
-          limit_start_state[mux] = digitalRead(LIMIT_PINS[mux]);
-          limit_last_state_irq[mux] = limit_start_state[mux];
-          interrupts();
-        }
+      int idx = active_slot_by_mux[mux];
+      unsigned long elapsed_ms = now - active_started_at[idx];
+
+      // New rule: if a limit pulse is detected within 3.0s..4.5s runtime,
+      // stop this rotation even when total pulses are below 2.
+      if (elapsed_ms >= MIN_ROTATION_MS && elapsed_ms <= MAX_ROTATION_MS) {
+        active_until[idx] = 0;
+        active_started_at[idx] = 0;
+        setOutput(idx, false);
+        active_slot_by_mux[mux] = -1;
+        limit_pulse_count[mux] = 0;
+        noInterrupts();
+        limit_irq_pulse_count[mux] = 0;
+        limit_last_event_us[mux] = 0;
+        limit_seen_opposite[mux] = false;
+        limit_opposite_seen_us[mux] = 0;
+        limit_start_state[mux] = digitalRead(LIMIT_PINS[mux]);
+        limit_last_state_irq[mux] = limit_start_state[mux];
+        interrupts();
       }
     }
   }
@@ -426,7 +427,7 @@ void loop() {
       if (elapsed_ms >= MAX_ROTATION_MS) {
         Serial.print("[PULSE WARN] Slot ");
         Serial.print(i + 1);
-        Serial.println(" reached 4s runtime cap; stopping motor.");
+        Serial.println(" reached 4.5s runtime cap; stopping motor.");
         active_until[i] = 0;
         active_started_at[i] = 0;
         setOutput(i, false);
@@ -664,8 +665,8 @@ void processCommand(String cmd, Stream &out) {
   String command = parts[0];
   command.toUpperCase();
 
-  // PULSE <slot> [timeout_ms] - run until 2 mux limit-switch events
-  // and runtime window constraints (3s minimum, 4s maximum) are satisfied.
+  // PULSE <slot> [timeout_ms] - run with runtime window constraints
+  // (3.0s minimum, 4.5s maximum), completing when a limit pulse occurs in-window.
   // Optional timeout argument sets the failsafe stop timeout in milliseconds.
   if (command == "PULSE") {
     if (partCount >= 2) {

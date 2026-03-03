@@ -1320,7 +1320,7 @@ class MainApp(tk.Tk):
     def _wait_for_slot_rotation_complete(self, host, slot_number, timeout_sec=18.0, poll_interval_sec=0.15):
         """
         Wait until slot is no longer active in ESP32 STATUS.
-        Firmware stops the motor after 2 limit-switch state changes (or failsafe timeout).
+        Firmware stops the motor after 4 limit-switch state changes (2 pulses) (or failsafe timeout).
         """
         try:
             from esp32_client import send_command
@@ -1386,7 +1386,7 @@ class MainApp(tk.Tk):
         host = self.config.get('esp32_host') if isinstance(self.config, dict) else None
         if not host:
             host = '192.168.4.1'  # common AP fallback; set in config for your network
-        pulse_timeout_ms = 15000  # Failsafe timeout; normal stop is 2 limit-switch state changes
+        pulse_timeout_ms = 15000  # Failsafe timeout; normal stop is 4 limit-switch state changes (2 pulses)
         try:
             pulse_timeout_ms = int(
                 self.config.get('hardware', {}).get('vend_rotation_failsafe_ms', 15000)
@@ -1416,7 +1416,7 @@ class MainApp(tk.Tk):
             slot_number = selected_matches[i % len(selected_matches)]
             try:
                 with self._vend_lock:
-                    print(f'[VEND] Pulsing slot {slot_number} (2-state-change rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name}, quantity item {i+1}/{quantity})')
+                    print(f'[VEND] Pulsing slot {slot_number} (4-state-change / 2-pulse rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name}, quantity item {i+1}/{quantity})')
                     
                     # Start monitoring dispense for this slot if dispense monitor is available
                     if self.dispense_monitor:
@@ -1458,7 +1458,7 @@ class MainApp(tk.Tk):
                             print(f'[VEND] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')
                         else:
                             print(f'[VEND] ERROR: ESP32 did not confirm pulse for slot {slot_number}. Response: {result}')
-                        # Wait for firmware to finish the rotation (2 limit state changes).
+                        # Wait for firmware to finish the rotation (4 limit state changes / 2 pulses).
                         wait_timeout_sec = max(5.0, (pulse_timeout_ms / 1000.0) + 2.0)
                         completed = self._wait_for_slot_rotation_complete(
                             host=host,
@@ -1466,7 +1466,7 @@ class MainApp(tk.Tk):
                             timeout_sec=wait_timeout_sec
                         )
                         if completed:
-                            print(f'[VEND] Slot {slot_number} rotation complete (2 state changes detected).')
+                            print(f'[VEND] Slot {slot_number} rotation complete (4 state changes / 2 pulses detected).')
                         else:
                             print(f'[VEND] WARNING: Slot {slot_number} completion not confirmed before timeout.')
                     except Exception as e:
@@ -1496,7 +1496,7 @@ class MainApp(tk.Tk):
         that slot before moving to the next slot.
 
         Each dispense is controlled by firmware limit-switch logic:
-        2 limit-switch state changes = 1 full spring rotation (with failsafe timeout).
+        4 limit-switch state changes (2 pulses) = 1 full spring rotation (with failsafe timeout).
         
         Args:
             cart_items (list): List of dicts with 'item' (item object) and 'quantity' (int)
@@ -1592,7 +1592,7 @@ class MainApp(tk.Tk):
         host = self.config.get('esp32_host') if isinstance(self.config, dict) else None
         if not host:
             host = '192.168.4.1'
-        pulse_timeout_ms = 15000  # Failsafe timeout; normal stop is 2 limit-switch state changes
+        pulse_timeout_ms = 15000  # Failsafe timeout; normal stop is 4 limit-switch state changes (2 pulses)
         try:
             pulse_timeout_ms = int(
                 self.config.get('hardware', {}).get('vend_rotation_failsafe_ms', 15000)
@@ -1614,7 +1614,7 @@ class MainApp(tk.Tk):
                 item_name = item_entry.get('name', 'Unknown')
                 try:
                     with self._vend_lock:
-                        print(f'[VEND-ORG] Pulsing slot {slot_number} (2-state-change rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name})')
+                        print(f'[VEND-ORG] Pulsing slot {slot_number} (4-state-change / 2-pulse rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name})')
                         
                         # Start monitoring dispense for this slot if available
                         if self.dispense_monitor:
@@ -1657,7 +1657,7 @@ class MainApp(tk.Tk):
                                 print(f'[VEND-ORG] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')
                             else:
                                 print(f'[VEND-ORG] ERROR: ESP32 did not confirm pulse for slot {slot_number}. Response: {result}')
-                            # Wait for firmware to finish the rotation (2 limit state changes).
+                            # Wait for firmware to finish the rotation (4 limit state changes / 2 pulses).
                             wait_timeout_sec = max(5.0, (pulse_timeout_ms / 1000.0) + 2.0)
                             completed = self._wait_for_slot_rotation_complete(
                                 host=host,
@@ -1665,7 +1665,7 @@ class MainApp(tk.Tk):
                                 timeout_sec=wait_timeout_sec
                             )
                             if completed:
-                                print(f'[VEND-ORG] Slot {slot_number} rotation complete (2 state changes detected).')
+                                print(f'[VEND-ORG] Slot {slot_number} rotation complete (4 state changes / 2 pulses detected).')
                             else:
                                 print(f'[VEND-ORG] WARNING: Slot {slot_number} completion not confirmed before timeout.')
                         except Exception as e:

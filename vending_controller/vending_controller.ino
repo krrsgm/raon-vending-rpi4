@@ -14,7 +14,7 @@
     - GET_BALANCE, RESET_BALANCE, SET_COIN_VALUE, SET_OUTPUT, STATUS
     
   Protocol (RXTX text-based commands, terminated with newline):
-    - PULSE <slot> [timeout_ms] : run output until 2 limit-switch state changes (with optional failsafe timeout)
+    - PULSE <slot> [timeout_ms] : run output until 4 limit-switch state changes (2 pulses) (with optional failsafe timeout)
     - OPEN <slot>         : set output on continuously
     - CLOSE <slot>        : set output off
     - OPENALL             : set all outputs on
@@ -23,7 +23,7 @@
     - LIMIT_STATUS        : returns pin states for GPIO17/18/19 with active slot and change count per mux
     
   Example commands:
-    PULSE 12\n            → run slot 12 until 2 limit-switch state changes
+    PULSE 12\n            → run slot 12 until 4 limit-switch state changes (2 pulses)
     STATUS\n              → returns "1,5,12\n" if slots 1, 5, 12 are on
 */
 
@@ -62,7 +62,7 @@ const int SERIAL2_TX_PIN = 1;        // ESP32 sends to Pi RX (GPIO 15)
 const int MUX1_LIMIT_PIN = 17;                // Limit switch for MUX1
 const int MUX2_LIMIT_PIN = 18;                // Limit switch for MUX2
 const int MUX3_LIMIT_PIN = 19;                // Limit switch for MUX3
-const int REQUIRED_LIMIT_CHANGES = 2;         // 2 state changes = one full 360 deg spring turn
+const int REQUIRED_LIMIT_CHANGES = 4;         // 4 state changes (2 pulses) = one full 360 deg spring turn
 const unsigned long LIMIT_FAILSAFE_MS = 15000; // Safety timeout if limit changes are missing
 // ============================================================================
 // MULTIPLEXER PIN DEFINITIONS
@@ -331,7 +331,7 @@ void loop() {
 
   // Handle mux limit switches.
   // State changes are captured in ISR on CHANGE and consumed here.
-  // 2 state changes (HIGH->LOW + LOW->HIGH) = one full rotation.
+  // 4 state changes (2 full LOW/HIGH pulses) = one full rotation.
   unsigned long now = millis();
   for (int mux = 0; mux < NUM_MUXES; mux++) {
     int new_changes = 0;
@@ -594,7 +594,7 @@ void processCommand(String cmd, Stream &out) {
   String command = parts[0];
   command.toUpperCase();
 
-  // PULSE <slot> [timeout_ms] - run until 2 mux limit-switch state changes (timeout is failsafe)
+  // PULSE <slot> [timeout_ms] - run until 4 mux limit-switch state changes (2 pulses) (timeout is failsafe)
   if (command == "PULSE") {
     if (partCount >= 2) {
       int slot = parts[1].toInt();

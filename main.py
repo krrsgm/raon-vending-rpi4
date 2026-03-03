@@ -1349,6 +1349,19 @@ class MainApp(tk.Tk):
         except Exception:
             return False
 
+    def _should_retry_pulse(self, host, slot_number, confirm_window_sec=0.45):
+        """Decide whether a non-OK pulse response should be retried.
+
+        We briefly watch STATUS for the target slot becoming active to avoid
+        duplicate pulses when the first command executed but the ACK was delayed/lost.
+        """
+        deadline = time.time() + max(0.1, float(confirm_window_sec))
+        while time.time() < deadline:
+            if self._is_slot_active(host, slot_number):
+                return False
+            time.sleep(0.05)
+        return True
+
     def vend_slots_for(self, item_name, quantity=1, preferred_slot=None):
         """Find assigned slots for item_name and pulse the ESP32 outputs.
 
@@ -1463,9 +1476,7 @@ class MainApp(tk.Tk):
                         # This avoids accidental double pulses when the first command
                         # actually executed but the response was delayed/lost.
                         if not result or "OK" not in str(result).upper():
-                            if self._is_slot_active(host, slot_number):
-                                print(f'[VEND] Info: slot {slot_number} is already active; skipping retry to avoid double-dispense')
-                            else:
+                            if self._should_retry_pulse(host, slot_number):
                                 print(f'[VEND] Info: pulse response not OK, retrying once for slot {slot_number}')
                                 try:
                                     time.sleep(0.05)
@@ -1473,6 +1484,8 @@ class MainApp(tk.Tk):
                                     print(f'[VEND] Retry pulse response: {result}')
                                 except Exception as e:
                                     print(f'[VEND] Retry failed: {e}')
+                            else:
+                                print(f'[VEND] Info: slot {slot_number} became active after initial pulse; skipping retry')
 
                         if result and "OK" in str(result).upper():
                             print(f'[VEND] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')
@@ -1671,9 +1684,7 @@ class MainApp(tk.Tk):
                             # Retry if not OK, but only if slot is not already active
                             # to avoid unintentional double-rotation.
                             if not result or "OK" not in str(result).upper():
-                                if self._is_slot_active(host, slot_number):
-                                    print(f'[VEND-ORG] Info: slot {slot_number} is already active; skipping retry to avoid double-dispense')
-                                else:
+                                if self._should_retry_pulse(host, slot_number):
                                     print(f'[VEND-ORG] Info: pulse response not OK, retrying once for slot {slot_number}')
                                     try:
                                         time.sleep(0.05)
@@ -1681,6 +1692,8 @@ class MainApp(tk.Tk):
                                         print(f'[VEND-ORG] Retry pulse response: {result}')
                                     except Exception as e:
                                         print(f'[VEND-ORG] Retry failed: {e}')
+                                else:
+                                    print(f'[VEND-ORG] Info: slot {slot_number} became active after initial pulse; skipping retry')
                             
                             if result and "OK" in str(result).upper():
                                 print(f'[VEND-ORG] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')

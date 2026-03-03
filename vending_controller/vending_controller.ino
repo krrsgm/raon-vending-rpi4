@@ -14,7 +14,7 @@
     - GET_BALANCE, RESET_BALANCE, SET_COIN_VALUE, SET_OUTPUT, STATUS
     
   Protocol (RXTX text-based commands, terminated with newline):
-    - PULSE <slot> [timeout_ms] : run output until 2 limit-switch pulses
+    - PULSE <slot> [timeout_ms] : run output until 2 limit-switch pulses (with optional failsafe timeout)
     - OPEN <slot>         : set output on continuously
     - CLOSE <slot>        : set output off
     - OPENALL             : set all outputs on
@@ -64,6 +64,8 @@ const int MUX2_LIMIT_PIN = 18;                // Limit switch for MUX2
 const int MUX3_LIMIT_PIN = 19;                // Limit switch for MUX3
 const int REQUIRED_LIMIT_PULSES = 2;          // 2 pulses = one full 360 deg spring turn
 const unsigned long LIMIT_EDGE_DEBOUNCE_US = 3000;  // reject rapid edge bounce on CHANGE interrupt
+const unsigned long LIMIT_MIN_PULSE_SPACING_US = 8000;  // minimum gap between counted falling pulses
+const unsigned long LIMIT_FAILSAFE_MS = 15000; // Safety timeout if limit pulses are missing
 // ============================================================================
 // MULTIPLEXER PIN DEFINITIONS
 // ============================================================================
@@ -102,7 +104,7 @@ const int COUNTER_PIN = -1;    // optional counter feedback disabled (GPIO18 use
 // STATE TRACKING
 // ============================================================================
 
-unsigned long active_until[NUM_OUTPUTS];  // retained for protocol compatibility
+unsigned long active_until[NUM_OUTPUTS];  // failsafe stop deadline per active output
 bool outputs_state[NUM_OUTPUTS];          // current ON/OFF state
 String inputBuffer2 = "";                 // RXTX command buffer
 String inputBuffer = "";                  // USB Serial command buffer
@@ -192,7 +194,8 @@ void IRAM_ATTR handleLimitPulse(uint8_t mux) {
   }
 
   if (active_slot_by_mux[mux] >= 0 &&
-      limit_ready_for_fall[mux]) {
+      limit_ready_for_fall[mux] &&
+      (now_us - limit_last_pulse_us[mux] >= LIMIT_MIN_PULSE_SPACING_US)) {
     limit_ready_for_fall[mux] = false;
     limit_last_pulse_us[mux] = now_us;
     limit_irq_pulse_count[mux]++;
@@ -395,6 +398,17 @@ void loop() {
     lastLimitDebugPrintMs = now;
     Serial.print("[LIMIT DBG] ");
     Serial.println(getLimitStatusString());
+  }
+
+  // Failsafe timeout in case limit switch pulses are not detected
+  for (int i = 0; i < NUM_OUTPUTS; i++) {
+    if (active_until[i] != 0 && now >= active_until[i]) {
+      active_until[i] = 0;
+      if (outputs_state[i]) {
+        setOutput(i, false);
+        clearMuxTrackingForSlot(i);
+      }
+    }
   }
 
   // Read and print DHT22 and IR sensor values every 2 seconds
@@ -612,18 +626,23 @@ void processCommand(String cmd, Stream &out) {
   String command = parts[0];
   command.toUpperCase();
 
-  // PULSE <slot> [timeout_ms] - run until 2 mux limit-switch pulses.
-  // Optional timeout argument is accepted for compatibility but ignored.
+  // PULSE <slot> [timeout_ms] - run until 2 mux limit-switch pulses (timeout is failsafe)
   if (command == "PULSE") {
     if (partCount >= 2) {
       int slot = parts[1].toInt();
       if (slot >= 1 && slot <= NUM_OUTPUTS) {
         int idx = slot - 1;
         int mux_num = idx / MOTORS_PER_MUX;
+        unsigned long timeout_ms = LIMIT_FAILSAFE_MS;
+        if (partCount >= 3) {
+          unsigned long parsed = (unsigned long)parts[2].toInt();
+          if (parsed > 0) timeout_ms = parsed;
+        }
 
         if (mux_num >= 0 && mux_num < NUM_MUXES) {
           if (active_slot_by_mux[mux_num] >= 0) {
             int previous_idx = active_slot_by_mux[mux_num];
+            active_until[previous_idx] = 0;
             setOutput(previous_idx, false);
           }
           // Reset per-vend limit pulse tracking so each vend starts from a clean baseline.
@@ -638,7 +657,7 @@ void processCommand(String cmd, Stream &out) {
           limit_pulse_count[mux_num] = 0;
         }
 
-        active_until[idx] = 0;
+        active_until[idx] = millis() + timeout_ms;
         setOutput(idx, true);
         out.println("OK");
       } else {

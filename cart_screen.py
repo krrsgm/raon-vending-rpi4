@@ -241,7 +241,11 @@ class CartScreen(tk.Frame):
 
             name_label = tk.Label(
                 info_frame,
-                text=item["name"],
+                text=(
+                    f"{item['name']} (Slot {item.get('_slot_number')})"
+                    if item.get('_slot_number') is not None
+                    else item["name"]
+                ),
                 font=self.fonts["item_name"],
                 bg="white",
                 fg=self.colors["text_fg"],
@@ -752,19 +756,9 @@ class CartScreen(tk.Frame):
 
         def _vend_items():
             try:
-                for entry in vend_list:
-                    try:
-                        item_obj = entry.get('item') if isinstance(entry, dict) else None
-                        qty = int(entry.get('quantity', 1)) if isinstance(entry, dict) else 1
-                        if item_obj and item_obj.get('name'):
-                            name = item_obj.get('name')
-                            print(f"Vending {qty} x {name}...")
-                            try:
-                                self.controller.vend_slots_for(name, qty)
-                            except Exception as e:
-                                print(f"Error vending {name}: {e}")
-                    except Exception:
-                        continue
+                # Use organized vending so slots are processed in ascending order,
+                # finishing all pulses for the current slot before the next one.
+                self.controller.vend_cart_items_organized(vend_list)
             except Exception as e:
                 print(f"Error in vending thread: {e}")
 

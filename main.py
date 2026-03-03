@@ -765,14 +765,18 @@ class MainApp(tk.Tk):
             term_idx = getattr(self, 'assigned_term', 0) or 0
             
             if isinstance(assigned_slots, list):
-                for slot in assigned_slots:
+                for idx, slot in enumerate(assigned_slots):
                     if isinstance(slot, dict) and 'terms' in slot:
                         terms = slot.get('terms', [])
                         if len(terms) > term_idx and terms[term_idx]:
-                            items.append(terms[term_idx])
+                            term_item = dict(terms[term_idx])
+                            term_item['_slot_number'] = idx + 1
+                            items.append(term_item)
                     elif isinstance(slot, dict) and 'name' in slot:
                         # Legacy format - just add the slot directly
-                        items.append(slot)
+                        slot_item = dict(slot)
+                        slot_item['_slot_number'] = idx + 1
+                        items.append(slot_item)
         except Exception as e:
             print(f"Error extracting items from slots: {e}")
         
@@ -1036,6 +1040,26 @@ class MainApp(tk.Tk):
         self.frames["CartScreen"].update_cart(self.cart)
         self.show_frame("CartScreen")
 
+    def _item_slot_number(self, item_obj):
+        """Return integer slot number for an item payload, if available."""
+        try:
+            slot_num = item_obj.get("_slot_number")
+            if slot_num is None:
+                return None
+            slot_int = int(slot_num)
+            return slot_int if slot_int > 0 else None
+        except Exception:
+            return None
+
+    def _cart_item_key(self, item_obj):
+        """Build a cart identity key using item name + tray/slot number."""
+        name = ""
+        try:
+            name = str(item_obj.get("name", "")).strip()
+        except Exception:
+            name = ""
+        return (name, self._item_slot_number(item_obj))
+
     def add_to_cart(self, added_item, quantity):
         """Adds an item and its quantity to the cart."""
         # Enforce available stock (do not decrement until payment completes)
@@ -1044,8 +1068,9 @@ class MainApp(tk.Tk):
         except Exception:
             available = 0
         current_in_cart = 0
+        added_key = self._cart_item_key(added_item)
         for item_info in self.cart:
-            if item_info["item"]["name"] == added_item["name"]:
+            if self._cart_item_key(item_info["item"]) == added_key:
                 current_in_cart = item_info["quantity"]
                 break
         if available <= current_in_cart:
@@ -1057,7 +1082,7 @@ class MainApp(tk.Tk):
             return
         # Check if item is already in cart
         for item_info in self.cart:
-            if item_info["item"]["name"] == added_item["name"]:
+            if self._cart_item_key(item_info["item"]) == added_key:
                 item_info["quantity"] += quantity
                 return  # Exit after updating
 
@@ -1067,8 +1092,9 @@ class MainApp(tk.Tk):
     def remove_from_cart(self, item_to_remove):
         """Removes an item entirely from the cart and restores its quantity."""
         item_found = None
+        target_key = self._cart_item_key(item_to_remove)
         for item_info in self.cart:
-            if item_info["item"]["name"] == item_to_remove["name"]:
+            if self._cart_item_key(item_info["item"]) == target_key:
                 item_found = item_info
                 break
 
@@ -1083,8 +1109,9 @@ class MainApp(tk.Tk):
             available = int(item_to_increase.get("quantity", 0))
         except Exception:
             available = 0
+        target_key = self._cart_item_key(item_to_increase)
         for cart_item_info in self.cart:
-            if cart_item_info["item"]["name"] == item_to_increase["name"]:
+            if self._cart_item_key(cart_item_info["item"]) == target_key:
                 if cart_item_info["quantity"] < available:
                     cart_item_info["quantity"] += 1
                     self.show_cart()  # Refresh cart screen
@@ -1092,8 +1119,9 @@ class MainApp(tk.Tk):
 
     def decrease_cart_item_quantity(self, item_to_decrease):
         """Decreases an item's quantity in the cart by 1."""
+        target_key = self._cart_item_key(item_to_decrease)
         for item_info in self.cart:
-            if item_info["item"]["name"] == item_to_decrease["name"]:
+            if self._cart_item_key(item_info["item"]) == target_key:
                 if item_info["quantity"] > 1:
                     item_info["quantity"] -= 1
                     self.show_cart()  # Refresh cart screen
@@ -1130,8 +1158,8 @@ class MainApp(tk.Tk):
                 return max(0, int(item.get('quantity', 0)))
         return 0
 
-    def _decrement_assigned_stock(self, item_name, quantity):
-        """Decrement stock across assigned slots for the given item name."""
+    def _decrement_assigned_stock(self, item_name, quantity, preferred_slot=None):
+        """Decrement stock for an item, optionally targeting a specific slot first."""
         if quantity <= 0:
             return 0
         assigned = getattr(self, 'assigned_slots', None)
@@ -1152,11 +1180,21 @@ class MainApp(tk.Tk):
                 continue
         if not matches:
             return 0
+        ordered_matches = list(matches)
+        try:
+            pref = int(preferred_slot) if preferred_slot is not None else None
+            pref_idx = (pref - 1) if pref and pref > 0 else None
+            if pref_idx in matches:
+                # Preserve per-tray behavior when the cart entry came from a known slot.
+                ordered_matches = [pref_idx]
+        except Exception:
+            pass
+
         remaining = int(quantity)
-        # Round-robin decrement across matching slots
+        # Round-robin decrement across selected matching slots.
         while remaining > 0:
             progressed = False
-            for idx in matches:
+            for idx in ordered_matches:
                 if remaining <= 0:
                     break
                 try:
@@ -1182,9 +1220,10 @@ class MainApp(tk.Tk):
                 item_obj = item_info.get('item') if isinstance(item_info, dict) else None
                 qty = int(item_info.get('quantity', 1)) if isinstance(item_info, dict) else 1
                 name = item_obj.get('name') if isinstance(item_obj, dict) else None
+                preferred_slot = self._item_slot_number(item_obj) if isinstance(item_obj, dict) else None
                 if not name or qty <= 0:
                     continue
-                deducted = self._decrement_assigned_stock(name, qty)
+                deducted = self._decrement_assigned_stock(name, qty, preferred_slot=preferred_slot)
                 total_deducted[name] = total_deducted.get(name, 0) + deducted
             except Exception:
                 continue
@@ -1222,20 +1261,8 @@ class MainApp(tk.Tk):
         self.save_items_to_json()  # Persist the new quantities
         # Attempt to vend physical slots for items that were checked out
         try:
-            for it in checked_out_items:
-                # support both {'item': {...}, 'quantity': n} and simple dicts
-                if isinstance(it, dict) and 'item' in it and 'quantity' in it:
-                    item_obj = it['item']
-                    qty = int(it['quantity'])
-                else:
-                    item_obj = it
-                    qty = 1
-                name = item_obj.get('name') if isinstance(item_obj, dict) else None
-                if name:
-                    try:
-                        self.vend_slots_for(name, qty)
-                    except Exception as e:
-                        print(f"Vend error for {name}: {e}")
+            # Keep dispensing deterministic: ascending slot order, one slot at a time.
+            self.vend_cart_items_organized(checked_out_items)
         except Exception:
             pass
 
@@ -1312,7 +1339,17 @@ class MainApp(tk.Tk):
             time.sleep(max(0.05, float(poll_interval_sec)))
         return False
 
-    def vend_slots_for(self, item_name, quantity=1):
+    def _is_slot_active(self, host, slot_number):
+        """Return True when a slot appears in ESP32 STATUS active list."""
+        try:
+            from esp32_client import send_command
+            status_msg = send_command(host, "STATUS", timeout=1.0)
+            active_slots = self._parse_active_slots_from_status(status_msg)
+            return int(slot_number) in active_slots
+        except Exception:
+            return False
+
+    def vend_slots_for(self, item_name, quantity=1, preferred_slot=None):
         """Find assigned slots for item_name and pulse the ESP32 outputs.
 
         This function looks at `self.assigned_slots` (populated by AssignItemsScreen)
@@ -1370,12 +1407,23 @@ class MainApp(tk.Tk):
         # Get dispense timeout from config
         dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 15.0) if isinstance(self.config, dict) else 15.0
         
-        print(f'[VEND] Found {len(matches)} slots for "{item_name}": {matches}')
+        selected_matches = list(matches)
+        try:
+            pref_slot = int(preferred_slot) if preferred_slot is not None else None
+            if pref_slot and pref_slot in matches:
+                selected_matches = [pref_slot]
+                print(f'[VEND] Preferred slot {pref_slot} selected for "{item_name}"')
+            elif pref_slot:
+                print(f'[VEND] WARNING: Preferred slot {pref_slot} is not assigned for "{item_name}", using mapped slots {matches}')
+        except Exception:
+            pass
+
+        print(f'[VEND] Found {len(selected_matches)} slot(s) for "{item_name}": {selected_matches}')
         print(f'[VEND] Using ESP32 host: {host}, rotation_failsafe_ms: {pulse_timeout_ms}')
         
         # Round-robin distribute pulses
         for i in range(quantity):
-            slot_number = matches[i % len(matches)]
+            slot_number = selected_matches[i % len(selected_matches)]
             try:
                 with self._vend_lock:
                     print(f'[VEND] Pulsing slot {slot_number} (2-pulse rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name}, quantity item {i+1}/{quantity})')
@@ -1411,15 +1459,20 @@ class MainApp(tk.Tk):
                             print(f'[VEND] Pulse response: {result}')
                         except Exception as e:
                             print(f'[VEND] WARNING: pulse_slot raised: {e}')
-                        # If response not OK, retry once after a brief pause
+                        # If response not OK, retry once only when slot is not active.
+                        # This avoids accidental double pulses when the first command
+                        # actually executed but the response was delayed/lost.
                         if not result or "OK" not in str(result).upper():
-                            print(f'[VEND] Info: pulse response not OK, retrying once for slot {slot_number}')
-                            try:
-                                time.sleep(0.05)
-                                result = pulse_slot(host, slot_number, pulse_timeout_ms, timeout=3.0)
-                                print(f'[VEND] Retry pulse response: {result}')
-                            except Exception as e:
-                                print(f'[VEND] Retry failed: {e}')
+                            if self._is_slot_active(host, slot_number):
+                                print(f'[VEND] Info: slot {slot_number} is already active; skipping retry to avoid double-dispense')
+                            else:
+                                print(f'[VEND] Info: pulse response not OK, retrying once for slot {slot_number}')
+                                try:
+                                    time.sleep(0.05)
+                                    result = pulse_slot(host, slot_number, pulse_timeout_ms, timeout=3.0)
+                                    print(f'[VEND] Retry pulse response: {result}')
+                                except Exception as e:
+                                    print(f'[VEND] Retry failed: {e}')
 
                         if result and "OK" in str(result).upper():
                             print(f'[VEND] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')
@@ -1490,6 +1543,7 @@ class MainApp(tk.Tk):
                     continue
                     
                 item_name = item_obj.get('name')
+                preferred_slot = self._item_slot_number(item_obj) if isinstance(item_obj, dict) else None
                 
                 # Find all slots assigned to this item
                 item_slots = []
@@ -1518,6 +1572,14 @@ class MainApp(tk.Tk):
                 if not item_slots:
                     print(f'[VEND-ORG] ERROR: No physical slots assigned for item "{item_name}"')
                     continue
+
+                # If checkout item came from a specific tray, keep dispensing on that tray.
+                try:
+                    if preferred_slot and preferred_slot in item_slots:
+                        item_slots = [preferred_slot]
+                        print(f'[VEND-ORG] Preferred slot {preferred_slot} selected for "{item_name}"')
+                except Exception:
+                    pass
                 
                 # Add all quantities for this item to its respective slots
                 # If item is in multiple slots, distribute quantities round-robin
@@ -1606,15 +1668,19 @@ class MainApp(tk.Tk):
                             except Exception as e:
                                 print(f'[VEND-ORG] WARNING: pulse_slot raised: {e}')
                             
-                            # Retry if not OK
+                            # Retry if not OK, but only if slot is not already active
+                            # to avoid unintentional double-rotation.
                             if not result or "OK" not in str(result).upper():
-                                print(f'[VEND-ORG] Info: pulse response not OK, retrying once for slot {slot_number}')
-                                try:
-                                    time.sleep(0.05)
-                                    result = pulse_slot(host, slot_number, pulse_timeout_ms, timeout=3.0)
-                                    print(f'[VEND-ORG] Retry pulse response: {result}')
-                                except Exception as e:
-                                    print(f'[VEND-ORG] Retry failed: {e}')
+                                if self._is_slot_active(host, slot_number):
+                                    print(f'[VEND-ORG] Info: slot {slot_number} is already active; skipping retry to avoid double-dispense')
+                                else:
+                                    print(f'[VEND-ORG] Info: pulse response not OK, retrying once for slot {slot_number}')
+                                    try:
+                                        time.sleep(0.05)
+                                        result = pulse_slot(host, slot_number, pulse_timeout_ms, timeout=3.0)
+                                        print(f'[VEND-ORG] Retry pulse response: {result}')
+                                    except Exception as e:
+                                        print(f'[VEND-ORG] Retry failed: {e}')
                             
                             if result and "OK" in str(result).upper():
                                 print(f'[VEND-ORG] SUCCESS: Pulse sent to ESP32 for slot {slot_number}, response: {result}')

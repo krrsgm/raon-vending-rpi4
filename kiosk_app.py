@@ -772,20 +772,28 @@ class KioskFrame(tk.Frame):
                 # It's the per-slot wrapper format; extract current term index published by admin
                 term_idx = getattr(self.controller, 'assigned_term', 0) or 0
                 extracted = []
-                for slot in assigned:
+                for idx, slot in enumerate(assigned):
                     try:
                         if not slot or not isinstance(slot, dict):
                             continue
                         terms = slot.get('terms', [])
                         if len(terms) > term_idx and terms[term_idx]:
-                            extracted.append(terms[term_idx])
+                            item_data = dict(terms[term_idx])
+                            item_data['_slot_number'] = idx + 1
+                            extracted.append(item_data)
                     except Exception:
                         continue
                 if extracted:
                     source_items = extracted
             else:
                 # assume old-style list of item dicts
-                source_items = [s for s in assigned if s]
+                source_items = []
+                for idx, slot in enumerate(assigned):
+                    if not slot or not isinstance(slot, dict):
+                        continue
+                    item_data = dict(slot)
+                    item_data.setdefault('_slot_number', idx + 1)
+                    source_items.append(item_data)
 
         if source_items is None:
             source_items = list(self.controller.items)

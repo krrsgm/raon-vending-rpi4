@@ -832,9 +832,21 @@ class MainApp(tk.Tk):
         symbol = str(value or "").strip()
         if not symbol:
             return "\u20b1"
+        # Normalize common misconfigurations back to peso.
+        if symbol in {"$", "US$", "USD", "PHP", "Php", "php"}:
+            return "\u20b1"
 
-        # Normalize common misconfigurations/encoding artifacts back to peso.
-        if symbol in {"$", "US$", "USD", "â‚±", "PHP", "Php", "php"}:
+        # Attempt to repair mojibake sequences back to peso.
+        repaired = symbol
+        for _ in range(2):
+            try:
+                candidate = repaired.encode("cp1252").decode("utf-8")
+            except Exception:
+                break
+            if candidate == repaired:
+                break
+            repaired = candidate
+        if repaired == "\u20b1":
             return "\u20b1"
 
         return symbol

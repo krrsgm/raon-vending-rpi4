@@ -69,7 +69,7 @@ class KioskFrame(tk.Frame):
         # Pre-compute keyword map for fast category detection (only once, not per item)
         self._keyword_map = {
             'Resistor': ['resistor', 'ohm'],
-            'Capacitor': ['capacitor', 'farad', 'Âµf', 'uf', 'pf'],
+            'Capacitor': ['capacitor', 'farad', 'uf', 'pf'],
             'IC': ['ic', 'chip', 'integrated circuit'],
             'Amplifier': ['amplifier', 'amp', 'opamp', 'op-amp'],
             'Board': ['board', 'pcb', 'breadboard', 'shield'],
@@ -216,15 +216,15 @@ class KioskFrame(tk.Frame):
         if quantity <= 0:
             stock_status = 'out_of_stock'
             border_color = '#e74c3c'  # Red
-            stock_indicator = 'âŒ OUT'
+            stock_indicator = 'OUT'
         elif quantity <= default_threshold:
             stock_status = 'low_stock'
             border_color = '#f39c12'  # Orange/Yellow
-            stock_indicator = f'âš ï¸ {quantity}'
+            stock_indicator = f'LOW {quantity}'
         else:
             stock_status = 'in_stock'
             border_color = '#27ae60'  # Green
-            stock_indicator = f'âœ“ {quantity}'
+            stock_indicator = f'OK {quantity}'
         
         card = tk.Frame(
             parent,
@@ -461,7 +461,7 @@ class KioskFrame(tk.Frame):
         sidebar.pack(side='left', fill='y', padx=(12,6), pady=12)
         sidebar.pack_propagate(False)
 
-        # (Search box removed â€” category-only browsing)
+        # (Search box removed - category-only browsing)
 
         # Categories display: extract dynamically from assigned items
         ttk.Label(sidebar, text='Component Categories', background='#f7fafc', font=self.fonts['description']).pack(anchor='w', padx=8, pady=(12,4))

@@ -515,6 +515,7 @@ class AssignItemsScreen(tk.Frame):
     GRID_COLS = 8
     MAX_SLOTS = GRID_ROWS * GRID_COLS
     SAVE_FILENAME = 'assigned_items.json'
+    CUSTOM_SAVE_FILENAME = 'assigned_items_custom.json'
     TERM_COUNT = 3
 
     def __init__(self, parent, controller):
@@ -530,6 +531,8 @@ class AssignItemsScreen(tk.Frame):
         self.custom_mode = False  # Toggle between Preset and Custom modes
         # Snapshot of presets taken when entering custom mode; used to restore originals
         self._presets_snapshot = None
+        # In-memory custom assignments (loaded from CUSTOM_SAVE_FILENAME if present)
+        self._custom_slots = None
         
         # Pre-compute keyword map for fast category detection (only once, not per item)
         self._keyword_map = {
@@ -550,6 +553,7 @@ class AssignItemsScreen(tk.Frame):
             # Default to the repository / module directory so saves/loads are colocated with the app
             self._data_path = os.path.dirname(os.path.abspath(__file__))
         self._save_path = os.path.join(self._data_path, self.SAVE_FILENAME)
+        self._custom_save_path = os.path.join(self._data_path, self.CUSTOM_SAVE_FILENAME)
 
         self._create_widgets()
         self.load_slots()
@@ -756,57 +760,89 @@ class AssignItemsScreen(tk.Frame):
         # Refresh UI (text fast, images deferred)
         self.refresh_all()
 
+    def _empty_slots_template(self):
+        """Return a fresh empty 40-slot structure in per-term wrapper format."""
+        return [{'terms': [None] * self.TERM_COUNT} for _ in range(self.MAX_SLOTS)]
+
+    def _migrate_slots_data(self, data):
+        """Normalize persisted slot data into per-slot {'terms': [...]} wrappers."""
+        if not isinstance(data, list):
+            return None
+
+        migrated = []
+        for idx in range(self.MAX_SLOTS):
+            entry = data[idx] if idx < len(data) else None
+            if entry is None:
+                migrated.append({'terms': [None] * self.TERM_COUNT})
+                continue
+            if isinstance(entry, dict) and 'terms' in entry and isinstance(entry['terms'], list):
+                terms = (entry['terms'] + [None] * self.TERM_COUNT)[:self.TERM_COUNT]
+                migrated.append({'terms': terms})
+                continue
+            if isinstance(entry, dict):
+                migrated.append({'terms': [entry] + [None] * (self.TERM_COUNT - 1)})
+                continue
+            migrated.append({'terms': [None] * self.TERM_COUNT})
+        return migrated
+
+    def _load_slots_from_path(self, path):
+        """Load and normalize slot data from JSON path; returns None if unavailable/invalid."""
+        if not path or not os.path.exists(path):
+            return None
+        try:
+            with open(path, 'r', encoding='utf-8-sig') as f:
+                data = json.load(f)
+            return self._migrate_slots_data(data)
+        except Exception:
+            return None
+
     def _toggle_custom_mode(self):
         """Toggle between Preset and Custom mode."""
-        # Toggle mode
         entering = not self.custom_mode
         self.custom_mode = entering
+
         if self.custom_mode:
-            # Take a deep snapshot of the original presets so they can be restored later.
-            # Prefer the last-saved assigned_items.json on disk (so accidental in-memory
-            # edits/clears made while in Preset mode can be reverted). Fall back to the
-            # current in-memory `self.slots` if no save file exists or migration fails.
-            try:
-                if os.path.exists(self._save_path):
-                    try:
-                        with open(self._save_path, 'r', encoding='utf-8-sig') as f:
-                            data = json.load(f)
-                        # Migrate various persisted formats into per-slot 'terms' wrapper
-                        if isinstance(data, list) and len(data) >= self.MAX_SLOTS:
-                            data = data[:self.MAX_SLOTS]
-                            migrated = []
-                            for entry in data:
-                                if entry is None:
-                                    migrated.append({'terms': [None] * self.TERM_COUNT})
-                                    continue
-                                if isinstance(entry, dict) and 'terms' in entry and isinstance(entry['terms'], list):
-                                    terms = (entry['terms'] + [None]*self.TERM_COUNT)[:self.TERM_COUNT]
-                                    migrated.append({'terms': terms})
-                                    continue
-                                if isinstance(entry, dict):
-                                    migrated.append({'terms': [entry] + [None]*(self.TERM_COUNT-1)})
-                                    continue
-                                migrated.append({'terms': [None] * self.TERM_COUNT})
-                            self._presets_snapshot = copy.deepcopy(migrated)
-                        else:
-                            # Unexpected on-disk format; fallback to current memory
-                            self._presets_snapshot = copy.deepcopy(self.slots)
-                    except Exception:
-                        self._presets_snapshot = copy.deepcopy(self.slots)
+            # Entering Custom:
+            # 1) snapshot Preset assignments (disk first, memory fallback)
+            preset_from_disk = self._load_slots_from_path(self._save_path)
+            if preset_from_disk is not None:
+                self._presets_snapshot = copy.deepcopy(preset_from_disk)
+            else:
+                self._presets_snapshot = copy.deepcopy(self.slots)
+
+            # 2) load existing Custom assignments if any, else start with empty slots
+            if self._custom_slots is None:
+                custom_from_disk = self._load_slots_from_path(self._custom_save_path)
+                if custom_from_disk is not None:
+                    self._custom_slots = copy.deepcopy(custom_from_disk)
                 else:
-                    self._presets_snapshot = copy.deepcopy(self.slots)
-            except Exception:
-                self._presets_snapshot = None
+                    self._custom_slots = self._empty_slots_template()
+
+            self.slots = copy.deepcopy(self._custom_slots)
             self.mode_label.config(text='Custom', foreground='red')
-        else:
-            # Leaving custom mode: restore original presets (discard temporary edits)
-            try:
-                if self._presets_snapshot is not None:
-                    self.slots = copy.deepcopy(self._presets_snapshot)
-                    self._presets_snapshot = None
-                    self.refresh_all()
-            except Exception:
-                pass
+            self.refresh_all()
+            self._publish_assignments()
+            return
+
+        # Leaving Custom:
+        # 1) keep custom edits in memory
+        try:
+            self._custom_slots = copy.deepcopy(self.slots)
+        except Exception:
+            pass
+
+        # 2) restore preset snapshot
+        try:
+            if self._presets_snapshot is not None:
+                self.slots = copy.deepcopy(self._presets_snapshot)
+            else:
+                self.slots = self._empty_slots_template()
+            self.refresh_all()
+            self._publish_assignments()
+        except Exception:
+            pass
+        finally:
+            self._presets_snapshot = None
             self.mode_label.config(text='Preset', foreground='green')
 
     def auto_assign_current_term(self):
@@ -840,7 +876,7 @@ class AssignItemsScreen(tk.Frame):
     def edit_slot(self, idx):
         # If this slot appears empty in-memory, try reloading from disk to get latest persisted assignments
         slot_entry = self.slots[idx] if idx < len(self.slots) else None
-        if (not slot_entry) or (isinstance(slot_entry, dict) and all(t is None for t in slot_entry.get('terms', []))):
+        if (not self.custom_mode) and ((not slot_entry) or (isinstance(slot_entry, dict) and all(t is None for t in slot_entry.get('terms', [])))):
             try:
                 print(f"[DEBUG] edit_slot({idx+1}) _save_path={self._save_path} exists={os.path.exists(self._save_path)}")
                 if os.path.exists(self._save_path):
@@ -860,42 +896,43 @@ class AssignItemsScreen(tk.Frame):
                 print(f"[DEBUG] load_slots failed: {e}")
 
         # Fallback loading from alternate paths
-        try:
-            slot_after = self.slots[idx] if idx < len(self.slots) else None
-            if (not slot_after) or all(t is None for t in slot_after.get('terms', [])):
-                fallback_paths = [
-                    os.path.join(os.path.dirname(os.path.abspath(__file__)), self.SAVE_FILENAME),
-                    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), self.SAVE_FILENAME),
-                    os.path.join(os.path.expanduser('~'), 'Documents', self.SAVE_FILENAME),
-                ]
-                for p in fallback_paths:
-                    if p == self._save_path or not os.path.exists(p):
-                        continue
-                    try:
-                        with open(p, 'r', encoding='utf-8-sig') as _f:
-                            _data = json.load(_f)
-                        if isinstance(_data, list) and len(_data) >= self.MAX_SLOTS:
-                            _data = _data[:self.MAX_SLOTS]
-                            migrated = []
-                            for entry in _data:
-                                if entry is None:
+        if not self.custom_mode:
+            try:
+                slot_after = self.slots[idx] if idx < len(self.slots) else None
+                if (not slot_after) or all(t is None for t in slot_after.get('terms', [])):
+                    fallback_paths = [
+                        os.path.join(os.path.dirname(os.path.abspath(__file__)), self.SAVE_FILENAME),
+                        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), self.SAVE_FILENAME),
+                        os.path.join(os.path.expanduser('~'), 'Documents', self.SAVE_FILENAME),
+                    ]
+                    for p in fallback_paths:
+                        if p == self._save_path or not os.path.exists(p):
+                            continue
+                        try:
+                            with open(p, 'r', encoding='utf-8-sig') as _f:
+                                _data = json.load(_f)
+                            if isinstance(_data, list) and len(_data) >= self.MAX_SLOTS:
+                                _data = _data[:self.MAX_SLOTS]
+                                migrated = []
+                                for entry in _data:
+                                    if entry is None:
+                                        migrated.append({'terms': [None] * self.TERM_COUNT})
+                                        continue
+                                    if isinstance(entry, dict) and 'terms' in entry and isinstance(entry['terms'], list):
+                                        terms = (entry['terms'] + [None] * self.TERM_COUNT)[:self.TERM_COUNT]
+                                        migrated.append({'terms': terms})
+                                        continue
+                                    if isinstance(entry, dict):
+                                        migrated.append({'terms': [entry] + [None] * (self.TERM_COUNT - 1)})
+                                        continue
                                     migrated.append({'terms': [None] * self.TERM_COUNT})
-                                    continue
-                                if isinstance(entry, dict) and 'terms' in entry and isinstance(entry['terms'], list):
-                                    terms = (entry['terms'] + [None] * self.TERM_COUNT)[:self.TERM_COUNT]
-                                    migrated.append({'terms': terms})
-                                    continue
-                                if isinstance(entry, dict):
-                                    migrated.append({'terms': [entry] + [None] * (self.TERM_COUNT - 1)})
-                                    continue
-                                migrated.append({'terms': [None] * self.TERM_COUNT})
-                            self.slots = migrated
-                            print(f"[DEBUG] edit_slot: loaded fallback slots from {p}")
-                            break
-                    except Exception as e:
-                        print(f"[DEBUG] edit_slot: failed reading fallback {p}: {e}")
-        except Exception:
-            pass
+                                self.slots = migrated
+                                print(f"[DEBUG] edit_slot: loaded fallback slots from {p}")
+                                break
+                        except Exception as e:
+                            print(f"[DEBUG] edit_slot: failed reading fallback {p}: {e}")
+            except Exception:
+                pass
 
         # Ensure slot wrapper exists
         if not self.slots[idx]:
@@ -1371,39 +1408,22 @@ class AssignItemsScreen(tk.Frame):
             self._publish_assignments()
 
     def load_slots(self):
+        target_path = self._custom_save_path if self.custom_mode else self._save_path
         try:
-            if os.path.exists(self._save_path):
-                with open(self._save_path, 'r', encoding='utf-8-sig') as f:
-                    data = json.load(f)
-                # Support multiple persisted formats and migrate to per-slot 'terms' wrapper
-                if isinstance(data, list) and len(data) >= self.MAX_SLOTS:
-                    data = data[:self.MAX_SLOTS]
-                    migrated = []
-                    for entry in data:
-                        if entry is None:
-                            migrated.append({'terms': [None] * self.TERM_COUNT})
-                            continue
-                        # If entry already has 'terms' key assume new format
-                        if isinstance(entry, dict) and 'terms' in entry and isinstance(entry['terms'], list):
-                            terms = (entry['terms'] + [None]*self.TERM_COUNT)[:self.TERM_COUNT]
-                            migrated.append({'terms': terms})
-                            continue
-                        # If entry is a plain dict for old single-term format, put it into term0
-                        if isinstance(entry, dict):
-                            migrated.append({'terms': [entry] + [None]*(self.TERM_COUNT-1)})
-                            continue
-                        # Fallback
-                        migrated.append({'terms': [None] * self.TERM_COUNT})
-                    self.slots = migrated
-                else:
-                    # Migrate or initialize default
-                    self.slots = [{'terms': [None] * self.TERM_COUNT} for _ in range(self.MAX_SLOTS)]
+            loaded = self._load_slots_from_path(target_path)
+            if loaded is not None:
+                self.slots = loaded
             else:
-                # Initialize placeholders
-                self.slots = [{'terms': [None] * self.TERM_COUNT} for _ in range(self.MAX_SLOTS)]
+                self.slots = self._empty_slots_template()
         except Exception as e:
             print(f"Failed to load slots: {e}")
-            self.slots = [{'terms': [None] * self.TERM_COUNT} for _ in range(self.MAX_SLOTS)]
+            self.slots = self._empty_slots_template()
+
+        if self.custom_mode:
+            try:
+                self._custom_slots = copy.deepcopy(self.slots)
+            except Exception:
+                pass
         self.refresh_all()
         # Ensure controller sees current assignments
         self._publish_assignments()
@@ -1435,8 +1455,15 @@ class AssignItemsScreen(tk.Frame):
 
     def save_slots(self):
         try:
-            with open(self._save_path, 'w') as f:
+            target_path = self._custom_save_path if self.custom_mode else self._save_path
+            with open(target_path, 'w', encoding='utf-8') as f:
                 json.dump(self.slots, f, indent=2)
+
+            if self.custom_mode:
+                try:
+                    self._custom_slots = copy.deepcopy(self.slots)
+                except Exception:
+                    pass
             # Optionally surface assigned slots to controller for runtime use
             try:
                 setattr(self.controller, 'assigned_slots', self.slots)
@@ -1449,7 +1476,7 @@ class AssignItemsScreen(tk.Frame):
                     pass
             except Exception:
                 pass
-            tk.messagebox.showinfo('Saved', f'Assigned slots saved to {self._save_path}', parent=self)
+            tk.messagebox.showinfo('Saved', f'Assigned slots saved to {target_path}', parent=self)
         except Exception as e:
             tk.messagebox.showerror('Save Error', f'Failed to save assigned slots: {e}', parent=self)
 

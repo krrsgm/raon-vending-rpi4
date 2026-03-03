@@ -1,4 +1,4 @@
-﻿import tkinter as tk
+import tkinter as tk
 from tkinter import ttk
 import time
 import platform
@@ -58,7 +58,7 @@ class SharedSerialReader(threading.Thread):
         self.ir2_pattern = re.compile(r"IR2.*?:\s*(BLOCKED|CLEAR)", re.IGNORECASE)
         self.coin_pattern = re.compile(r"\[COIN\].*?Value:\s*[^\d-]*([-\d.]+)(?:.*?Total:\s*[^\d-]*([-\d.]+))?", re.IGNORECASE)
         self.balance_pattern = re.compile(r"BALANCE:\s*[^\d-]*([-\d.]+)", re.IGNORECASE)
-        self.bill_pattern = re.compile(r"(?:BILL\s+INSERTED|BILL)[:\s]*[\u20B1Ã¢â€šÂ±]?\s*(\d+)", re.IGNORECASE)
+        self.bill_pattern = re.compile(r"(?:BILL\s+INSERTED|BILL)[:\s]*(?:\u20B1|P)?\s*(\d+)", re.IGNORECASE)
         self.tec_pattern = re.compile(r"TEC\s*:\s*(ON|OFF)", re.IGNORECASE)
 
     def run(self):
@@ -447,8 +447,7 @@ class DHT22Display(tk.Frame):
         # Temperature frame
         self.temp_frame = ttk.Frame(self.container)
         self.temp_frame.pack(fill='x', pady=2)
-        
-        self.temp_icon = ttk.Label(self.temp_frame, text="ðŸŒ¡ï¸", font=('Helvetica', 16))
+        self.temp_icon = ttk.Label(self.temp_frame, text="\U0001F321", font=('Helvetica', 16))
         self.temp_icon.pack(side='left', padx=5)
         
         self.temp_reading = ttk.Label(
@@ -460,7 +459,7 @@ class DHT22Display(tk.Frame):
         
         self.temp_unit = ttk.Label(
             self.temp_frame,
-            text="Â°C",
+            text="\u00B0C",
             style='Unit.TLabel'
         )
         self.temp_unit.pack(side='left')
@@ -468,8 +467,7 @@ class DHT22Display(tk.Frame):
         # Humidity frame
         self.humid_frame = ttk.Frame(self.container)
         self.humid_frame.pack(fill='x', pady=2)
-        
-        self.humid_icon = ttk.Label(self.humid_frame, text="ðŸ’§", font=('Helvetica', 16))
+        self.humid_icon = ttk.Label(self.humid_frame, text="\U0001F4A7", font=('Helvetica', 16))
         self.humid_icon.pack(side='left', padx=5)
         
         self.humid_reading = ttk.Label(
@@ -557,5 +555,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

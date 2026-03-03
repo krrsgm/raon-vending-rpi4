@@ -63,8 +63,7 @@ const int MUX1_LIMIT_PIN = 17;                // Limit switch for MUX1
 const int MUX2_LIMIT_PIN = 18;                // Limit switch for MUX2
 const int MUX3_LIMIT_PIN = 19;                // Limit switch for MUX3
 const int REQUIRED_LIMIT_PULSES = 2;          // 2 pulses = one full 360 deg spring turn
-const unsigned long LIMIT_EDGE_DEBOUNCE_US = 3000;  // reject rapid edge bounce on CHANGE interrupt
-const unsigned long LIMIT_MIN_PULSE_SPACING_US = 8000;  // minimum gap between counted falling pulses
+const unsigned long LIMIT_PULSE_DEBOUNCE_US = 8000; // reject rapid switch bounce on pulse input
 const unsigned long LIMIT_FAILSAFE_MS = 15000; // Safety timeout if limit pulses are missing
 // ============================================================================
 // MULTIPLEXER PIN DEFINITIONS
@@ -113,9 +112,6 @@ volatile int active_slot_by_mux[NUM_MUXES] = {-1, -1, -1};
 int limit_pulse_count[NUM_MUXES] = {0, 0, 0};
 volatile int limit_irq_pulse_count[NUM_MUXES] = {0, 0, 0};
 volatile unsigned long limit_last_pulse_us[NUM_MUXES] = {0, 0, 0};
-volatile int limit_last_state_irq[NUM_MUXES] = {HIGH, HIGH, HIGH};
-volatile bool limit_ready_for_fall[NUM_MUXES] = {true, true, true};
-volatile unsigned long limit_last_edge_us[NUM_MUXES] = {0, 0, 0};
 
 // --- Coin Acceptor State ---
 volatile float received_amount = 0.0;
@@ -176,28 +172,11 @@ void IRAM_ATTR coin_interrupt() {
 
 void IRAM_ATTR handleLimitPulse(uint8_t mux) {
   unsigned long now_us = micros();
-  if ((now_us - limit_last_edge_us[mux]) < LIMIT_EDGE_DEBOUNCE_US) {
+  if ((now_us - limit_last_pulse_us[mux]) < LIMIT_PULSE_DEBOUNCE_US) {
     return;
   }
-  int current_state = digitalRead(LIMIT_PINS[mux]);
-  if (current_state == limit_last_state_irq[mux]) {
-    return;
-  }
-
-  limit_last_edge_us[mux] = now_us;
-  limit_last_state_irq[mux] = current_state;
-
-  // Re-arm on rising edge; only count falling edge when armed and spaced.
-  if (current_state == HIGH) {
-    limit_ready_for_fall[mux] = true;
-    return;
-  }
-
-  if (active_slot_by_mux[mux] >= 0 &&
-      limit_ready_for_fall[mux] &&
-      (now_us - limit_last_pulse_us[mux] >= LIMIT_MIN_PULSE_SPACING_US)) {
-    limit_ready_for_fall[mux] = false;
-    limit_last_pulse_us[mux] = now_us;
+  limit_last_pulse_us[mux] = now_us;
+  if (active_slot_by_mux[mux] >= 0) {
     limit_irq_pulse_count[mux]++;
   }
 }
@@ -239,9 +218,9 @@ void setup() {
   pinMode(MUX1_LIMIT_PIN, INPUT_PULLUP);
   pinMode(MUX2_LIMIT_PIN, INPUT_PULLUP);
   pinMode(MUX3_LIMIT_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(MUX1_LIMIT_PIN), limit1_interrupt, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(MUX2_LIMIT_PIN), limit2_interrupt, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(MUX3_LIMIT_PIN), limit3_interrupt, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(MUX1_LIMIT_PIN), limit1_interrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(MUX2_LIMIT_PIN), limit2_interrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(MUX3_LIMIT_PIN), limit3_interrupt, FALLING);
 
   // Initialize coin acceptor pin
   pinMode(COIN_PIN, INPUT_PULLUP);
@@ -261,9 +240,6 @@ void setup() {
     limit_pulse_count[mux] = 0;
     limit_irq_pulse_count[mux] = 0;
     limit_last_pulse_us[mux] = 0;
-    limit_last_state_irq[mux] = digitalRead(LIMIT_PINS[mux]);
-    limit_ready_for_fall[mux] = (limit_last_state_irq[mux] == HIGH);
-    limit_last_edge_us[mux] = 0;
   }
 
   // Initialize USB serial for debugging
@@ -356,7 +332,7 @@ void loop() {
   }
 
   // Handle mux limit switches.
-  // Edges are captured in ISR on CHANGE; only valid falling pulses are counted.
+  // Pulses are captured in ISR on FALLING edge and consumed here.
   // 2 pulses = one full rotation.
   unsigned long now = millis();
   for (int mux = 0; mux < NUM_MUXES; mux++) {
@@ -377,9 +353,6 @@ void loop() {
         noInterrupts();
         limit_irq_pulse_count[mux] = 0;
         limit_last_pulse_us[mux] = 0;
-        limit_last_state_irq[mux] = digitalRead(LIMIT_PINS[mux]);
-        limit_ready_for_fall[mux] = (limit_last_state_irq[mux] == HIGH);
-        limit_last_edge_us[mux] = 0;
         interrupts();
       }
     }
@@ -479,9 +452,6 @@ void clearMuxTrackingForSlot(int idx) {
     noInterrupts();
     limit_irq_pulse_count[mux_num] = 0;
     limit_last_pulse_us[mux_num] = 0;
-    limit_last_state_irq[mux_num] = digitalRead(LIMIT_PINS[mux_num]);
-    limit_ready_for_fall[mux_num] = (limit_last_state_irq[mux_num] == HIGH);
-    limit_last_edge_us[mux_num] = 0;
     interrupts();
   }
 }
@@ -649,9 +619,6 @@ void processCommand(String cmd, Stream &out) {
           noInterrupts();
           limit_irq_pulse_count[mux_num] = 0;
           limit_last_pulse_us[mux_num] = 0;
-          limit_last_state_irq[mux_num] = digitalRead(LIMIT_PINS[mux_num]);
-          limit_ready_for_fall[mux_num] = (limit_last_state_irq[mux_num] == HIGH);
-          limit_last_edge_us[mux_num] = 0;
           interrupts();
           active_slot_by_mux[mux_num] = idx;
           limit_pulse_count[mux_num] = 0;

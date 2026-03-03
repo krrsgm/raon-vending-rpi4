@@ -69,7 +69,7 @@ class KioskFrame(tk.Frame):
         # Pre-compute keyword map for fast category detection (only once, not per item)
         self._keyword_map = {
             'Resistor': ['resistor', 'ohm'],
-            'Capacitor': ['capacitor', 'farad', 'µf', 'uf', 'pf'],
+            'Capacitor': ['capacitor', 'farad', 'Âµf', 'uf', 'pf'],
             'IC': ['ic', 'chip', 'integrated circuit'],
             'Amplifier': ['amplifier', 'amp', 'opamp', 'op-amp'],
             'Board': ['board', 'pcb', 'breadboard', 'shield'],
@@ -182,6 +182,30 @@ class KioskFrame(tk.Frame):
         """Navigates to the item screen. Called only if no drag occurs."""
         if self._clicked_item_data:
             self.controller.show_item(self._clicked_item_data)
+
+    def _is_descendant_widget(self, widget, ancestor):
+        """Return True when widget is ancestor itself or one of its descendants."""
+        w = widget
+        while w is not None:
+            if w == ancestor:
+                return True
+            try:
+                parent_name = w.winfo_parent()
+                if not parent_name:
+                    break
+                w = w.nametowidget(parent_name)
+            except Exception:
+                break
+        return False
+
+    def _pointer_over_canvas(self):
+        """Check if current pointer is over the item canvas or its child widgets."""
+        try:
+            hovered = self.winfo_containing(self.winfo_pointerx(), self.winfo_pointery())
+            return self._is_descendant_widget(hovered, self.canvas)
+        except Exception:
+            return False
+
     def create_item_card(self, parent, item_data):
         """Creates a single item card widget with dimensions: 1in width x 2.5in height."""
         # Determine stock status and color-coding
@@ -192,15 +216,15 @@ class KioskFrame(tk.Frame):
         if quantity <= 0:
             stock_status = 'out_of_stock'
             border_color = '#e74c3c'  # Red
-            stock_indicator = '❌ OUT'
+            stock_indicator = 'âŒ OUT'
         elif quantity <= default_threshold:
             stock_status = 'low_stock'
             border_color = '#f39c12'  # Orange/Yellow
-            stock_indicator = f'⚠️ {quantity}'
+            stock_indicator = f'âš ï¸ {quantity}'
         else:
             stock_status = 'in_stock'
             border_color = '#27ae60'  # Green
-            stock_indicator = f'✓ {quantity}'
+            stock_indicator = f'âœ“ {quantity}'
         
         card = tk.Frame(
             parent,
@@ -317,9 +341,10 @@ class KioskFrame(tk.Frame):
         bottom_frame = tk.Frame(card, bg=self.colors['card_bg'])
         bottom_frame.pack(fill='x', padx=10, pady=(0, 10))
 
-        # Use configured currency symbol from controller.config when available
-        cfg = getattr(self.controller, 'config', {}) or {}
-        currency = cfg.get('currency_symbol', getattr(self.controller, 'currency_symbol', '₱'))
+        # Use normalized currency symbol from controller to avoid stale "$" in UI.
+        currency = str(getattr(self.controller, 'currency_symbol', "\u20b1") or "\u20b1").strip()
+        if (not currency) or (currency in {"$", "US$", "USD", "PHP", "Php", "php"}):
+            currency = "\u20b1"
         price_lbl = tk.Label(
             bottom_frame,
             text=f"{currency}{item_data.get('price',0):.2f}",
@@ -436,7 +461,7 @@ class KioskFrame(tk.Frame):
         sidebar.pack(side='left', fill='y', padx=(12,6), pady=12)
         sidebar.pack_propagate(False)
 
-        # (Search box removed — category-only browsing)
+        # (Search box removed â€” category-only browsing)
 
         # Categories display: extract dynamically from assigned items
         ttk.Label(sidebar, text='Component Categories', background='#f7fafc', font=self.fonts['description']).pack(anchor='w', padx=8, pady=(12,4))
@@ -539,19 +564,28 @@ class KioskFrame(tk.Frame):
         # Enable mouse wheel / touchpad scrolling for the kiosk (cross-platform)
         def _on_mousewheel_kiosk(event):
             try:
-                # Prefer using event.delta (Windows/macOS). delta is multiple of 120 on Windows.
-                if hasattr(event, 'delta') and event.delta:
-                    # Normalize to number of scroll units
-                    step = int(event.delta / 120)
-                    # Reverse sign for natural scrolling consistency
-                    if step != 0:
-                        self.canvas.yview_scroll(-step, 'units')
-                        return
-                # Fallback for X11 mouse wheel (Button-4/5)
+                # Handle wheel only when pointer is on the product list area.
+                if not self._pointer_over_canvas():
+                    return
+
+                step = 0
+                # Linux X11 wheel events.
                 if getattr(event, 'num', None) == 4:
-                    self.canvas.yview_scroll(-3, 'units')
+                    step = -3
                 elif getattr(event, 'num', None) == 5:
-                    self.canvas.yview_scroll(3, 'units')
+                    step = 3
+                else:
+                    # Windows/macOS/hi-res wheels: delta may be +/-120, +/-1, or another small value.
+                    delta = int(getattr(event, 'delta', 0) or 0)
+                    if delta != 0:
+                        if abs(delta) >= 120:
+                            step = -int(delta / 120)
+                        else:
+                            step = -1 if delta > 0 else 1
+
+                if step != 0:
+                    self.canvas.yview_scroll(step, 'units')
+                    return 'break'
             except Exception:
                 pass
 

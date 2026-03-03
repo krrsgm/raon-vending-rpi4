@@ -14,8 +14,8 @@
     - GET_BALANCE, RESET_BALANCE, SET_COIN_VALUE, SET_OUTPUT, STATUS
     
   Protocol (RXTX text-based commands, terminated with newline):
-    - PULSE <slot> [timeout_ms] : run output until 2 limit-switch events (click + unclick)
-                                  and at least minimum motor run time
+    - PULSE <slot> [timeout_ms] : run output until 2 limit-switch events (click + unclick),
+                                  not less than 3s and not more than 4s runtime
     - OPEN <slot>         : set output on continuously
     - CLOSE <slot>        : set output off
     - OPENALL             : set all outputs on
@@ -68,6 +68,7 @@ const unsigned long LIMIT_EVENT_DEBOUNCE_US = 12000; // reject rapid switch boun
 const unsigned long LIMIT_HALF_CYCLE_MIN_US = 30000; // min time between click and unclick for a valid cycle
 const unsigned long LIMIT_FAILSAFE_MS = 15000; // Safety timeout if limit pulses are missing
 const unsigned long MIN_ROTATION_MS = 3000;    // Require motor ON for >=3s before counting full rotation complete
+const unsigned long MAX_ROTATION_MS = 4000;    // Force stop at 4s for consistent single-rotation runtime
 // ============================================================================
 // MULTIPLEXER PIN DEFINITIONS
 // ============================================================================
@@ -418,6 +419,22 @@ void loop() {
     Serial.println(getLimitStatusString());
   }
 
+  // Enforce max runtime for pulse-driven vending to keep rotation duration consistent.
+  for (int i = 0; i < NUM_OUTPUTS; i++) {
+    if (active_started_at[i] != 0 && outputs_state[i]) {
+      unsigned long elapsed_ms = now - active_started_at[i];
+      if (elapsed_ms >= MAX_ROTATION_MS) {
+        Serial.print("[PULSE WARN] Slot ");
+        Serial.print(i + 1);
+        Serial.println(" reached 4s runtime cap; stopping motor.");
+        active_until[i] = 0;
+        active_started_at[i] = 0;
+        setOutput(i, false);
+        clearMuxTrackingForSlot(i);
+      }
+    }
+  }
+
   // Failsafe timeout in case limit switch pulses are not detected
   for (int i = 0; i < NUM_OUTPUTS; i++) {
     if (active_until[i] != 0 && now >= active_until[i]) {
@@ -648,7 +665,7 @@ void processCommand(String cmd, Stream &out) {
   command.toUpperCase();
 
   // PULSE <slot> [timeout_ms] - run until 2 mux limit-switch events
-  // and minimum rotation runtime are both satisfied.
+  // and runtime window constraints (3s minimum, 4s maximum) are satisfied.
   // Optional timeout argument sets the failsafe stop timeout in milliseconds.
   if (command == "PULSE") {
     if (partCount >= 2) {

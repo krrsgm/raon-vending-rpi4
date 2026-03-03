@@ -63,6 +63,7 @@ const int MUX1_LIMIT_PIN = 17;                // Limit switch for MUX1
 const int MUX2_LIMIT_PIN = 18;                // Limit switch for MUX2
 const int MUX3_LIMIT_PIN = 19;                // Limit switch for MUX3
 const int REQUIRED_LIMIT_CHANGES = 4;         // 4 state changes (2 pulses) = one full 360 deg spring turn
+const unsigned long LIMIT_CHANGE_DEBOUNCE_US = 8000; // reject rapid switch bounce on CHANGE interrupts
 const unsigned long LIMIT_FAILSAFE_MS = 15000; // Safety timeout if limit changes are missing
 // ============================================================================
 // MULTIPLEXER PIN DEFINITIONS
@@ -111,6 +112,7 @@ volatile int active_slot_by_mux[NUM_MUXES] = {-1, -1, -1};
 int limit_change_count[NUM_MUXES] = {0, 0, 0};
 volatile int limit_irq_change_count[NUM_MUXES] = {0, 0, 0};
 volatile int limit_last_state_irq[NUM_MUXES] = {HIGH, HIGH, HIGH};
+volatile unsigned long limit_last_change_us[NUM_MUXES] = {0, 0, 0};
 
 // --- Coin Acceptor State ---
 volatile float received_amount = 0.0;
@@ -170,9 +172,14 @@ void IRAM_ATTR coin_interrupt() {
 }
 
 void IRAM_ATTR handleLimitChange(uint8_t mux) {
+  unsigned long now_us = micros();
+  if ((now_us - limit_last_change_us[mux]) < LIMIT_CHANGE_DEBOUNCE_US) {
+    return;
+  }
   int current_state = digitalRead(LIMIT_PINS[mux]);
   if (current_state != limit_last_state_irq[mux]) {
     limit_last_state_irq[mux] = current_state;
+    limit_last_change_us[mux] = now_us;
     if (active_slot_by_mux[mux] >= 0) {
       limit_irq_change_count[mux]++;
     }
@@ -238,6 +245,7 @@ void setup() {
     limit_change_count[mux] = 0;
     limit_irq_change_count[mux] = 0;
     limit_last_state_irq[mux] = digitalRead(LIMIT_PINS[mux]);
+    limit_last_change_us[mux] = 0;
   }
 
   // Initialize USB serial for debugging
@@ -351,6 +359,7 @@ void loop() {
         noInterrupts();
         limit_irq_change_count[mux] = 0;
         limit_last_state_irq[mux] = digitalRead(LIMIT_PINS[mux]);
+        limit_last_change_us[mux] = 0;
         interrupts();
       }
     }
@@ -450,6 +459,7 @@ void clearMuxTrackingForSlot(int idx) {
     noInterrupts();
     limit_irq_change_count[mux_num] = 0;
     limit_last_state_irq[mux_num] = digitalRead(LIMIT_PINS[mux_num]);
+    limit_last_change_us[mux_num] = 0;
     interrupts();
   }
 }
@@ -617,6 +627,7 @@ void processCommand(String cmd, Stream &out) {
           noInterrupts();
           limit_irq_change_count[mux_num] = 0;
           limit_last_state_irq[mux_num] = digitalRead(LIMIT_PINS[mux_num]);
+          limit_last_change_us[mux_num] = 0;
           interrupts();
           active_slot_by_mux[mux_num] = idx;
           limit_change_count[mux_num] = 0;

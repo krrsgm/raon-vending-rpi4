@@ -938,66 +938,21 @@ class AssignItemsScreen(tk.Frame):
         if not self.slots[idx]:
             self.slots[idx] = {'terms': [None] * self.TERM_COUNT}
         
-        # Get the item for the current term
-        current_item = None
-        try:
-            slot = self.slots[idx]
-            if slot and 'terms' in slot and len(slot['terms']) > self.current_term:
-                current_item = slot['terms'][self.current_term]
-        except Exception:
-            pass
-        
-        # In custom mode, open full editor; in preset, open price/stock editor
-        if self.custom_mode:
-            # Custom mode: open full EditSlotDialog for item selection/creation
-            term_options = self.slots[idx].get('terms') or [None]*self.TERM_COUNT
-            dlg = EditSlotDialog(self.master, slot_idx=idx, term_options=term_options, current_term_idx=self.current_term, category_options=self.get_category_options())
-            self.master.wait_window(dlg)
-            if getattr(dlg, 'result', None):
-                self.slots[idx]['terms'][self.current_term] = dlg.result
-                self.refresh_slot(idx)
-                self._publish_assignments()
-            return
-        
-        # Preset mode: only allow price/stock/image editing
-        if not current_item:
-            tk.messagebox.showwarning("Empty Slot", f"Slot {idx+1} is empty for Term {self.current_term+1}.\nUse Custom mode to assign an item.", parent=self)
-            return
-
-        # Auto-fill description if it's just a price or empty
-        item_to_edit = dict(current_item)
-        current_desc = item_to_edit.get('description', '').strip()
-        if not current_desc or current_desc.startswith('P') and current_desc[1:].isdigit():
-            # Description is empty or just a price, auto-generate one
-            auto_desc = self._generate_description_for_item(
-                item_to_edit.get('name', ''),
-                item_to_edit.get('price', 0)
-            )
-            item_to_edit['description'] = auto_desc
-
-        # Open Price/Stock viewer but allow editing of price, quantity and description
-        dlg = PriceStockDialog(self.master, item_data=item_to_edit, read_only=False, category_options=self.get_category_options())
-        # Restrict some fields (keep price/qty/description editable; disable category/image)
-        try:
-            dlg._set_readonly()
-        except Exception:
-            pass
+        # Allow full slot editing in both Preset and Custom modes.
+        term_options = self.slots[idx].get('terms') or [None] * self.TERM_COUNT
+        dlg = EditSlotDialog(
+            self.master,
+            slot_idx=idx,
+            term_options=term_options,
+            current_term_idx=self.current_term,
+            category_options=self.get_category_options(),
+        )
         self.master.wait_window(dlg)
-        # If user saved changes, merge editable fields back into the slot and publish
-        try:
-            if getattr(dlg, 'result', None):
-                updated = dlg.result
-                # update only editable fields to avoid changing name/code unintentionally
-                cur = self.slots[idx]['terms'][self.current_term] or {}
-                cur = dict(cur)
-                for k in ('price', 'quantity', 'category', 'description', 'image'):
-                    if k in updated:
-                        cur[k] = updated[k]
-                self.slots[idx]['terms'][self.current_term] = cur
-                self.refresh_slot(idx)
-                self._publish_assignments()
-        except Exception:
-            pass
+        if getattr(dlg, 'result', None):
+            self.slots[idx]['terms'][self.current_term] = dlg.result
+            self.refresh_slot(idx)
+            self._publish_assignments()
+        return
 
     def _check_esp32_connection(self, esp32_host):
         """Check if ESP32 is reachable by sending a STATUS command."""

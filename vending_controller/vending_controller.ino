@@ -14,7 +14,7 @@
     - GET_BALANCE, RESET_BALANCE, SET_COIN_VALUE, SET_OUTPUT, STATUS
     
   Protocol (RXTX text-based commands, terminated with newline):
-    - PULSE <slot> [timeout_ms] : run output until 2 limit-switch pulses (with optional failsafe timeout)
+    - PULSE <slot> [timeout_ms] : run output until 2 limit-switch state changes (with optional failsafe timeout)
     - OPEN <slot>         : set output on continuously
     - CLOSE <slot>        : set output off
     - OPENALL             : set all outputs on
@@ -23,7 +23,7 @@
     - LIMIT_STATUS        : returns pin states for GPIO17/18/19 with active slot and pulse count per mux
     
   Example commands:
-    PULSE 12\n            → run slot 12 until 2 limit-switch pulses
+    PULSE 12\n            → run slot 12 until 2 limit-switch state changes
     STATUS\n              → returns "1,5,12\n" if slots 1, 5, 12 are on
 */
 
@@ -593,7 +593,7 @@ void processCommand(String cmd, Stream &out) {
   String command = parts[0];
   command.toUpperCase();
 
-  // PULSE <slot> [timeout_ms] - run until 2 mux limit-switch pulses (timeout is failsafe)
+  // PULSE <slot> [timeout_ms] - run until 2 mux limit-switch state changes (timeout is failsafe)
   if (command == "PULSE") {
     if (partCount >= 2) {
       int slot = parts[1].toInt();

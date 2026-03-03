@@ -988,7 +988,7 @@ class AssignItemsScreen(tk.Frame):
     def _wait_for_slot_rotation_complete(self, esp32_host, slot_num, timeout_sec=18.0, poll_interval_sec=0.15, debug=False):
         """
         Wait until a slot is no longer active in STATUS.
-        In firmware, this corresponds to a completed rotation (2 limit-switch pulses)
+        In firmware, this corresponds to a completed rotation (2 limit-switch state changes)
         or a failsafe timeout.
         """
         deadline = time.time() + max(1.0, float(timeout_sec))
@@ -1011,7 +1011,7 @@ class AssignItemsScreen(tk.Frame):
         return False
 
     def test_motor(self, idx):
-        """Test one full spring rotation for the given slot (2 limit pulses)."""
+        """Test one full spring rotation for the given slot (2 limit state changes)."""
         import logging
         
         slot_num = idx + 1  # Slots are 1-indexed
@@ -1052,7 +1052,7 @@ class AssignItemsScreen(tk.Frame):
             print(f"[TEST MOTOR] ESP32 connection OK. Status: {status_msg}")
             print(f"[TEST MOTOR] Slot {slot_num} LIMIT_STATUS before pulse: {self._read_limit_status(esp32_host)}")
             
-            # Trigger one full spring rotation; firmware stops at 2 limit pulses.
+            # Trigger one full spring rotation; firmware stops at 2 limit state changes.
             print(f"[TEST MOTOR] Pulsing slot {slot_num}...")
             # Ensure machine supports only slots 1-40
             if slot_num < 1 or slot_num > self.MAX_SLOTS:
@@ -1072,7 +1072,7 @@ class AssignItemsScreen(tk.Frame):
             except Exception:
                 failsafe_ms = 15000
 
-            # Use PULSE with failsafe timeout; completion is based on limit pulses.
+            # Use PULSE with failsafe timeout; completion is based on limit state changes.
             result = pulse_slot(esp32_host, slot_num, failsafe_ms, timeout=3.0)
             
             # Validate response - should contain "OK"
@@ -1088,10 +1088,10 @@ class AssignItemsScreen(tk.Frame):
                 if completed:
                     messagebox.showinfo(
                         "Motor Test Success",
-                        f"Slot {slot_num} completed one rotation (2 limit-switch pulses).\n\nESP32 Response: {result}",
+                        f"Slot {slot_num} completed one rotation (2 limit-switch state changes).\n\nESP32 Response: {result}",
                         parent=self
                     )
-                    print(f"[TEST MOTOR] SUCCESS: Slot {slot_num} completed one rotation via 2 pulses.")
+                    print(f"[TEST MOTOR] SUCCESS: Slot {slot_num} completed one rotation via 2 state changes.")
                 else:
                     messagebox.showwarning(
                         "Motor Test Warning",

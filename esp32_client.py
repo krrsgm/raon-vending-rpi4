@@ -321,9 +321,13 @@ def send_command(host, cmd, port=DEFAULT_PORT, timeout=2.0, retries=3, use_persi
 
 
 def pulse_slot(host, slot, ms=800, port=DEFAULT_PORT, timeout=2.0):
-    """Pulse a slot number (1-based) for ms milliseconds."""
+    """Pulse a slot number (1-based) for ms milliseconds.
+
+    Important: `PULSE` is non-idempotent, so transport-level retries must be
+    disabled to avoid accidental extra rotations when ACKs are delayed.
+    """
     cmd = f"PULSE {int(slot)} {int(ms)}"
-    return send_command(host, cmd, port=port, timeout=timeout)
+    return send_command(host, cmd, port=port, timeout=timeout, retries=1)
 
 
 def open_slot(host, slot, port=DEFAULT_PORT):

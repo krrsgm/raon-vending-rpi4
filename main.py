@@ -1426,15 +1426,39 @@ class MainApp(tk.Tk):
 
         print(f'[VEND] Found {len(selected_matches)} slot(s) for "{item_name}": {selected_matches}')
         print(f'[VEND] Using ESP32 host: {host}, rotation_failsafe_ms: {pulse_timeout_ms}')
+        try:
+            retry_delay_ms = int(self.config.get('hardware', {}).get('vend_retry_delay_ms', 350))
+        except Exception:
+            retry_delay_ms = 350
+        if retry_delay_ms < 0:
+            retry_delay_ms = 0
+        try:
+            max_attempts = int(self.config.get('hardware', {}).get('vend_max_attempts_total', 0))
+        except Exception:
+            max_attempts = 0
+        if max_attempts < 0:
+            max_attempts = 0
+        try:
+            target_quantity = int(quantity)
+        except Exception:
+            target_quantity = 1
+        if target_quantity <= 0:
+            print(f'[VEND] No quantity requested for "{item_name}".')
+            return
         
-        # Round-robin distribute pulses; stop immediately on first unconfirmed dispense.
+        # Round-robin distribute pulses and keep retrying until required quantity is met.
         successful_dispenses = 0
-        for i in range(quantity):
-            slot_number = selected_matches[i % len(selected_matches)]
+        total_attempts = 0
+        while successful_dispenses < target_quantity:
+            slot_number = selected_matches[successful_dispenses % len(selected_matches)]
+            total_attempts += 1
+            if max_attempts > 0 and total_attempts > max_attempts:
+                print(f'[VEND] ERROR: Reached max attempts ({max_attempts}) for "{item_name}" at {successful_dispenses}/{target_quantity}.')
+                break
             dispense_completed = False
             try:
                 with self._vend_lock:
-                    print(f'[VEND] Pulsing slot {slot_number} (2-pulse rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name}, quantity item {i+1}/{quantity})')
+                    print(f'[VEND] Pulsing slot {slot_number} (2-pulse rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name}, quantity item {successful_dispenses+1}/{target_quantity}, attempt {total_attempts})')
                     
                     # Start monitoring dispense for this slot if dispense monitor is available
                     if self.dispense_monitor:
@@ -1502,11 +1526,13 @@ class MainApp(tk.Tk):
             if dispense_completed:
                 successful_dispenses += 1
             else:
-                print(f'[VEND] STOP: Required dispenses not met for "{item_name}". Completed {successful_dispenses}/{quantity}.')
-                break
+                print(f'[VEND] RETRY: "{item_name}" still at {successful_dispenses}/{target_quantity}.')
+                if retry_delay_ms > 0:
+                    time.sleep(retry_delay_ms / 1000.0)
+                continue
 
             # Apply a brief stop between repeated rotations on the same slot.
-            if len(selected_matches) == 1 and successful_dispenses < int(quantity) and same_slot_pause_ms > 0:
+            if len(selected_matches) == 1 and successful_dispenses < target_quantity and same_slot_pause_ms > 0:
                 print(f'[VEND] Same-slot pause: {same_slot_pause_ms}ms before next rotation on slot {slot_number}.')
                 time.sleep(same_slot_pause_ms / 1000.0)
 
@@ -1518,10 +1544,10 @@ class MainApp(tk.Tk):
             except Exception:
                 time.sleep(0.2)
 
-        if successful_dispenses < int(quantity):
-            print(f'[VEND] INCOMPLETE: "{item_name}" dispensed {successful_dispenses}/{quantity}.')
+        if successful_dispenses < target_quantity:
+            print(f'[VEND] INCOMPLETE: "{item_name}" dispensed {successful_dispenses}/{target_quantity}.')
         else:
-            print(f'[VEND] COMPLETE: "{item_name}" dispensed {successful_dispenses}/{quantity}.')
+            print(f'[VEND] COMPLETE: "{item_name}" dispensed {successful_dispenses}/{target_quantity}.')
 
     def vend_cart_items_organized(self, cart_items):
         """Dispense multiple items organized by slot in ascending order.
@@ -1643,6 +1669,18 @@ class MainApp(tk.Tk):
             same_slot_pause_ms = 300
         if same_slot_pause_ms < 0:
             same_slot_pause_ms = 0
+        try:
+            retry_delay_ms = int(self.config.get('hardware', {}).get('vend_retry_delay_ms', 350))
+        except Exception:
+            retry_delay_ms = 350
+        if retry_delay_ms < 0:
+            retry_delay_ms = 0
+        try:
+            max_attempts_per_slot = int(self.config.get('hardware', {}).get('vend_max_attempts_per_slot', 0))
+        except Exception:
+            max_attempts_per_slot = 0
+        if max_attempts_per_slot < 0:
+            max_attempts_per_slot = 0
         
         print(f'[VEND-ORG] Using ESP32 host: {host}, rotation_failsafe_ms: {pulse_timeout_ms}')
         
@@ -1650,21 +1688,25 @@ class MainApp(tk.Tk):
         # Only move forward when required count is confirmed for the current slot.
         total_required = sum(len(v) for v in slot_to_items.values())
         total_dispensed = 0
-        stop_all_dispense = False
 
         for slot_number in sorted_slots:
             items_for_slot = slot_to_items[slot_number]
             required_for_slot = len(items_for_slot)
             dispensed_for_slot = 0
+            attempts_for_slot = 0
             print(f'[VEND-ORG] Processing slot {slot_number}: required {required_for_slot} item(s)')
 
             while dispensed_for_slot < required_for_slot:
+                attempts_for_slot += 1
+                if max_attempts_per_slot > 0 and attempts_for_slot > max_attempts_per_slot:
+                    print(f'[VEND-ORG] ERROR: Slot {slot_number} hit max attempts ({max_attempts_per_slot}) at {dispensed_for_slot}/{required_for_slot}.')
+                    break
                 item_entry = items_for_slot[dispensed_for_slot]
                 item_name = item_entry.get('name', 'Unknown')
                 dispense_completed = False
                 try:
                     with self._vend_lock:
-                        print(f'[VEND-ORG] Pulsing slot {slot_number} (2-pulse rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name}, dispense {dispensed_for_slot+1}/{required_for_slot})')
+                        print(f'[VEND-ORG] Pulsing slot {slot_number} (2-pulse rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name}, dispense {dispensed_for_slot+1}/{required_for_slot}, attempt {attempts_for_slot})')
 
                         # Start monitoring dispense for this slot if available
                         if self.dispense_monitor:
@@ -1733,9 +1775,10 @@ class MainApp(tk.Tk):
                     dispensed_for_slot += 1
                     total_dispensed += 1
                 else:
-                    print(f'[VEND-ORG] STOP: Slot {slot_number} completed {dispensed_for_slot}/{required_for_slot}. Halting remaining dispensing.')
-                    stop_all_dispense = True
-                    break
+                    print(f'[VEND-ORG] RETRY: Slot {slot_number} still at {dispensed_for_slot}/{required_for_slot}.')
+                    if retry_delay_ms > 0:
+                        time.sleep(retry_delay_ms / 1000.0)
+                    continue
 
                 # Same-slot multi-vend: stop briefly after each full rotation before next.
                 if dispensed_for_slot < required_for_slot and same_slot_pause_ms > 0:
@@ -1750,11 +1793,9 @@ class MainApp(tk.Tk):
                 except Exception:
                     time.sleep(0.2)
 
-            print(f'[VEND-ORG] Slot {slot_number} summary: {dispensed_for_slot}/{required_for_slot} dispensed.')
-            if stop_all_dispense:
-                break
+            print(f'[VEND-ORG] Slot {slot_number} summary: {dispensed_for_slot}/{required_for_slot} dispensed in {attempts_for_slot} attempt(s).')
 
-        if stop_all_dispense:
+        if total_dispensed < total_required:
             print(f'[VEND-ORG] INCOMPLETE: Dispensed {total_dispensed}/{total_required} requested item(s).')
         else:
             print(f'[VEND-ORG] COMPLETE: Dispensed {total_dispensed}/{total_required} requested item(s).')

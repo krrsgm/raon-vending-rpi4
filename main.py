@@ -1317,9 +1317,10 @@ class MainApp(tk.Tk):
                 continue
         return active_slots
 
-    def _wait_for_slot_rotation_complete(self, host, slot_number, timeout_sec=18.0, poll_interval_sec=0.15):
+    def _wait_for_slot_rotation_complete(self, host, slot_number, timeout_sec=18.0, poll_interval_sec=0.15, arm_timeout_sec=1.2):
         """
         Wait until slot is no longer active in ESP32 STATUS.
+        A valid completion requires seeing slot transition active -> inactive.
         Firmware stops the motor after 2 limit-switch pulses (or failsafe timeout).
         """
         try:
@@ -1328,12 +1329,21 @@ class MainApp(tk.Tk):
             return False
 
         deadline = time.time() + max(1.0, float(timeout_sec))
+        arm_deadline = time.time() + max(0.3, float(arm_timeout_sec))
+        saw_active = False
         while time.time() < deadline:
             try:
                 status_msg = send_command(host, "STATUS", timeout=1.0)
                 active_slots = self._parse_active_slots_from_status(status_msg)
-                if int(slot_number) not in active_slots:
-                    return True
+                if int(slot_number) in active_slots:
+                    saw_active = True
+                else:
+                    if saw_active:
+                        return True
+                    if time.time() >= arm_deadline:
+                        # Slot never appeared active after command dispatch;
+                        # treat as unconfirmed dispense so caller can stop safely.
+                        return False
             except Exception:
                 pass
             time.sleep(max(0.05, float(poll_interval_sec)))

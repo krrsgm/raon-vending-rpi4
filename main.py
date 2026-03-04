@@ -180,15 +180,6 @@ class MainApp(tk.Tk):
             self.bind_all("<Escape>", self.handle_escape)
         except Exception:
             pass
-        # Attempt to rotate the display 90 degrees to the right (if running under X on Linux).
-        # This uses `xrandr -o right` and will only run when a DISPLAY is available.
-        try:
-            if platform.system() == "Linux" and os.getenv("DISPLAY"):
-                # Run after a short delay so X is ready
-                self.after(200, lambda: subprocess.run(["xrandr", "-o", "right"]))
-        except Exception as e:
-            print(f"Display rotation request failed: {e}")
-
         # The container is where we'll stack a bunch of frames
         # on top of each other, then the one we want visible
         # will be raised above the others

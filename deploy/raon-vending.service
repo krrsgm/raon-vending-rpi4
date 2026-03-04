@@ -1,21 +1,19 @@
 [Unit]
 Description=RAON Vending Machine Kiosk - Automatic Startup
-After=graphical.target
+After=network.target display-manager.service graphical.target
 
 [Service]
 Type=simple
-# Run as pi user (default Raspberry Pi user)
 User=pi
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/pi/.Xauthority"
-WorkingDirectory=/home/pi/raon-vending
-ExecStart=/usr/bin/python3 main.py
-# Restart on failure with 5 second delay
+WorkingDirectory=/home/pi/raon-vending-rpi4
+ExecStart=/bin/bash /home/pi/raon-vending-rpi4/deploy/start-kiosk-wayland.sh
 Restart=on-failure
 RestartSec=5
-# Kill the service on exit
 KillMode=process
+StandardOutput=journal
+StandardError=journal
 
 [Install]
-# Start after graphical interface loads
 WantedBy=graphical.target

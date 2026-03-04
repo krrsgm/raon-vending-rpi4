@@ -1,6 +1,6 @@
 [Unit]
 Description=RAON Vending Machine Kiosk Application
-After=network.target display-manager.service
+After=network.target display-manager.service graphical.target
 
 [Service]
 Type=simple
@@ -8,7 +8,7 @@ User=pi
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/pi/.Xauthority"
 WorkingDirectory=/home/pi/raon-vending-rpi4
-ExecStart=/usr/bin/python3 /home/pi/raon-vending-rpi4/main.py
+ExecStart=/bin/bash /home/pi/raon-vending-rpi4/deploy/start-kiosk-wayland.sh
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal

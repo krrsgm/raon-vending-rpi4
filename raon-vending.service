@@ -4,11 +4,11 @@ After=network.target display-manager.service graphical.target
 
 [Service]
 Type=simple
-User=pi
+User=raon
 Environment="DISPLAY=:0"
-Environment="XAUTHORITY=/home/pi/.Xauthority"
-WorkingDirectory=/home/pi/raon-vending-rpi4
-ExecStart=/bin/bash /home/pi/raon-vending-rpi4/deploy/start-kiosk-wayland.sh
+Environment="XAUTHORITY=/home/raon/.Xauthority"
+WorkingDirectory=/home/raon/raon-vending-rpi4
+ExecStart=/bin/bash /home/raon/raon-vending-rpi4/deploy/start-kiosk-wayland.sh
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal

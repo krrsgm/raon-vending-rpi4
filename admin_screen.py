@@ -20,6 +20,7 @@ class ItemEditWindow(tk.Toplevel):
         super().__init__(parent)
         self.controller = controller
         self.item_data = item_data
+        self.is_edit_mode = item_data is not None
 
         self.title("Edit Item" if item_data else "Add New Item")
         self._center_window()
@@ -29,6 +30,7 @@ class ItemEditWindow(tk.Toplevel):
         self.create_widgets()
         if item_data:
             self.populate_fields()
+            self._lock_non_stock_fields()
 
         # Center the window on the main application window
         # self._center_window()
@@ -111,12 +113,22 @@ class ItemEditWindow(tk.Toplevel):
             widget.grid(row=i, column=1, sticky="ew", pady=(10, 2))
             self.fields[key] = widget
 
+        if self.is_edit_mode:
+            tk.Label(
+                main_frame,
+                text="Edit mode: only Price and Quantity can be changed.",
+                font=tkfont.Font(family="Helvetica", size=10, weight="bold"),
+                bg="#f0f4f8",
+                fg="#2c3e50",
+                anchor="w",
+            ).grid(row=6, column=0, columnspan=2, sticky="w", pady=(6, 0))
+
         main_frame.grid_columnconfigure(1, weight=1)
 
         # --- Action Buttons ---
         button_frame = tk.Frame(main_frame, bg="#f0f4f8", pady=20)
         button_frame.grid(
-            row=6, column=0, columnspan=2, sticky="ew"  # After the 6 form fields
+            row=7 if self.is_edit_mode else 6, column=0, columnspan=2, sticky="ew"  # After the form fields
         )
 
         save_button = tk.Button(
@@ -165,32 +177,65 @@ class ItemEditWindow(tk.Toplevel):
                 widget.delete(0, tk.END)
                 widget.insert(0, str(value))
 
+    def _lock_non_stock_fields(self):
+        """In edit mode, keep only price/quantity editable."""
+        editable = {"price", "quantity"}
+        for key, widget in self.fields.items():
+            if key in editable:
+                continue
+            try:
+                if isinstance(widget, tk.Text):
+                    widget.config(state="disabled")
+                elif isinstance(widget, ttk.Combobox):
+                    widget.configure(state="disabled")
+                elif isinstance(widget, tk.Entry):
+                    widget.config(state="readonly")
+            except Exception:
+                pass
+
     def save_item(self):
         """Gathers data from fields, validates, and calls controller."""
-        new_data = {}
-        try:
-            for key, widget in self.fields.items():
-                if isinstance(widget, tk.Text):
-                    value = widget.get("1.0", "end-1c").strip()
-                else:
-                    value = widget.get().strip()
-
-                if key in ["price", "quantity"]:
-                    if not value:
-                        raise ValueError(f"{key.capitalize()} cannot be empty.")
-                    new_data[key] = float(value) if key == "price" else int(value)
-                elif key == "name" and not value:
-                    raise ValueError("Name cannot be empty.")
-                else:
-                    new_data[key] = value
-        except ValueError as e:
-            messagebox.showerror("Invalid Input", str(e), parent=self)
-            return
-
         if self.item_data:  # Editing existing item
-            self.controller.update_item(self.item_data["name"], new_data)
+            # Edit mode only updates price and quantity; other fields are preserved.
+            try:
+                price_raw = self.fields["price"].get().strip()
+                qty_raw = self.fields["quantity"].get().strip()
+                if not price_raw:
+                    raise ValueError("Price cannot be empty.")
+                if not qty_raw:
+                    raise ValueError("Quantity cannot be empty.")
+                price_val = float(price_raw)
+                qty_val = int(qty_raw)
+            except ValueError as e:
+                messagebox.showerror("Invalid Input", str(e), parent=self)
+                return
+
+            merged_data = dict(self.item_data)
+            merged_data["price"] = price_val
+            merged_data["quantity"] = qty_val
+            self.controller.update_item(self.item_data["name"], merged_data)
             self.destroy()
         else:  # Adding new item
+            new_data = {}
+            try:
+                for key, widget in self.fields.items():
+                    if isinstance(widget, tk.Text):
+                        value = widget.get("1.0", "end-1c").strip()
+                    else:
+                        value = widget.get().strip()
+
+                    if key in ["price", "quantity"]:
+                        if not value:
+                            raise ValueError(f"{key.capitalize()} cannot be empty.")
+                        new_data[key] = float(value) if key == "price" else int(value)
+                    elif key == "name" and not value:
+                        raise ValueError("Name cannot be empty.")
+                    else:
+                        new_data[key] = value
+            except ValueError as e:
+                messagebox.showerror("Invalid Input", str(e), parent=self)
+                return
+
             # If the item has a category that isn't in the saved config, add it
             try:
                 category = new_data.get('category', '').strip()

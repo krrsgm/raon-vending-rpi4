@@ -1795,14 +1795,92 @@ class MainApp(tk.Tk):
             print(f'[VEND-ORG] COMPLETE: Dispensed {total_dispensed}/{total_required} requested item(s).')
 
     def update_item(self, original_item_name, updated_item_data):
-        """Updates an existing item in the master list and saves to JSON."""
-        for i, item in enumerate(self.items):
-            if item["name"] == original_item_name:
-                self.items[i] = updated_item_data
-                break
-        self.save_items_to_json()
-        self.frames["AdminScreen"].populate_items()
-        self.frames["KioskFrame"].populate_items()
+        """Update price/quantity in assigned slots, then refresh admin and kiosk views."""
+        try:
+            price_val = float(updated_item_data.get("price", 0))
+            qty_val = int(updated_item_data.get("quantity", 0))
+        except Exception:
+            # If values are invalid, do not apply update.
+            return
+
+        slot_number = updated_item_data.get("_slot_number")
+        term_idx = getattr(self, "assigned_term", 0) or 0
+        updated_in_slots = False
+
+        # Primary path: update assigned slot data (source of truth for UI).
+        if isinstance(getattr(self, "assigned_slots", None), list) and self.assigned_slots:
+            target_indices = []
+            try:
+                if slot_number is not None:
+                    slot_idx = int(slot_number) - 1
+                    if 0 <= slot_idx < len(self.assigned_slots):
+                        target_indices = [slot_idx]
+            except Exception:
+                target_indices = []
+
+            # Fallback: locate by item name in current term.
+            if not target_indices:
+                for idx, slot in enumerate(self.assigned_slots):
+                    if isinstance(slot, dict) and isinstance(slot.get("terms"), list):
+                        terms = slot.get("terms") or []
+                        if len(terms) > term_idx and isinstance(terms[term_idx], dict):
+                            if terms[term_idx].get("name") == original_item_name:
+                                target_indices = [idx]
+                                break
+                    elif isinstance(slot, dict) and slot.get("name") == original_item_name:
+                        target_indices = [idx]
+                        break
+
+            for idx in target_indices:
+                slot = self.assigned_slots[idx]
+                if isinstance(slot, dict) and isinstance(slot.get("terms"), list):
+                    terms = slot.get("terms") or []
+                    while len(terms) <= term_idx:
+                        terms.append(None)
+                    if not isinstance(terms[term_idx], dict):
+                        terms[term_idx] = {}
+                    terms[term_idx]["price"] = price_val
+                    terms[term_idx]["quantity"] = qty_val
+                    updated_in_slots = True
+                elif isinstance(slot, dict):
+                    slot["price"] = price_val
+                    slot["quantity"] = qty_val
+                    updated_in_slots = True
+
+            if updated_in_slots:
+                try:
+                    with open(self.assigned_items_path, "w", encoding="utf-8") as f:
+                        json.dump(self.assigned_slots, f, indent=2)
+                except Exception as e:
+                    print(f"[MainApp] Failed to save assigned slots: {e}")
+
+                # Rebuild flattened list used by Admin/Kiosk and keep legacy file in sync.
+                self.items = self._extract_items_from_slots(self.assigned_slots)
+                try:
+                    self.save_items_to_json()
+                except Exception:
+                    pass
+            else:
+                # Legacy fallback path.
+                for i, item in enumerate(self.items):
+                    if item.get("name") == original_item_name:
+                        merged = dict(item)
+                        merged.update(updated_item_data)
+                        merged["price"] = price_val
+                        merged["quantity"] = qty_val
+                        self.items[i] = merged
+                        break
+                self.save_items_to_json()
+
+        # Refresh UI views immediately.
+        try:
+            self.frames["AdminScreen"].populate_items()
+        except Exception:
+            pass
+        try:
+            self.frames["KioskFrame"].populate_items()
+        except Exception:
+            pass
 
     def remove_item(self, item_to_remove):
         """Removes an item from the master list and saves to JSON."""

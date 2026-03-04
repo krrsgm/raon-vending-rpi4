@@ -30,5 +30,7 @@ sudo journalctl -u raon-vending.service -f
 
 ## Notes
 - The startup script retries `wlr-randr` while the Wayland session comes up, then launches `main.py`.
+- `main.py` is started from the boot shell script (`deploy/start-kiosk-wayland.sh`) on every boot.
+- The startup script also stops common Raspberry Pi desktop panels (`wf-panel-pi` / `lxpanel`) for taskbar-free kiosk boot.
 - `main.py` no longer forces `xrandr -o right`, so the service rotation is not overridden.
 - If your repo path is not `/home/raon/raon-vending-rpi4`, update `WorkingDirectory` and `ExecStart` in the service file accordingly.

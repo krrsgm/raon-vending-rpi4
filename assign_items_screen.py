@@ -387,7 +387,31 @@ Description: {item.get('description', '')}"""
 
     def _open_customize_dialog(self):
         """Open full customization form."""
-        CustomizeDialog(self, parent_result_callback=self._on_customize_done, category_options=self.category_options)
+        selected_idx = -1
+        selection = self.select_combo.get()
+        for i, opt in enumerate(self.select_combo['values']):
+            if opt == selection:
+                selected_idx = i
+                break
+
+        seed_data = None
+        if 0 <= selected_idx < len(self.option_data):
+            candidate = self.option_data[selected_idx]
+            if isinstance(candidate, dict):
+                seed_data = dict(candidate)
+
+        # If "Customize" is selected directly, prefill from current term when available.
+        if not seed_data and 0 <= self.current_term_idx < len(self.option_data):
+            candidate = self.option_data[self.current_term_idx]
+            if isinstance(candidate, dict):
+                seed_data = dict(candidate)
+
+        CustomizeDialog(
+            self,
+            parent_result_callback=self._on_customize_done,
+            category_options=self.category_options,
+            initial_data=seed_data,
+        )
 
     def _on_customize_done(self, custom_data):
         """Called when customize dialog completes."""
@@ -403,7 +427,7 @@ Description: {item.get('description', '')}"""
 
 class CustomizeDialog(tk.Toplevel):
     """Dialog for manual entry/customization of item details."""
-    def __init__(self, parent, parent_result_callback=None, category_options=None):
+    def __init__(self, parent, parent_result_callback=None, category_options=None, initial_data=None):
         super().__init__(parent)
         self.title("Customize Item")
         self.transient(parent)
@@ -411,6 +435,7 @@ class CustomizeDialog(tk.Toplevel):
         self.result = None
         self.parent_result_callback = parent_result_callback
         self.category_options = category_options or []
+        self.initial_data = dict(initial_data or {})
         self._create_widgets()
 
     def _create_widgets(self):
@@ -422,40 +447,51 @@ class CustomizeDialog(tk.Toplevel):
         ttk.Label(frame, text="Name:").grid(row=0, column=0, sticky="w", pady=4)
         self.name_entry = ttk.Entry(frame, width=40)
         self.name_entry.grid(row=0, column=1, sticky="ew", pady=4)
+        self.name_entry.insert(0, str(self.initial_data.get('name', '') or ''))
 
         ttk.Label(frame, text="Category:").grid(row=1, column=0, sticky="w", pady=4)
         # Provide combobox so admin can pick existing categories or type new
         try:
-            self.category_var = tk.StringVar(value='')
+            self.category_var = tk.StringVar(value=str(self.initial_data.get('category', '') or ''))
             self.category_entry = ttk.Combobox(frame, textvariable=self.category_var, values=self.category_options or [], width=40)
             self.category_entry.grid(row=1, column=1, sticky="ew", pady=4)
             self.category_entry.configure(state='normal')
         except Exception:
             self.category_entry = ttk.Entry(frame, width=40)
             self.category_entry.grid(row=1, column=1, sticky="ew", pady=4)
+            self.category_entry.insert(0, str(self.initial_data.get('category', '') or ''))
 
         ttk.Label(frame, text="Price:").grid(row=2, column=0, sticky="w", pady=4)
         self.price_entry = ttk.Entry(frame, width=20)
         self.price_entry.grid(row=2, column=1, sticky="w", pady=4)
+        self.price_entry.insert(0, str(self.initial_data.get('price', 0.0)))
 
         ttk.Label(frame, text="Quantity:").grid(row=3, column=0, sticky="w", pady=4)
         self.qty_entry = ttk.Entry(frame, width=20)
         self.qty_entry.grid(row=3, column=1, sticky="w", pady=4)
+        self.qty_entry.insert(0, str(self.initial_data.get('quantity', 0)))
 
-        ttk.Label(frame, text="Image Path:").grid(row=4, column=0, sticky="w", pady=4)
+        ttk.Label(frame, text="Low Stock Threshold:").grid(row=4, column=0, sticky="w", pady=4)
+        self.threshold_entry = ttk.Entry(frame, width=20)
+        self.threshold_entry.grid(row=4, column=1, sticky="w", pady=4)
+        self.threshold_entry.insert(0, str(self.initial_data.get('low_stock_threshold', 3)))
+
+        ttk.Label(frame, text="Image Path:").grid(row=5, column=0, sticky="w", pady=4)
         img_frame = ttk.Frame(frame)
-        img_frame.grid(row=4, column=1, sticky="ew", pady=4)
+        img_frame.grid(row=5, column=1, sticky="ew", pady=4)
         self.image_entry = ttk.Entry(img_frame, width=34)
         self.image_entry.pack(side="left", fill="x", expand=True)
+        self.image_entry.insert(0, str(self.initial_data.get('image', '') or ''))
         browse = ttk.Button(img_frame, text="Browse", command=self._browse_image)
         browse.pack(side="left", padx=6)
 
-        ttk.Label(frame, text="Description:").grid(row=5, column=0, sticky="nw", pady=4)
+        ttk.Label(frame, text="Description:").grid(row=6, column=0, sticky="nw", pady=4)
         self.desc_text = tk.Text(frame, width=40, height=4)
-        self.desc_text.grid(row=5, column=1, sticky="ew", pady=4)
+        self.desc_text.grid(row=6, column=1, sticky="ew", pady=4)
+        self.desc_text.insert('1.0', str(self.initial_data.get('description', '') or ''))
 
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=6, column=0, columnspan=2, sticky="e", pady=(8,0))
+        btn_frame.grid(row=7, column=0, columnspan=2, sticky="e", pady=(8,0))
         save_btn = ttk.Button(btn_frame, text="Save", command=self._on_save)
         save_btn.pack(side="right", padx=4)
         cancel_btn = ttk.Button(btn_frame, text="Cancel", command=self._on_cancel)
@@ -466,6 +502,7 @@ class CustomizeDialog(tk.Toplevel):
     def _browse_image(self):
         path = filedialog.askopenfilename(title='Select image', filetypes=[('Images','*.png;*.jpg;*.jpeg;*.gif;*.bmp')])
         if path:
+            path = convert_image_path_to_relative(path)
             self.image_entry.delete(0, tk.END)
             self.image_entry.insert(0, path)
 
@@ -484,20 +521,29 @@ class CustomizeDialog(tk.Toplevel):
         except Exception:
             tk.messagebox.showerror("Validation", "Quantity must be an integer", parent=self)
             return
+        try:
+            threshold = int(self.threshold_entry.get().strip()) if self.threshold_entry.get().strip() else 0
+        except Exception:
+            tk.messagebox.showerror("Validation", "Low stock threshold must be an integer", parent=self)
+            return
 
         image_path = self.image_entry.get().strip()
         if image_path:
             image_path = convert_image_path_to_relative(image_path)
 
-        data = {
-            'code': '',
+        # Preserve existing fields unless explicitly changed in the form.
+        data = dict(self.initial_data)
+        if not data.get('code'):
+            data['code'] = ''
+        data.update({
             'name': name,
             'category': self.category_entry.get().strip(),
             'price': price,
             'quantity': qty,
+            'low_stock_threshold': threshold,
             'image': image_path,
             'description': self.desc_text.get('1.0', 'end-1c').strip(),
-        }
+        })
         if self.parent_result_callback:
             self.parent_result_callback(data)
         self.destroy()

@@ -29,4 +29,11 @@ if command -v wlr-randr >/dev/null 2>&1; then
   done
 fi
 
+# Hide desktop taskbar/panel for kiosk mode (Wayland and X11 variants).
+for _ in $(seq 1 10); do
+  pkill -x wf-panel-pi >/dev/null 2>&1 || true
+  pkill -x lxpanel >/dev/null 2>&1 || true
+  sleep 0.5
+done
+
 exec /usr/bin/python3 "$REPO_DIR/main.py"

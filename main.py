@@ -876,11 +876,13 @@ class MainApp(tk.Tk):
 
         # Handle window state differently for Linux/Raspberry Pi
         is_linux = platform.system() == "Linux"
+        always_fullscreen = bool(self._kiosk_config.get('always_fullscreen', True))
 
-        if page_name == "SelectionScreen":
+        if page_name == "SelectionScreen" and not always_fullscreen:
             try:
                 if is_linux:
-                    # On Pi: use normal window with decorations
+                    # On Pi (windowed mode): use normal window with decorations
+                    self.attributes("-fullscreen", False)
                     self.attributes('-type', 'normal')
                     self.attributes('-zoomed', '0')
                     self.state('normal')
@@ -900,10 +902,11 @@ class MainApp(tk.Tk):
         else:
             try:
                 if is_linux:
-                    # On Pi: use splash window type and zoomed state
+                    # On Pi: force kiosk fullscreen with no decorations
+                    self.attributes("-fullscreen", True)
                     self.attributes('-type', 'splash')
                     self.attributes('-zoomed', '1')
-                    # Force fullscreen size
+                    # Force fullscreen geometry
                     self.geometry(f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}+0+0")
                 else:
                     # On Windows: use standard fullscreen

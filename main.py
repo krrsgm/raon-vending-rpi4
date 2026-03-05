@@ -80,7 +80,7 @@ class MainApp(tk.Tk):
         self._pending_dispense_by_slot = {}  # slot_id -> [item_name, ...]
         self._order_start_ts = None  # Transaction timer start (epoch seconds)
         self._customer_idle_after_id = None
-        self._customer_idle_timeout_ms = 10000  # Default 10 seconds
+        self._customer_idle_timeout_ms = 60000  # Default 60 seconds
         self._customer_session_frames = {"KioskFrame", "ItemScreen", "CartScreen"}
 
         # Start in fullscreen mode for kiosk display
@@ -104,9 +104,9 @@ class MainApp(tk.Tk):
         self.config_path = get_absolute_path("config.json")
         self.config = self.load_config_from_json(self.config_path)
         try:
-            timeout_sec = float(self.config.get("kiosk_inactivity_timeout_sec", 10))
+            timeout_sec = float(self.config.get("kiosk_inactivity_timeout_sec", 60))
         except Exception:
-            timeout_sec = 10.0
+            timeout_sec = 60.0
         self._customer_idle_timeout_ms = int(max(1.0, timeout_sec) * 1000)
         
         # Load items from assigned_items.json (the primary data source)

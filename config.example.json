@@ -7,6 +7,7 @@
   "always_fullscreen": true,
   "allow_decorations_for_admin": false,
   "rotate_display": "normal",
+  "kiosk_inactivity_timeout_sec": 60,
   
   "esp32_host": "192.168.4.1",
   

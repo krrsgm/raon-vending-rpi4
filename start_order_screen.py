@@ -33,7 +33,7 @@ class StartOrderScreen(tk.Frame):
 
         subtitle = tk.Label(
             center_panel,
-            text="Tap Anywhere to Start Order",
+            text="Click Anywhere to Start Order",
             font=subtitle_font,
             bg=primary_blue,
             fg="white",

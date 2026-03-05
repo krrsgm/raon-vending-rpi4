@@ -348,13 +348,6 @@ class CartScreen(tk.Frame):
         total_amount = sum(item["item"]["price"] * item["quantity"] for item in self.controller.cart)
         
         if not self.payment_in_progress:
-            # Confirm payment start
-            from tkinter import messagebox
-            messagebox.showinfo(
-                "Insert Payment",
-                f"Amount due: {self.controller.currency_symbol}{total_amount:.2f}\n\n"
-                f"Change will be dispensed using {self.controller.currency_symbol}1 and {self.controller.currency_symbol}5 coins only.",
-            )
             # Start payment session
             self.payment_in_progress = True
             self.payment_required = total_amount
@@ -485,8 +478,7 @@ class CartScreen(tk.Frame):
             
             coins_text = (
                 f"Coins: {self.controller.currency_symbol}1, {self.controller.currency_symbol}5, {self.controller.currency_symbol}10 (Old and New)\n"
-                f"Bills: {self.controller.currency_symbol}20, {self.controller.currency_symbol}50, {self.controller.currency_symbol}100\n\n"
-                f"Change is dispensed using {self.controller.currency_symbol}1 and {self.controller.currency_symbol}5 coins only."
+                f"Bills: {self.controller.currency_symbol}20, {self.controller.currency_symbol}50, {self.controller.currency_symbol}100"
             )
             
             tk.Label(
@@ -951,20 +943,6 @@ class CartScreen(tk.Frame):
             fg=self.colors["payment_fg"],
         )
         countdown_label.pack(pady=(0, 8))
-
-        return_now_btn = tk.Button(
-            popup,
-            text="Return Now",
-            font=self.fonts["item_details"],
-            command=self._go_start_order_now,
-            bg=self.colors["secondary_btn_bg"],
-            fg="#ffffff",
-            activebackground=self.colors["secondary_btn_hover"],
-            activeforeground="#ffffff",
-            relief="flat",
-        )
-        return_now_btn.pack(pady=(0, 16))
-        self._style_button(return_now_btn, hover_bg=self.colors["secondary_btn_hover"])
 
         remaining_sec = max(1, int(auto_return_ms / 1000))
 

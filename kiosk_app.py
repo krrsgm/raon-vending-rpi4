@@ -3,6 +3,7 @@ from tkinter import font as tkfont, ttk
 from PIL import Image
 import os
 import io
+import re
 import platform
 from collections import deque
 from dht22_handler import DHT22Display
@@ -69,15 +70,22 @@ class KioskFrame(tk.Frame):
             'cart_btn': tkfont.Font(family="Helvetica", size=14, weight="bold"),
         }
         
-        # Pre-compute keyword map for fast category detection (only once, not per item)
-        self._keyword_map = {
-            'Resistor': ['resistor', 'ohm'],
-            'Capacitor': ['capacitor', 'farad', 'uf', 'pf'],
-            'IC': ['ic', 'chip', 'integrated circuit'],
-            'Amplifier': ['amplifier', 'amp', 'opamp', 'op-amp'],
-            'Board': ['board', 'pcb', 'breadboard', 'shield'],
-            'Bundle': ['bundle', 'kit', 'pack'],
-            'Wires': ['wire', 'cable', 'cord', 'lead']
+        # Category rules are compiled once to keep filtering fast and accurate.
+        self._category_rules = {
+            'Resistor': [r'\bresistor\b', r'\br\d+\b', r'\bohm\b', r'\bkohm\b'],
+            'Capacitor': [r'\bcapacitor\b', r'\bfarad\b', r'\buf\b', r'\bpf\b'],
+            'IC': [r'\bic\d+\b', r'\bintegrated\s*circuit\b', r'\b74(?:ls)?\d+\b', r'\b555\b', r'\blm\d+\b'],
+            'Amplifier': [r'\bamplifier\b', r'\bop[- ]?amp\b'],
+            'Board': [r'\bboard\b', r'\bpcb\b', r'\bbreadboard\b', r'\bshield\b', r'\barduino\b', r'\buno\b'],
+            'Bundle': [r'\bbundle\b', r'\bkit\b', r'\bpack\b', r'\bsolder\b'],
+            'Wires': [r'\bwire(s)?\b', r'\bjumper\b', r'\bcable\b', r'\bcord\b', r'\blead(s)?\b', r'\bawg\b', r'\balligator\b'],
+            'Switches': [r'\bswitch(es)?\b', r'\bpush\s*button(s)?\b', r'\bbutton(s)?\b'],
+            'Semiconductor': [r'\bdiode\b', r'\btransistor\b', r'\bled\b', r'\bregulator\b'],
+            'Sensor': [r'\bsensor\b', r'\bpir\b', r'\bphotodiode\b', r'\bir\b'],
+        }
+        self._compiled_category_rules = {
+            cat: [re.compile(pattern, re.IGNORECASE) for pattern in patterns]
+            for cat, patterns in self._category_rules.items()
         }
         
         # --- Calculate header/footer pixel sizes based on screen and physical diagonal ---
@@ -339,8 +347,13 @@ class KioskFrame(tk.Frame):
         name_label.pack(fill='x', pady=(6, 2))
 
         # 1b. Category based on item name keywords
-        item_categories = self._get_categories_from_item_name(item_data.get('name', ''))
-        category_text = ', '.join(item_categories) if item_categories else 'Misc'
+        item_categories = self._get_categories_for_item(item_data)
+        if item_categories:
+            shown_categories = item_categories[:2]
+            suffix = "..." if len(item_categories) > 2 else ""
+            category_text = f"{', '.join(shown_categories)}{suffix}"
+        else:
+            category_text = 'Misc'
         category_label = tk.Label(
             text_frame,
             text=f"Category: {category_text}",
@@ -514,9 +527,7 @@ class KioskFrame(tk.Frame):
                         terms = slot.get('terms', [])
                         if len(terms) > term_idx and terms[term_idx]:
                             item = terms[term_idx]
-                            item_name = item.get('name', '')
-                            # Get categories from item name keywords
-                            item_cats = self._get_categories_from_item_name(item_name)
+                            item_cats = self._get_categories_for_item(item)
                             categories.update(item_cats)
                     except Exception:
                         continue
@@ -524,8 +535,7 @@ class KioskFrame(tk.Frame):
                 # No assigned items, use default categories from item names if any
                 for item in self.controller.items:
                     try:
-                        item_name = item.get('name', '')
-                        item_cats = self._get_categories_from_item_name(item_name)
+                        item_cats = self._get_categories_for_item(item)
                         categories.update(item_cats)
                     except Exception:
                         continue
@@ -750,35 +760,96 @@ class KioskFrame(tk.Frame):
         """Filter items based on selected category."""
         self.populate_items()
 
-    def _get_categories_from_item_name(self, item_name):
-        """Extract categories from item name based on keywords (cached).
-        
-        Returns a list of categories the item belongs to based on keywords.
-        If no keywords match, returns ['Misc'].
-        An item can belong to multiple categories if multiple keywords are found.
-        """
-        # Check cache first
-        if item_name in self._category_cache:
-            return self._category_cache[item_name]
-        
-        if not item_name:
-            result = ['Misc']
-            self._category_cache[item_name] = result
-            return result
-        
-        name_lower = item_name.lower()
-        categories = set()
-        
-        # Check each category for keywords using pre-computed keyword map
-        for cat, keywords in self._keyword_map.items():
+    def _normalize_category_name(self, raw_category, allow_passthrough=False):
+        """Map noisy raw category names into a stable display category."""
+        text = str(raw_category or "").strip().lower()
+        if not text:
+            return None
+
+        normalize_rules = [
+            ("Resistor", ("resistor", "ohm")),
+            ("Capacitor", ("capacitor", "farad", "uf", "pf")),
+            ("IC", ("integrated circuit", "logic ic")),
+            ("Amplifier", ("amplifier", "opamp", "op-amp")),
+            ("Board", ("board", "pcb", "breadboard", "arduino", "uno", "shield")),
+            ("Bundle", ("bundle", "kit", "pack", "solder")),
+            ("Wires", ("wire", "jumper", "cable", "cord", "lead", "awg", "alligator")),
+            ("Switches", ("switch", "button", "push button")),
+            ("Semiconductor", ("diode", "transistor", "led", "regulator")),
+            ("Sensor", ("sensor", "pir", "photodiode", "ir")),
+        ]
+        for normalized, keywords in normalize_rules:
             for keyword in keywords:
-                if keyword in name_lower:
-                    categories.add(cat)
-                    break  # Found this category, move to next
-        
-        # If no categories matched, put in Misc
-        result = sorted(list(categories)) if categories else ['Misc']
-        self._category_cache[item_name] = result
+                if keyword in text:
+                    return normalized
+
+        if allow_passthrough:
+            cleaned = re.sub(r"\s+", " ", text).strip()
+            if cleaned:
+                return cleaned.title()
+        return None
+
+    def _get_categories_for_item(self, item):
+        """Resolve categories for an item dict, preferring explicit category fields."""
+        if isinstance(item, dict):
+            explicit = item.get("category")
+            explicit_categories = []
+            if isinstance(explicit, str):
+                explicit_categories = [p.strip() for p in re.split(r"[|,/;]+", explicit) if p.strip()]
+            elif isinstance(explicit, (list, tuple, set)):
+                explicit_categories = [str(p).strip() for p in explicit if str(p).strip()]
+
+            normalized_explicit = []
+            for raw_cat in explicit_categories:
+                normalized = self._normalize_category_name(raw_cat, allow_passthrough=True)
+                if normalized:
+                    normalized_explicit.append(normalized)
+            if normalized_explicit:
+                return sorted(set(normalized_explicit))
+
+            return self._get_categories_from_item_name(item.get("name", ""))
+
+        return self._get_categories_from_item_name(str(item or ""))
+
+    def _get_categories_from_item_name(self, item_name):
+        """Extract categories from an item name using normalized regex rules."""
+        normalized_name = str(item_name or "").strip()
+        cache_key = normalized_name.lower()
+        if cache_key in self._category_cache:
+            return self._category_cache[cache_key]
+
+        if not normalized_name:
+            result = ["Misc"]
+            self._category_cache[cache_key] = result
+            return result
+
+        categories = set()
+        searchable_parts = [normalized_name]
+
+        # Capture meaningful chunks from "CODE - CATEGORY - DETAILS" style names.
+        for part in [p.strip() for p in normalized_name.split(" - ") if p.strip()]:
+            searchable_parts.append(part)
+
+        # Tokenized fallback chunks for names with slashes/parentheses/commas.
+        for token in re.split(r"[/(),]", normalized_name):
+            token = token.strip()
+            if token:
+                searchable_parts.append(token)
+
+        for text in searchable_parts:
+            normalized_text = text.lower()
+            normalized_cat = self._normalize_category_name(normalized_text)
+            if normalized_cat:
+                categories.add(normalized_cat)
+
+            for cat, patterns in self._compiled_category_rules.items():
+                for pattern in patterns:
+                    if pattern.search(normalized_text):
+                        categories.add(cat)
+                        break
+
+        result = sorted(categories) if categories else ["Misc"]
+        self._category_cache[cache_key] = result
         return result
 
     def populate_items(self):
@@ -832,7 +903,7 @@ class KioskFrame(tk.Frame):
         
         for item in source_items:
             # Get categories for this item based on name keywords
-            item_categories = self._get_categories_from_item_name(item.get('name', ''))
+            item_categories = self._get_categories_for_item(item)
             
             # Check if item matches selected category
             sel_cat = (selected_category or '').strip().lower()
@@ -930,9 +1001,7 @@ class KioskFrame(tk.Frame):
                         terms = slot.get('terms', [])
                         if len(terms) > term_idx and terms[term_idx]:
                             item = terms[term_idx]
-                            item_name = item.get('name', '')
-                            # Get categories from item name keywords
-                            item_cats = self._get_categories_from_item_name(item_name)
+                            item_cats = self._get_categories_for_item(item)
                             categories.update(item_cats)
                     except Exception:
                         continue
@@ -940,8 +1009,7 @@ class KioskFrame(tk.Frame):
                 # No assigned items, use default categories from item names if any
                 for item in self.controller.items:
                     try:
-                        item_name = item.get('name', '')
-                        item_cats = self._get_categories_from_item_name(item_name)
+                        item_cats = self._get_categories_for_item(item)
                         categories.update(item_cats)
                     except Exception:
                         continue

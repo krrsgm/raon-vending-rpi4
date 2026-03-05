@@ -108,6 +108,8 @@ class MainApp(tk.Tk):
         except Exception:
             timeout_sec = 60.0
         self._customer_idle_timeout_ms = int(max(1.0, timeout_sec) * 1000)
+        self.ui_font_scale = self._resolve_ui_font_scale()
+        self._apply_ui_font_scale()
         
         # Load items from assigned_items.json (the primary data source)
         self.assigned_items_path = get_absolute_path("assigned_items.json")
@@ -834,6 +836,34 @@ class MainApp(tk.Tk):
         except json.JSONDecodeError:
             print(f"Error: Could not decode JSON from {file_path}.")
             return []
+
+    def _resolve_ui_font_scale(self):
+        """Read and clamp UI font scale from config."""
+        ui_cfg = {}
+        try:
+            if isinstance(self.config, dict):
+                candidate = self.config.get("ui", {})
+                if isinstance(candidate, dict):
+                    ui_cfg = candidate
+        except Exception:
+            ui_cfg = {}
+
+        try:
+            scale = float(ui_cfg.get("font_scale", 1.35))
+        except Exception:
+            scale = 1.35
+
+        return max(1.0, min(1.6, scale))
+
+    def _apply_ui_font_scale(self):
+        """Apply a global Tk text scale so all UI text is larger and consistent."""
+        try:
+            base_scaling = float(self.tk.call("tk", "scaling"))
+            scaled_value = round(base_scaling * float(self.ui_font_scale), 3)
+            self.tk.call("tk", "scaling", scaled_value)
+            print(f"[MainApp] Applied UI font scale: {self.ui_font_scale:.2f} (tk scaling {base_scaling:.3f} -> {scaled_value:.3f})")
+        except Exception as e:
+            print(f"[MainApp] Failed to apply UI font scale: {e}")
 
     def _normalize_currency_symbol(self, value):
         """Normalize configured currency symbol for consistent kiosk display."""

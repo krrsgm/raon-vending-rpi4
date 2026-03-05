@@ -849,9 +849,9 @@ class MainApp(tk.Tk):
             ui_cfg = {}
 
         try:
-            scale = float(ui_cfg.get("font_scale", 1.35))
+            scale = float(ui_cfg.get("font_scale", 1.40))
         except Exception:
-            scale = 1.35
+            scale = 1.40
 
         return max(1.0, min(1.6, scale))
 

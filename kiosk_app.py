@@ -241,6 +241,13 @@ class KioskFrame(tk.Frame):
         except Exception:
             return False
 
+    def _truncate_text(self, text, max_chars):
+        """Keep card text concise so larger fonts still fit cleanly."""
+        value = str(text or "").strip()
+        if len(value) <= max_chars:
+            return value
+        return value[:max(1, max_chars - 3)].rstrip() + "..."
+
     def create_item_card(self, parent, item_data):
         """Creates a single item card widget with dimensions: 1in width x 2.5in height."""
         # Determine stock status and color-coding
@@ -336,13 +343,16 @@ class KioskFrame(tk.Frame):
         text_frame.pack(fill='x', padx=2)
 
         # 1. Name of item
+        name_text = self._truncate_text(item_data.get('name', ''), 52)
         name_label = tk.Label(
             text_frame,
-            text=item_data.get('name',''),
+            text=name_text,
             font=self.fonts['name'],
             bg=self.colors['card_bg'],
             fg=self.colors['text_fg'],
-            anchor='w'
+            anchor='w',
+            justify='left',
+            wraplength=max(120, self.card_width - 22)
         )
         name_label.pack(fill='x', pady=(6, 2))
 
@@ -360,18 +370,21 @@ class KioskFrame(tk.Frame):
             font=self.fonts['category'],
             bg=self.colors['card_bg'],
             fg='#8B7355',
-            anchor='w'
+            anchor='w',
+            justify='left',
+            wraplength=max(110, self.card_width - 22)
         )
         category_label.pack(fill='x', pady=(0, 2))
 
         # 2. Short description
+        description_text = self._truncate_text(item_data.get('description', ''), 72)
         desc_label = tk.Label(
             text_frame,
-            text=item_data.get('description',''),
+            text=description_text,
             font=self.fonts['description'],
             bg=self.colors['card_bg'],
             fg=self.colors['gray_fg'],
-            wraplength=260,
+            wraplength=max(110, self.card_width - 22),
             justify='left',
             anchor='nw'
         )
@@ -497,7 +510,9 @@ class KioskFrame(tk.Frame):
         content.pack(fill='both', expand=True)
         
         # Left sidebar
-        sidebar = tk.Frame(content, width=260, bg='#f7fafc')
+        sidebar_width = max(250, int(self.controller.winfo_screenwidth() * 0.22))
+        self._category_button_wraplength = max(120, sidebar_width - 32)
+        sidebar = tk.Frame(content, width=sidebar_width, bg='#f7fafc')
         sidebar.pack(side='left', fill='y', padx=(12,6), pady=12)
         sidebar.pack_propagate(False)
 
@@ -560,6 +575,8 @@ class KioskFrame(tk.Frame):
                 anchor='w',
                 padx=12,
                 pady=7,
+                justify='left',
+                wraplength=self._category_button_wraplength,
                 command=lambda c=cat: self._on_category_click(c)
             )
             b.pack(fill='x', pady=2)
@@ -1033,6 +1050,8 @@ class KioskFrame(tk.Frame):
                     anchor='w',
                     padx=12,
                     pady=7,
+                    justify='left',
+                    wraplength=getattr(self, '_category_button_wraplength', 220),
                     command=lambda c=cat: self._on_category_click(c)
                 )
                 b.pack(fill='x', pady=2)
@@ -1171,10 +1190,10 @@ class KioskFrame(tk.Frame):
     def _compute_num_cols(self, canvas_width):
         """Compute grid columns for current canvas width."""
         if canvas_width < 2:
-            return 4
+            return 1
         total_card_with_spacing = max(1, self.card_width + self.card_spacing)
         num_cols = max(1, canvas_width // total_card_with_spacing)
-        return max(3, min(8, num_cols))
+        return max(1, min(8, num_cols))
 
     def _build_items_layout_signature(self, items, selected_category, num_cols):
         """Build a compact signature to skip redundant full-grid rebuilds."""

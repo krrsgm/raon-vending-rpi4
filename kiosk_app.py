@@ -27,6 +27,9 @@ class KioskFrame(tk.Frame):
         self._is_dragging = False
         self._click_job = None
         self._clicked_item_data = None
+        self._press_x_root = 0
+        self._press_y_root = 0
+        self._drag_threshold_px = 8
         self._resize_job = None
         self.image_cache = {} # To prevent images from being garbage-collected
         self._deferred_image_queue = deque()
@@ -147,36 +150,60 @@ class KioskFrame(tk.Frame):
 
     def on_canvas_press(self, event):
         """Records the starting y-position and fixed x-position of a mouse drag."""
-        self.canvas.scan_mark(event.x, event.y)
-        self.scan_start_x = event.x
+        try:
+            canvas_x = self.winfo_pointerx() - self.canvas.winfo_rootx()
+            canvas_y = self.winfo_pointery() - self.canvas.winfo_rooty()
+        except Exception:
+            canvas_x, canvas_y = event.x, event.y
+        self.canvas.scan_mark(canvas_x, canvas_y)
+        self.scan_start_x = canvas_x
 
     def on_canvas_drag(self, event):
         """Moves the canvas view vertically based on mouse drag."""
         # Use the stored scan_start_x to prevent horizontal movement
-        self.canvas.scan_dragto(self.scan_start_x, event.y, gain=1)
+        try:
+            canvas_y = self.winfo_pointery() - self.canvas.winfo_rooty()
+        except Exception:
+            canvas_y = event.y
+        self.canvas.scan_dragto(self.scan_start_x, canvas_y, gain=1)
 
     def on_item_press(self, event, item_data):
         """Handles the initial press on an item card."""
-        # Prepare for a potential drag
+        self._is_dragging = False
+        try:
+            self._press_x_root = int(getattr(event, "x_root", 0) or 0)
+            self._press_y_root = int(getattr(event, "y_root", 0) or 0)
+        except Exception:
+            self._press_x_root = 0
+            self._press_y_root = 0
+        # Prepare for drag scrolling in canvas coordinates.
         self.on_canvas_press(event)
-        # Store item data for a potential click
+        # Store item data for a potential tap.
         self._clicked_item_data = item_data
-        # Schedule the click action, but don't execute it yet
-        self._click_job = self.after(150, self.perform_item_click)
 
     def on_item_drag(self, event):
         """Handles dragging that starts on an item card."""
-        # If a click was scheduled, cancel it because this is a drag
-        if self._click_job:
-            self.after_cancel(self._click_job)
-            self._click_job = None
+        try:
+            dx = abs(int(getattr(event, "x_root", 0) or 0) - self._press_x_root)
+            dy = abs(int(getattr(event, "y_root", 0) or 0) - self._press_y_root)
+            if dx >= self._drag_threshold_px or dy >= self._drag_threshold_px:
+                self._is_dragging = True
+        except Exception:
+            self._is_dragging = True
         # Perform the canvas drag
         self.on_canvas_drag(event)
 
     def on_item_release(self, event):
         """Resets state on mouse release."""
-        # This is intentionally left simple. The click is handled by the after() job.
-        pass
+        if self._click_job:
+            try:
+                self.after_cancel(self._click_job)
+            except Exception:
+                pass
+            self._click_job = None
+        if not self._is_dragging and self._clicked_item_data:
+            self.perform_item_click()
+        self._is_dragging = False
 
     def perform_item_click(self):
         """Navigates to the item screen. Called only if no drag occurs."""
@@ -564,8 +591,9 @@ class KioskFrame(tk.Frame):
         # Enable mouse wheel / touchpad scrolling for the kiosk (cross-platform)
         def _on_mousewheel_kiosk(event):
             try:
-                # Handle wheel only when pointer is on the product list area.
-                if not self._pointer_over_canvas():
+                # Handle wheel only when the event is from the product list area.
+                from_canvas_tree = self._is_descendant_widget(getattr(event, "widget", None), self.canvas)
+                if (not from_canvas_tree) and (not self._pointer_over_canvas()):
                     return
 
                 step = 0

@@ -79,6 +79,9 @@ class MainApp(tk.Tk):
         self._dispense_track_lock = threading.Lock()
         self._pending_dispense_by_slot = {}  # slot_id -> [item_name, ...]
         self._order_start_ts = None  # Transaction timer start (epoch seconds)
+        self._customer_idle_after_id = None
+        self._customer_idle_timeout_ms = 10000  # Default 10 seconds
+        self._customer_session_frames = {"KioskFrame", "ItemScreen", "CartScreen"}
 
         # Start in fullscreen mode for kiosk display
         self.is_fullscreen = True
@@ -100,6 +103,11 @@ class MainApp(tk.Tk):
         # Load config first
         self.config_path = get_absolute_path("config.json")
         self.config = self.load_config_from_json(self.config_path)
+        try:
+            timeout_sec = float(self.config.get("kiosk_inactivity_timeout_sec", 10))
+        except Exception:
+            timeout_sec = 10.0
+        self._customer_idle_timeout_ms = int(max(1.0, timeout_sec) * 1000)
         
         # Load items from assigned_items.json (the primary data source)
         self.assigned_items_path = get_absolute_path("assigned_items.json")
@@ -180,6 +188,11 @@ class MainApp(tk.Tk):
             self.bind_all("<Escape>", self.handle_escape)
         except Exception:
             pass
+        for seq in ("<ButtonPress>", "<KeyPress>", "<MouseWheel>", "<Button-4>", "<Button-5>"):
+            try:
+                self.bind_all(seq, self._on_customer_activity, add="+")
+            except Exception:
+                pass
         # The container is where we'll stack a bunch of frames
         # on top of each other, then the one we want visible
         # will be raised above the others
@@ -938,6 +951,68 @@ class MainApp(tk.Tk):
                 self.focus_force()
             except Exception:
                 pass
+        self._sync_customer_idle_watchdog(reset=True)
+
+    def _on_customer_activity(self, event=None):
+        """Reset customer inactivity watchdog on user interaction."""
+        self._sync_customer_idle_watchdog(reset=True)
+
+    def _is_customer_session_idle_tracked(self):
+        """Return True when an active customer order should be idle-monitored."""
+        if not self._order_start_ts:
+            return False
+        if self.active_frame_name not in self._customer_session_frames:
+            return False
+        if self.active_frame_name == "CartScreen":
+            try:
+                cart_frame = self.frames.get("CartScreen")
+                if cart_frame and bool(getattr(cart_frame, "payment_in_progress", False)):
+                    return False
+            except Exception:
+                return False
+        return True
+
+    def _cancel_customer_idle_watchdog(self):
+        """Cancel pending inactivity timeout callback."""
+        if self._customer_idle_after_id:
+            try:
+                self.after_cancel(self._customer_idle_after_id)
+            except Exception:
+                pass
+            self._customer_idle_after_id = None
+
+    def _sync_customer_idle_watchdog(self, reset=False):
+        """Start/refresh/cancel inactivity timeout based on current app state."""
+        if not self._is_customer_session_idle_tracked():
+            self._cancel_customer_idle_watchdog()
+            return
+        if reset or not self._customer_idle_after_id:
+            self._cancel_customer_idle_watchdog()
+            try:
+                self._customer_idle_after_id = self.after(
+                    int(self._customer_idle_timeout_ms),
+                    self._handle_customer_inactivity_timeout,
+                )
+            except Exception:
+                self._customer_idle_after_id = None
+
+    def _handle_customer_inactivity_timeout(self):
+        """Timeout active customer session and return to Start Order."""
+        self._customer_idle_after_id = None
+        if not self._is_customer_session_idle_tracked():
+            return
+        try:
+            self.clear_cart()
+        except Exception:
+            pass
+        try:
+            self.finish_order_timer(status="INACTIVE_TIMEOUT")
+        except Exception:
+            pass
+        try:
+            self.show_start_order()
+        except Exception:
+            pass
 
     def set_kiosk_mode(self, enable: bool):
         """Enable or disable kiosk mode: fullscreen and no window decorations.

@@ -607,9 +607,13 @@ class AssignItemsScreen(tk.Frame):
     def _create_widgets(self):
         header = ttk.Frame(self, padding=12)
         header.pack(fill='x')
-        
-        left_section = ttk.Frame(header)
-        left_section.pack(side='left')
+
+        # Keep controls visible on larger font scales by splitting header into rows.
+        top_row = ttk.Frame(header)
+        top_row.pack(fill='x')
+
+        left_section = ttk.Frame(top_row)
+        left_section.pack(side='left', fill='x', expand=True)
         ttk.Label(left_section, text="Assign Items to Slots", font=("Helvetica", 18, 'bold')).pack(side='left')
         
         # Term selector dropdown
@@ -628,48 +632,30 @@ class AssignItemsScreen(tk.Frame):
         custom_btn = ttk.Button(left_section, text='Switch to Custom', command=self._toggle_custom_mode, width=18)
         custom_btn.pack(side='left', padx=(0, 12))
 
-        btn_frame = ttk.Frame(header)
+        actions_row = ttk.Frame(header)
+        actions_row.pack(fill='x', pady=(8, 0))
+        btn_frame = ttk.Frame(actions_row)
         btn_frame.pack(side='right')
         ttk.Button(btn_frame, text="Load", command=self.load_slots).pack(side='left', padx=4)
         ttk.Button(btn_frame, text="Save", command=self.save_slots).pack(side='left', padx=4)
         ttk.Button(btn_frame, text="Clear All", command=self.clear_all).pack(side='left', padx=4)
 
-        # Scrollable area for grid (vertical + horizontal support)
+        # Scrollable area for grid (vertical only)
         canvas_container = ttk.Frame(self)
         canvas_container.pack(fill='both', expand=True, padx=10, pady=8)
 
         self.canvas = tk.Canvas(canvas_container, bg="#f0f4f8", highlightthickness=0)
         vsb = ttk.Scrollbar(canvas_container, orient='vertical', command=self.canvas.yview)
-        hsb = ttk.Scrollbar(canvas_container, orient='horizontal', command=self.canvas.xview)
-        self.canvas.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        self.canvas.configure(yscrollcommand=vsb.set)
         vsb.pack(side='right', fill='y')
-        hsb.pack(side='bottom', fill='x')
-
-        # Add a small slider control (0..100) for horizontal panning as requested
-        self.hslider = tk.Scale(canvas_container, from_=0, to=100, orient='horizontal', showvalue=0,
-                                length=300, command=lambda v: self.canvas.xview_moveto(float(v)/100.0))
-        # Place slider under the canvas and above the horizontal scrollbar
-        self.hslider.pack(side='bottom', fill='x', pady=(4,0))
 
         self.grid_frame = ttk.Frame(self.canvas)
         self.canvas_window = self.canvas.create_window((0,0), window=self.grid_frame, anchor='nw')
 
-        # Update scrollregion and synchronize slider whenever the grid changes size
+        # Update scrollregion whenever the grid changes size.
         def _on_grid_config(e):
             try:
                 self.canvas.configure(scrollregion=self.canvas.bbox('all'))
-                # If grid wider than canvas, enable slider range and update its position
-                canvas_width = self.canvas.winfo_width() or 1
-                grid_width = self.grid_frame.winfo_reqwidth() or 1
-                max_offset = max(0, grid_width - canvas_width)
-                if max_offset > 0:
-                    # update slider position based on current view
-                    left, right = self.canvas.xview()
-                    self.hslider.set(int(left * 100))
-                    self.hslider.configure(state='normal')
-                else:
-                    self.hslider.set(0)
-                    self.hslider.configure(state='disabled')
             except Exception:
                 pass
 
@@ -680,9 +666,6 @@ class AssignItemsScreen(tk.Frame):
             try:
                 # keep window width at least canvas width so grid packs correctly
                 self.canvas.itemconfig(self.canvas_window, width=self.canvas.winfo_width())
-                # Sync slider position when user scrolls via scrollbar or programatically
-                left, right = self.canvas.xview()
-                self.hslider.set(int(left * 100))
             except Exception:
                 pass
 
@@ -709,9 +692,8 @@ class AssignItemsScreen(tk.Frame):
             row_frames = []
             for c in range(self.GRID_COLS):
                 idx = r * self.GRID_COLS + c
-                frm = ttk.Frame(self.grid_frame, relief='ridge', padding=4, width=150, height=140)
+                frm = ttk.Frame(self.grid_frame, relief='ridge', padding=4)
                 frm.grid(row=r, column=c, padx=4, pady=4, sticky='nsew')
-                frm.grid_propagate(False)  # Fix size to allow proper layout
                 
                 # Slot header with selection marker
                 slot_hdr = ttk.Frame(frm)
@@ -726,26 +708,26 @@ class AssignItemsScreen(tk.Frame):
                 content.pack(fill='both', expand=True, pady=(2,2))
 
                 # Thumbnail (small)
-                thumb_lbl = tk.Label(content, text='', width=10, height=4, anchor='center', background='#e8e8e8', relief='sunken', font=("Helvetica", 8))
+                thumb_lbl = tk.Label(content, text='', width=1, height=4, anchor='center', background='#e8e8e8', relief='sunken', font=("Helvetica", 8))
                 thumb_lbl.pack(fill='both', expand=False, pady=(0,2))
 
                 # Item info (name and details)
                 info = ttk.Frame(content)
                 info.pack(fill='both', expand=True, pady=(0,2))
-                name_lbl = ttk.Label(info, text="Empty", font=("Helvetica", 8, 'bold'), wraplength=120, justify='left')
+                name_lbl = ttk.Label(info, text="Empty", font=("Helvetica", 8, 'bold'), wraplength=96, justify='left')
                 name_lbl.pack(anchor='nw', fill='x')
-                details_lbl = ttk.Label(info, text="", font=("Helvetica", 7), wraplength=120, justify='left')
+                details_lbl = ttk.Label(info, text="", font=("Helvetica", 7), wraplength=92, justify='left')
                 details_lbl.pack(anchor='nw', fill='both', expand=True)
 
                 # Buttons (compact)
                 btns = ttk.Frame(frm)
                 btns.pack(fill='x', pady=(2,0))
-                edit_btn = ttk.Button(btns, text="Edit", width=5, command=lambda i=idx: self.edit_slot(i))
-                edit_btn.pack(side='left', padx=(0,2))
-                test_btn = ttk.Button(btns, text="Test", width=5, command=lambda i=idx: self.test_motor(i))
-                test_btn.pack(side='left', padx=(0,2))
-                clear_btn = ttk.Button(btns, text="Clear", width=5, command=lambda i=idx: self.clear_slot(i))
-                clear_btn.pack(side='left')
+                edit_btn = ttk.Button(btns, text="Edit", command=lambda i=idx: self.edit_slot(i))
+                edit_btn.pack(side='left', fill='x', expand=True, padx=(0,2))
+                test_btn = ttk.Button(btns, text="Test", command=lambda i=idx: self.test_motor(i))
+                test_btn.pack(side='left', fill='x', expand=True, padx=(0,2))
+                clear_btn = ttk.Button(btns, text="Clear", command=lambda i=idx: self.clear_slot(i))
+                clear_btn.pack(side='left', fill='x', expand=True)
 
                 # selection toggle binding
                 def make_toggle(i):

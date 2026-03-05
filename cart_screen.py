@@ -63,6 +63,9 @@ class CartScreen(tk.Frame):
         self.last_change_status = None  # Deduplicate noisy hopper status messages
         self.payment_completion_scheduled = False
         self._complete_after_id = None
+        self._return_to_start_after_id = None
+        self._payment_complete_notice = None
+        self._payment_notice_countdown_after_id = None
         self.coin_received = 0.0  # Track coins separately
         self.bill_received = 0.0  # Track bills separately
         
@@ -791,7 +794,6 @@ class CartScreen(tk.Frame):
                         pass
 
         self._destroy_payment_window()
-        messagebox.showinfo("Payment Complete", status_text)
 
         try:
             self.controller.apply_cart_stock_deductions(cart_snapshot)
@@ -865,7 +867,142 @@ class CartScreen(tk.Frame):
             self.controller.finish_order_timer(status="SUCCESS")
         except Exception:
             pass
-        self.controller.show_start_order()
+        self._show_payment_complete_notice(status_text, auto_return_ms=10000)
+        self._schedule_return_to_start_order(delay_ms=10000)
+
+    def _cancel_scheduled_return_to_start_order(self):
+        """Cancel pending delayed navigation to Start Order, if any."""
+        if self._return_to_start_after_id:
+            try:
+                self.after_cancel(self._return_to_start_after_id)
+            except Exception:
+                pass
+            self._return_to_start_after_id = None
+
+    def _destroy_payment_complete_notice(self):
+        """Close payment-complete popup and cancel its countdown updates."""
+        if self._payment_notice_countdown_after_id:
+            try:
+                self.after_cancel(self._payment_notice_countdown_after_id)
+            except Exception:
+                pass
+            self._payment_notice_countdown_after_id = None
+        if self._payment_complete_notice:
+            try:
+                self._payment_complete_notice.destroy()
+            except Exception:
+                pass
+            self._payment_complete_notice = None
+
+    def _show_payment_complete_notice(self, status_text, auto_return_ms=10000):
+        """Show a non-blocking completion popup while waiting for auto-return."""
+        self._destroy_payment_complete_notice()
+
+        popup = tk.Toplevel(self)
+        self._payment_complete_notice = popup
+        popup.title("Payment Complete")
+        popup.configure(bg=self.colors["payment_bg"])
+        try:
+            popup.transient(self.winfo_toplevel())
+        except Exception:
+            pass
+        try:
+            popup.attributes("-topmost", True)
+        except Exception:
+            pass
+        try:
+            popup.protocol("WM_DELETE_WINDOW", lambda: None)
+        except Exception:
+            pass
+
+        width, height = 560, 430
+        try:
+            popup.update_idletasks()
+            x = (popup.winfo_screenwidth() // 2) - (width // 2)
+            y = (popup.winfo_screenheight() // 2) - (height // 2)
+            popup.geometry(f"{width}x{height}+{x}+{y}")
+        except Exception:
+            popup.geometry(f"{width}x{height}")
+
+        tk.Label(
+            popup,
+            text="Payment Complete",
+            font=self.fonts["header"],
+            bg=self.colors["payment_bg"],
+            fg=self.colors["payment_fg"],
+        ).pack(pady=(20, 10))
+
+        tk.Label(
+            popup,
+            text=status_text,
+            font=tkfont.Font(family="Helvetica", size=12),
+            bg=self.colors["payment_bg"],
+            fg=self.colors["text_fg"],
+            justify=tk.LEFT,
+            wraplength=520,
+            anchor="w",
+        ).pack(fill="both", expand=True, padx=20, pady=(0, 10))
+
+        countdown_label = tk.Label(
+            popup,
+            text="",
+            font=self.fonts["item_details"],
+            bg=self.colors["payment_bg"],
+            fg=self.colors["payment_fg"],
+        )
+        countdown_label.pack(pady=(0, 8))
+
+        return_now_btn = tk.Button(
+            popup,
+            text="Return Now",
+            font=self.fonts["item_details"],
+            command=self._go_start_order_now,
+            bg=self.colors["secondary_btn_bg"],
+            fg="#ffffff",
+            activebackground=self.colors["secondary_btn_hover"],
+            activeforeground="#ffffff",
+            relief="flat",
+        )
+        return_now_btn.pack(pady=(0, 16))
+        self._style_button(return_now_btn, hover_bg=self.colors["secondary_btn_hover"])
+
+        remaining_sec = max(1, int(auto_return_ms / 1000))
+
+        def _tick():
+            nonlocal remaining_sec
+            if not self._payment_complete_notice or not self._payment_complete_notice.winfo_exists():
+                self._payment_notice_countdown_after_id = None
+                return
+            countdown_label.config(text=f"Returning to Start Order in {remaining_sec} second(s)...")
+            if remaining_sec <= 1:
+                self._payment_notice_countdown_after_id = None
+                return
+            remaining_sec -= 1
+            self._payment_notice_countdown_after_id = self.after(1000, _tick)
+
+        _tick()
+
+    def _go_start_order_now(self):
+        """Navigate immediately to Start Order and clear pending auto-return state."""
+        self._cancel_scheduled_return_to_start_order()
+        self._destroy_payment_complete_notice()
+        try:
+            self.controller.show_start_order()
+        except Exception:
+            pass
+
+    def _schedule_return_to_start_order(self, delay_ms=10000):
+        """Auto-return to Start Order after payment completion."""
+        self._cancel_scheduled_return_to_start_order()
+
+        def _go_start_order():
+            self._return_to_start_after_id = None
+            self._go_start_order_now()
+
+        try:
+            self._return_to_start_after_id = self.after(int(delay_ms), _go_start_order)
+        except Exception:
+            _go_start_order()
 
     def _destroy_payment_window(self):
         """Safely destroy the payment status window."""
@@ -894,6 +1031,8 @@ class CartScreen(tk.Frame):
 
         # Ensure payment flag is reset even if exception occurs
         try:
+            self._cancel_scheduled_return_to_start_order()
+            self._destroy_payment_complete_notice()
             self.payment_completion_scheduled = False
             if self._complete_after_id:
                 try:

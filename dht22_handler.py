@@ -59,7 +59,13 @@ class SharedSerialReader(threading.Thread):
         self.ir2_pattern = re.compile(r"IR2.*?:\s*(BLOCKED|CLEAR)", re.IGNORECASE)
         self.coin_pattern = re.compile(r"\[COIN\].*?Value:\s*[^\d-]*([-\d.]+)(?:.*?Total:\s*[^\d-]*([-\d.]+))?", re.IGNORECASE)
         self.balance_pattern = re.compile(r"BALANCE:\s*[^\d-]*([-\d.]+)", re.IGNORECASE)
-        self.bill_pattern = re.compile(r"(?:BILL\s+INSERTED|BILL)[:\s]*(?:\u20B1|P)?\s*(\d+)", re.IGNORECASE)
+        # Accept canonical and human-friendly bill lines, including corrupted currency text.
+        # Examples:
+        # - BILL:100
+        # - Bill inserted: P100 (pulses: 10)
+        # - Bill inserted: ???100
+        self.bill_pattern = re.compile(r"(?:BILL\s+INSERTED|BILL)[:\s]*[^\d-]*([-\d]{2,4})", re.IGNORECASE)
+        self.bill_fallback_pattern = re.compile(r"(\d{2,4})", re.IGNORECASE)
         self.bill_pulses_pattern = re.compile(r"PULSES[:\s]*(\d+)", re.IGNORECASE)
         self.tec_pattern = re.compile(r"TEC\s*:\s*(ON|OFF)", re.IGNORECASE)
 
@@ -184,6 +190,10 @@ class SharedSerialReader(threading.Thread):
                                 self.coin_total = total
                         continue
                     m5 = self.bill_pattern.search(line)
+                    if not m5:
+                        up = line.upper()
+                        if ("BILL" in up) or ("INSERT" in up):
+                            m5 = self.bill_fallback_pattern.search(line)
                     if m5:
                         try:
                             amount = float(m5.group(1))

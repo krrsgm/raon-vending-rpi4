@@ -462,6 +462,32 @@
             warning: 0,
             lastPlayedAtMs: 0
         };
+        const termStockValueLabelsPlugin = {
+            id: 'termStockValueLabels',
+            afterDatasetsDraw(chart) {
+                const datasetIndex = 0; // Current Stock bars
+                const meta = chart.getDatasetMeta(datasetIndex);
+                const dataset = chart.data.datasets[datasetIndex];
+                if (!meta || !dataset || !meta.data) return;
+
+                const ctx = chart.ctx;
+                ctx.save();
+                ctx.fillStyle = '#2c3e50';
+                ctx.font = 'bold 11px Helvetica, Arial, sans-serif';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+
+                meta.data.forEach((bar, index) => {
+                    const rawValue = dataset.data[index];
+                    const value = Number(rawValue || 0);
+                    const x = bar.x + 6;
+                    const y = bar.y;
+                    ctx.fillText(String(value), x, y);
+                });
+
+                ctx.restore();
+            }
+        };
 
         function getStockAlertAudioContext() {
             if (stockAlertAudioContext) return stockAlertAudioContext;
@@ -978,6 +1004,7 @@
             if (termStockChartInstance) termStockChartInstance.destroy();
 
             termStockChartInstance = new Chart(canvas.getContext('2d'), {
+                plugins: [termStockValueLabelsPlugin],
                 type: 'bar',
                 data: {
                     labels,
@@ -1005,6 +1032,9 @@
                     indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: {
+                        padding: { right: 40 }
+                    },
                     plugins: {
                         title: {
                             display: true,

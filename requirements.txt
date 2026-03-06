@@ -2,8 +2,6 @@
 Pillow==9.5.0
 pyserial==3.5
 matplotlib==3.7.1
-Flask==3.1.3
-Flask-SQLAlchemy==3.1.1
 
 # Raspberry Pi specific (uncomment when deploying to RPi4)
 # RPi.GPIO==0.7.0

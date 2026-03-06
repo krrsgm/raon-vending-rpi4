@@ -21,64 +21,6 @@ import time
 from queue import Queue
 import re
 
-def parse_bill_amount_from_line(line, accepted_denominations=None):
-    """Parse bill amount from a serial line using the bill acceptor test logic."""
-    if line is None:
-        return None
-    s = str(line).strip()
-    if not s:
-        return None
-    s_upper = s.upper()
-
-    allowed = None
-    if accepted_denominations is not None:
-        try:
-            allowed = {int(float(v)) for v in accepted_denominations}
-        except Exception:
-            allowed = None
-
-    def _accept(raw):
-        try:
-            amount = int(float(raw))
-        except Exception:
-            return None
-        if allowed and amount not in allowed:
-            return None
-        return amount
-
-    m = re.search(r'BILL\s+INSERTED[:\s]*[\u20B1â‚±P]?\s*(\d+)', s_upper)
-    if m:
-        return _accept(m.group(1))
-
-    if s_upper.startswith('BILL:'):
-        try:
-            return _accept(s.split(':', 1)[1].strip())
-        except Exception:
-            return None
-    m = re.search(r'BILL\s*:\s*(\d+)', s_upper)
-    if m:
-        return _accept(m.group(1))
-
-    if s_upper.startswith('PULSES:'):
-        try:
-            cnt = int(s.split(':', 1)[1].strip())
-            return _accept(cnt * 10)
-        except Exception:
-            return None
-    m = re.search(r'PULSES\s*:\s*(\d+)', s_upper)
-    if m:
-        try:
-            return _accept(int(m.group(1)) * 10)
-        except Exception:
-            return None
-
-    if any(k in s_upper for k in ('INSERT', 'BILL')) or ('â‚±' in s) or ('\u20B1' in s):
-        m = re.search(r'(\d{2,4})', s)
-        if m:
-            return _accept(m.group(1))
-
-    return None
-
 
 class BillAcceptor:
     # Accepted bill denominations in Philippine pesos
@@ -254,17 +196,67 @@ class BillAcceptor:
         if not line:
             return
         s = line.strip()
+        s_upper = s.upper()
         print(f"===== DEBUG BILL ACCEPTOR: Processing line for parsing: '{s}' =====")
 
-        amount = parse_bill_amount_from_line(s, accepted_denominations=self.ACCEPTED_DENOMINATIONS)
-        if amount is not None:
-            print(f"DEBUG: Parsed bill amount {amount}")
-            self._debounced_register(amount)
-            return
+        # human friendly - matches "Bill inserted: ₱20" or "BILL INSERTED 20"
+        m = re.search(r'BILL\s+INSERTED[:\s]*[\u20B1₱]?\s*(\d+)', s_upper)
+        if m:
+            try:
+                amount = int(m.group(1))
+                print(f"DEBUG: Parsed human-friendly bill amount {amount}")
+                self._debounced_register(amount)
+                return
+            except Exception:
+                pass
+
+        # canonical
+        if s_upper.startswith('BILL:'):
+            try:
+                amount = int(s.split(':', 1)[1])
+                print(f"DEBUG: Parsed BILL:<amount> = {amount}")
+                self._debounced_register(amount)
+                return
+            except Exception:
+                print(f"Unrecognized BILL line: {line}")
+                return
+
+        # pulses
+        if s_upper.startswith('PULSES:'):
+            try:
+                cnt = int(s.split(':', 1)[1])
+                amount = cnt * 10
+                print(f"DEBUG: Parsed PULSES:{cnt} -> amount {amount}")
+                # Only register if resulting amount matches an accepted denomination
+                if amount in self.ACCEPTED_DENOMINATIONS:
+                    self._debounced_register(amount)
+                else:
+                    print(f"DEBUG: Ignored PULSES amount {amount} (not an accepted denomination)")
+                return
+            except Exception:
+                pass
+
+        # tolerant fallback parsing: some forwarders send different human-friendly lines
+        # e.g. "BILL 100", "INSERTED 100", "PAYMENT: 100", or just "₱100". Try to
+        # extract an amount if the line contains bill-related keywords or currency symbols.
+        try:
+            # Only use fallback if the line includes explicit bill-related keywords
+            if any(k in s_upper for k in ('INSERT', 'BILL')) or ('₱' in s or '\u20B1' in s):
+                m2 = re.search(r'[:\s]*[\u20B1₱]?\s*(\d{2,4})', s)
+                if m2:
+                    amount = int(m2.group(1))
+                    # Only accept known denominations to avoid noise (e.g., stray '20' parsed)
+                    if amount in self.ACCEPTED_DENOMINATIONS:
+                        print(f"DEBUG: Fallback parsed accepted amount {amount} from '{s}'")
+                        self._debounced_register(amount)
+                    else:
+                        print(f"DEBUG: Fallback parsed amount {amount} ignored (not an accepted denomination)")
+                    return
+        except Exception:
+            pass
 
         # hex
         try:
-            s_upper = s.upper()
             hexval = s
             if hexval.startswith('0X'):
                 hexval = hexval[2:]
@@ -483,4 +475,3 @@ class MockBillAcceptor(BillAcceptor):
                 self._callback(self.received_amount)
             except Exception as e:
                 print(f"Callback error: {e}")
-

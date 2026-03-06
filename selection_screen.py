@@ -26,9 +26,11 @@ class SelectionScreen(tk.Frame):
             btn.bind('<Leave>', lambda _e: btn.configure(bg=base_bg))
 
         # Get screen dimensions for proportional sizing
+        screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
-        title_size = int(screen_height * 0.04)  # 4% of screen height
-        button_size = int(screen_height * 0.025)  # 2.5% of screen height
+        # Cap title size using width so long text does not clip on narrow/portrait displays.
+        title_size = max(16, min(int(screen_height * 0.04), int(screen_width * 0.045)))
+        button_size = max(12, min(int(screen_height * 0.025), int(screen_width * 0.04)))
         title_font = tkfont.Font(family="Helvetica", size=title_size, weight="bold")
         button_font = tkfont.Font(family="Helvetica", size=button_size, weight="bold")
 
@@ -37,10 +39,12 @@ class SelectionScreen(tk.Frame):
             text="Select Operating Mode", 
             font=title_font,
             bg='#f0f4f8',
-            fg='#2c3e50' # Dark text
+            fg='#2c3e50', # Dark text
+            wraplength=int(screen_width * 0.92),
+            justify='center'
         )
-        # Header at 1.5 inches (assuming ~96 DPI, so ~144 pixels)
-        label.pack(side="top", fill="x", pady=(144, 50))
+        # Keep spacing proportional so text is fully visible across display sizes.
+        label.pack(side="top", fill="x", pady=(max(24, int(screen_height * 0.12)), max(24, int(screen_height * 0.06))))
 
         kiosk_button = tk.Button(
             self, 

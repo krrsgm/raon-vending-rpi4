@@ -241,6 +241,61 @@ class KioskFrame(tk.Frame):
         except Exception:
             return False
 
+    def _event_from_product_area(self, event):
+        """Return True when a wheel event comes from, or is hovering over, the product list."""
+        try:
+            widget = getattr(event, "widget", None)
+            if self._is_descendant_widget(widget, self.canvas):
+                return True
+            if self._scrollable_frame and self._is_descendant_widget(widget, self._scrollable_frame):
+                return True
+            return self._pointer_over_canvas()
+        except Exception:
+            return False
+
+    def _on_mousewheel_kiosk(self, event):
+        """Cross-platform wheel handler for vertical scrolling in the product area."""
+        try:
+            if not self._event_from_product_area(event):
+                return
+
+            step = 0
+            # Linux X11 wheel events.
+            if getattr(event, 'num', None) == 4:
+                step = -3
+            elif getattr(event, 'num', None) == 5:
+                step = 3
+            else:
+                # Windows/macOS/hi-res wheels: delta may be +/-120, +/-1, or another small value.
+                delta = int(getattr(event, 'delta', 0) or 0)
+                if delta != 0:
+                    if abs(delta) >= 120:
+                        step = -int(delta / 120)
+                    else:
+                        step = -1 if delta > 0 else 1
+
+            if step != 0:
+                self.canvas.yview_scroll(step, 'units')
+                return 'break'
+        except Exception:
+            pass
+
+    def _bind_wheel_recursive(self, widget):
+        """Bind wheel events to a widget and all descendants for consistent item-hover scrolling."""
+        if widget is None:
+            return
+        try:
+            widget.bind('<MouseWheel>', self._on_mousewheel_kiosk, add='+')
+            widget.bind('<Button-4>', self._on_mousewheel_kiosk, add='+')
+            widget.bind('<Button-5>', self._on_mousewheel_kiosk, add='+')
+        except Exception:
+            pass
+        try:
+            for child in widget.winfo_children():
+                self._bind_wheel_recursive(child)
+        except Exception:
+            pass
+
     def _truncate_text(self, text, max_chars):
         """Keep card text concise so larger fonts still fit cleanly."""
         value = str(text or "").strip()
@@ -449,6 +504,9 @@ class KioskFrame(tk.Frame):
             out_lbl = tk.Label(bottom_frame, text="Out of Stock", font=self.fonts['out_of_stock'], bg=disabled_bg, fg=self.colors['out_of_stock_fg'])
             out_lbl.pack(side='right')
 
+        # Ensure wheel scroll works even while cursor is directly on card widgets.
+        self._bind_wheel_recursive(card)
+
         return card
 
     def create_widgets(self):
@@ -615,48 +673,22 @@ class KioskFrame(tk.Frame):
         # Bind canvas resize to sync the embedded window width
         self.canvas.bind('<Configure>', _sync_width)
 
-        # Enable mouse wheel / touchpad scrolling for the kiosk (cross-platform)
-        def _on_mousewheel_kiosk(event):
-            try:
-                # Handle wheel only when the event is from the product list area.
-                from_canvas_tree = self._is_descendant_widget(getattr(event, "widget", None), self.canvas)
-                if (not from_canvas_tree) and (not self._pointer_over_canvas()):
-                    return
-
-                step = 0
-                # Linux X11 wheel events.
-                if getattr(event, 'num', None) == 4:
-                    step = -3
-                elif getattr(event, 'num', None) == 5:
-                    step = 3
-                else:
-                    # Windows/macOS/hi-res wheels: delta may be +/-120, +/-1, or another small value.
-                    delta = int(getattr(event, 'delta', 0) or 0)
-                    if delta != 0:
-                        if abs(delta) >= 120:
-                            step = -int(delta / 120)
-                        else:
-                            step = -1 if delta > 0 else 1
-
-                if step != 0:
-                    self.canvas.yview_scroll(step, 'units')
-                    return 'break'
-            except Exception:
-                pass
-
         # Bind wheel events for different platforms
         try:
-            # Windows and macOS: bind to canvas and scrollable frame too
-            self.canvas.bind_all('<MouseWheel>', _on_mousewheel_kiosk)
-            scrollable_frame.bind('<MouseWheel>', _on_mousewheel_kiosk)
+            # Windows and macOS: bind globally plus direct canvas/frame.
+            self.canvas.bind_all('<MouseWheel>', self._on_mousewheel_kiosk)
+            self.canvas.bind('<MouseWheel>', self._on_mousewheel_kiosk, add='+')
+            scrollable_frame.bind('<MouseWheel>', self._on_mousewheel_kiosk, add='+')
         except Exception:
             pass
         try:
             # Linux (X11)
-            self.canvas.bind_all('<Button-4>', _on_mousewheel_kiosk)
-            self.canvas.bind_all('<Button-5>', _on_mousewheel_kiosk)
-            scrollable_frame.bind('<Button-4>', _on_mousewheel_kiosk)
-            scrollable_frame.bind('<Button-5>', _on_mousewheel_kiosk)
+            self.canvas.bind_all('<Button-4>', self._on_mousewheel_kiosk)
+            self.canvas.bind_all('<Button-5>', self._on_mousewheel_kiosk)
+            self.canvas.bind('<Button-4>', self._on_mousewheel_kiosk, add='+')
+            self.canvas.bind('<Button-5>', self._on_mousewheel_kiosk, add='+')
+            scrollable_frame.bind('<Button-4>', self._on_mousewheel_kiosk, add='+')
+            scrollable_frame.bind('<Button-5>', self._on_mousewheel_kiosk, add='+')
         except Exception:
             pass
 
@@ -1070,7 +1102,17 @@ class KioskFrame(tk.Frame):
         """Handle category button clicks: set active category and refresh."""
         self._active_category = cat
         self._set_active_category_button(cat)
+        # Always reset product list scroll to top when changing category.
+        try:
+            self.canvas.yview_moveto(0.0)
+        except Exception:
+            pass
         self.populate_items()
+        # Run once after layout refresh too, so top position is preserved.
+        try:
+            self.after_idle(lambda: self.canvas.yview_moveto(0.0))
+        except Exception:
+            pass
 
     def _set_active_category_button(self, cat):
         """Visually mark the active category button."""

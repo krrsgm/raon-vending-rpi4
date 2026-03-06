@@ -203,7 +203,10 @@ class PriceStockDialog(tk.Toplevel):
         except Exception:
             self.result['category'] = self.item_data.get('category', '')
         self.result['description'] = self.desc_text.get('1.0', 'end-1c').strip()
-        self.result['image'] = self.image_entry.get().strip()
+        image_path = self.image_entry.get().strip()
+        if image_path:
+            image_path = convert_image_path_to_relative(image_path)
+        self.result['image'] = image_path
         self.destroy()
     
     def _on_cancel(self):
@@ -220,31 +223,32 @@ def convert_image_path_to_relative(absolute_path: str) -> str:
     """
     if not absolute_path:
         return absolute_path
-    
-    # If it's already a relative path, return as-is
-    if not os.path.isabs(absolute_path):
-        return absolute_path
-    
+
+    normalized = str(absolute_path).strip().replace('\\', '/')
+
+    # If already relative, keep it relative but normalize separators.
+    if not os.path.isabs(normalized):
+        if normalized.startswith('./'):
+            normalized = normalized[2:]
+        return normalized
+
     try:
-        # Get project root
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        
-        # Try to make it relative to project root
-        try:
-            rel_path = os.path.relpath(absolute_path, project_root)
-            # If it doesn't go up too many directories, use it
-            if not rel_path.startswith('..'):
-                return rel_path
-        except ValueError:
-            # Different drives on Windows
-            pass
-        
-        # Try to extract just the filename and put it in images directory
-        filename = os.path.basename(absolute_path)
-        return f"./images/{filename}"
+        # This module is in project root; use it directly.
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        project_root_norm = os.path.normpath(project_root)
+        abs_norm = os.path.normpath(normalized)
+
+        # If selected image is inside project, store project-relative path.
+        common = os.path.commonpath([project_root_norm, abs_norm])
+        if common == project_root_norm:
+            rel_path = os.path.relpath(abs_norm, project_root_norm)
+            return rel_path.replace('\\', '/')
+
+        # If image is outside the project, keep absolute path so it still works.
+        return normalized
     except Exception as e:
         print(f"Error converting path {absolute_path}: {e}")
-        return absolute_path
+        return normalized
 
 
 class EditSlotDialog(tk.Toplevel):
@@ -719,15 +723,15 @@ class AssignItemsScreen(tk.Frame):
                 details_lbl = ttk.Label(info, text="", font=("Helvetica", 7), wraplength=92, justify='left')
                 details_lbl.pack(anchor='nw', fill='both', expand=True)
 
-                # Buttons (compact)
+                # Buttons (top/mid/bot vertical layout so all options remain visible)
                 btns = ttk.Frame(frm)
                 btns.pack(fill='x', pady=(2,0))
                 edit_btn = ttk.Button(btns, text="Edit", command=lambda i=idx: self.edit_slot(i))
-                edit_btn.pack(side='left', fill='x', expand=True, padx=(0,2))
+                edit_btn.pack(fill='x')
                 test_btn = ttk.Button(btns, text="Test", command=lambda i=idx: self.test_motor(i))
-                test_btn.pack(side='left', fill='x', expand=True, padx=(0,2))
+                test_btn.pack(fill='x', pady=1)
                 clear_btn = ttk.Button(btns, text="Clear", command=lambda i=idx: self.clear_slot(i))
-                clear_btn.pack(side='left', fill='x', expand=True)
+                clear_btn.pack(fill='x')
 
                 # selection toggle binding
                 def make_toggle(i):
@@ -1254,8 +1258,10 @@ class AssignItemsScreen(tk.Frame):
             img_path = ''
         # Only load images synchronously when requested via the deferred loader
         img = None
-        if img_path and PIL_AVAILABLE and os.path.exists(img_path):
-            img = self._thumb_cache.get(idx)
+        resolved_img_path = self._resolve_image_path(img_path)
+        cache_key = (idx, term_idx, resolved_img_path)
+        if resolved_img_path and PIL_AVAILABLE and os.path.exists(resolved_img_path):
+            img = self._thumb_cache.get(cache_key)
             if img:
                 slot_ui['thumb'].config(image=img, text='')
                 slot_ui['thumb'].image = img
@@ -1295,13 +1301,15 @@ class AssignItemsScreen(tk.Frame):
                     if slot and 'terms' in slot and len(slot['terms']) > term_idx:
                         data = slot['terms'][term_idx]
                     img_path = data.get('image','') if data else ''
-                    if img_path and PIL_AVAILABLE and os.path.exists(img_path):
-                        if not self._thumb_cache.get(i):
+                    resolved_img_path = self._resolve_image_path(img_path)
+                    cache_key = (i, term_idx, resolved_img_path)
+                    if resolved_img_path and PIL_AVAILABLE and os.path.exists(resolved_img_path):
+                        if not self._thumb_cache.get(cache_key):
                             try:
-                                pil = Image.open(img_path)
+                                pil = Image.open(resolved_img_path)
                                 pil.thumbnail((80,80))
                                 img = pil_to_photoimage(pil)
-                                self._thumb_cache[i] = img
+                                self._thumb_cache[cache_key] = img
                                 slot_ui['thumb'].config(image=img, text='')
                                 slot_ui['thumb'].image = img
                             except Exception:
@@ -1315,6 +1323,38 @@ class AssignItemsScreen(tk.Frame):
                 self._img_load_job = None
         # Start after a short pause to let UI update
         self._img_load_job = self.after(120, _step)
+
+    def _resolve_image_path(self, image_path):
+        """Resolve an image path from saved data to an existing local file path."""
+        raw = str(image_path or "").strip()
+        if not raw:
+            return None
+        raw = raw.replace('\\', '/')
+        if raw.startswith('./'):
+            raw = raw[2:]
+
+        candidates = []
+        if os.path.isabs(raw):
+            candidates.append(raw)
+        else:
+            candidates.append(get_absolute_path(raw))
+            candidates.append(raw)
+
+            # Backward compatibility: handle old saved values like "raon-vending-rpi4/images/x.jpg"
+            project_name = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
+            prefix = f"{project_name}/"
+            if raw.startswith(prefix):
+                trimmed = raw[len(prefix):]
+                candidates.append(get_absolute_path(trimmed))
+
+            if not raw.startswith('images/'):
+                filename = os.path.basename(raw)
+                candidates.append(get_absolute_path(f"images/{filename}"))
+
+        for path in candidates:
+            if path and os.path.exists(path):
+                return path
+        return None
 
     def _update_slot_selection_visual(self, idx):
         r, c = self._slot_to_position(idx)

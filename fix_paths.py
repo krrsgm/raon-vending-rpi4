@@ -41,6 +41,23 @@ def get_absolute_path(filename):
     3. Current working directory
     Falls back to project root if file not found.
     """
+    if not filename:
+        return os.path.join(get_project_root(), "")
+
+    filename = str(filename).strip().replace("\\", "/")
+    if filename.startswith("./"):
+        filename = filename[2:]
+
+    # If an absolute path is provided, use it directly.
+    if os.path.isabs(filename):
+        return os.path.normpath(filename)
+
+    # Backward compatibility for paths mistakenly saved as "<project-name>/images/..."
+    project_name = os.path.basename(get_project_root()).replace("\\", "/")
+    project_prefix = f"{project_name}/"
+    if filename.startswith(project_prefix):
+        filename = filename[len(project_prefix):]
+
     # Special handling for data files and directories
     if filename in ['assigned_items.json', 'item_list.json', 'config.json', 'images', 'images/']:
         found = find_file_in_search_paths(filename)

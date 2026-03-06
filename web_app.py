@@ -1469,6 +1469,65 @@ def load_config():
         return {'esp32_host': '192.168.4.1'}
 
 
+def _to_bool(value, default=False):
+    """Convert common bool-like values to bool."""
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {'1', 'true', 'yes', 'y', 'on'}:
+        return True
+    if text in {'0', 'false', 'no', 'n', 'off'}:
+        return False
+    return bool(default)
+
+
+def resolve_web_bind_settings(config):
+    """Resolve web server host/port with RAON AP defaults and env overrides.
+
+    Defaults:
+      - Prefer binding directly to RAON AP IP (192.168.4.1)
+      - Port 5000
+    """
+    cfg = config if isinstance(config, dict) else {}
+    web_cfg = cfg.get('web_server', {}) if isinstance(cfg.get('web_server', {}), dict) else {}
+
+    # Configure expected RAON access network.
+    raon_ssid = str(
+        os.environ.get('WEB_RAON_SSID', web_cfg.get('raon_ssid', 'RAON'))
+    ).strip() or 'RAON'
+    raon_ip = str(
+        os.environ.get('WEB_RAON_IP', web_cfg.get('raon_ap_ip', '192.168.4.1'))
+    ).strip() or '192.168.4.1'
+
+    # If True, attempt to bind directly to RAON IP first.
+    bind_raon_ip = _to_bool(
+        os.environ.get('WEB_BIND_RAON_IP', web_cfg.get('bind_raon_ip', True)),
+        default=True
+    )
+
+    host = str(
+        os.environ.get(
+            'WEB_HOST',
+            web_cfg.get('host', raon_ip if bind_raon_ip else '0.0.0.0')
+        )
+    ).strip() or (raon_ip if bind_raon_ip else '0.0.0.0')
+
+    try:
+        port = int(os.environ.get('WEB_PORT', web_cfg.get('port', 5000)))
+    except Exception:
+        port = 5000
+
+    return {
+        'host': host,
+        'port': max(1, min(65535, port)),
+        'raon_ssid': raon_ssid,
+        'raon_ip': raon_ip,
+        'bind_raon_ip': bind_raon_ip,
+    }
+
+
 def load_assigned_items():
     """Load items from assigned_items.json."""
     try:
@@ -1684,4 +1743,25 @@ def create_app_with_db():
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     create_app_with_db()
-    app.run(host='0.0.0.0', port=5000, debug=False)
+
+    config = load_config()
+    bind = resolve_web_bind_settings(config)
+    host = bind['host']
+    port = bind['port']
+
+    logger.info(
+        f"Web UI target WiFi SSID: {bind['raon_ssid']} | "
+        f"Preferred Raspberry Pi URL: http://{bind['raon_ip']}:{port}"
+    )
+
+    try:
+        app.run(host=host, port=port, debug=False)
+    except OSError as e:
+        # If direct RAON-IP bind fails (e.g., AP not yet up), fallback to all interfaces.
+        if host != '0.0.0.0':
+            logger.warning(
+                f"Failed to bind {host}:{port} ({e}). Falling back to 0.0.0.0:{port}."
+            )
+            app.run(host='0.0.0.0', port=port, debug=False)
+        else:
+            raise

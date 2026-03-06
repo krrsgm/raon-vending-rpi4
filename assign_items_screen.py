@@ -577,7 +577,7 @@ class AssignItemsScreen(tk.Frame):
         self.slot_frames = []
         self.selected_slots = set()
         self._thumb_cache = {}
-        self.current_term = 0  # 0-based term index
+        self.current_term = self._resolve_current_term_from_controller()
         self.custom_mode = False  # Toggle between Preset and Custom modes
         # Snapshot of presets taken when entering custom mode; used to restore originals
         self._presets_snapshot = None
@@ -622,7 +622,7 @@ class AssignItemsScreen(tk.Frame):
         
         # Term selector dropdown
         ttk.Label(left_section, text="Term:", font=("Helvetica", 11)).pack(side='left', padx=(20, 4))
-        self.term_var = tk.StringVar(value='Term 1')
+        self.term_var = tk.StringVar(value=f'Term {self.current_term + 1}')
         term_combo = ttk.Combobox(left_section, textvariable=self.term_var, values=[f'Term {i+1}' for i in range(self.TERM_COUNT)], state='readonly', width=10)
         term_combo.pack(side='left', padx=(0, 12))
         term_combo.bind('<<ComboboxSelected>>', lambda e: self._on_term_change())
@@ -759,6 +759,42 @@ class AssignItemsScreen(tk.Frame):
         c = idx % self.GRID_COLS
         return r, c
 
+    def _resolve_current_term_from_controller(self):
+        """Resolve active term from controller state/config (0-based)."""
+        try:
+            raw = getattr(self.controller, 'assigned_term', 0)
+            term_idx = int(raw)
+        except Exception:
+            term_idx = 0
+        return max(0, min(self.TERM_COUNT - 1, term_idx))
+
+    def _persist_current_term_to_config(self):
+        """Persist active term to shared config so dashboard uses the same term."""
+        term_idx = max(0, min(self.TERM_COUNT - 1, int(self.current_term)))
+        try:
+            setattr(self.controller, 'assigned_term', term_idx)
+        except Exception:
+            pass
+
+        cfg = getattr(self.controller, 'config', None)
+        if not isinstance(cfg, dict):
+            return
+        if cfg.get('assigned_term') == term_idx:
+            return
+
+        cfg['assigned_term'] = term_idx
+        try:
+            save_fn = getattr(self.controller, 'save_config_to_json', None)
+            if callable(save_fn):
+                save_fn()
+            else:
+                cfg_path = getattr(self.controller, 'config_path', None)
+                if cfg_path:
+                    with open(cfg_path, 'w', encoding='utf-8') as f:
+                        json.dump(cfg, f, indent=4)
+        except Exception as e:
+            print(f"[AssignItemsScreen] Failed to persist assigned_term: {e}")
+
     def _on_term_change(self):
         txt = self.term_var.get() or 'Term 1'
         try:
@@ -767,6 +803,7 @@ class AssignItemsScreen(tk.Frame):
             self.current_term = max(0, min(self.TERM_COUNT-1, n-1))
         except Exception:
             self.current_term = 0
+        self._persist_current_term_to_config()
         # Refresh all slots to display selected term
         # If slots appear empty, attempt to load from disk first to pick up presets
         try:
@@ -1505,6 +1542,7 @@ class AssignItemsScreen(tk.Frame):
 
     def _publish_assignments(self):
         """Publish current assigned slots to the main controller and update kiosk view if present."""
+        self._persist_current_term_to_config()
         try:
             setattr(self.controller, 'assigned_slots', self.slots)
             # Also publish which term index is currently selected so kiosk can display correct term

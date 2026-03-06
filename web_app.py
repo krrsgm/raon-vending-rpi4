@@ -1016,8 +1016,9 @@ def api_stock_alerts():
     """API: Get active stock alerts (low stock and out of stock items)."""
     try:
         alerts = []
+        term_idx = resolve_term_index_from_request(default=0)
         machines = Machine.query.filter_by(is_active=True).all()
-        assigned_items = aggregate_assigned_inventory()
+        assigned_items = aggregate_assigned_inventory(term_idx=term_idx)
 
         for machine in machines:
             for item in assigned_items:
@@ -1054,6 +1055,8 @@ def api_stock_alerts():
             'alerts': alerts,
             'total_critical': sum(1 for a in alerts if a['alert_type'] == 'out_of_stock'),
             'total_warning': sum(1 for a in alerts if a['alert_type'] == 'low_stock'),
+            'active_term': term_idx,
+            'active_term_label': f"Term {term_idx + 1}",
             'timestamp': datetime.utcnow().isoformat()
         }), 200
     except Exception as e:
@@ -1061,33 +1064,78 @@ def api_stock_alerts():
         return jsonify({'error': str(e), 'alerts': []}), 200
 
 
+@app.route('/api/term-stock')
+def api_term_stock():
+    """API: Get stock overview for all items in the active kiosk term."""
+    try:
+        term_idx = resolve_term_index_from_request(default=0)
+        items = aggregate_assigned_inventory(term_idx=term_idx)
+        items_sorted = sorted(items, key=lambda x: str(x.get('name', '')).lower())
+
+        normalized_items = []
+        for item in items_sorted:
+            qty = _safe_int(item.get('quantity', 0), 0)
+            threshold = _safe_int(item.get('threshold', 0), 0)
+            normalized_items.append({
+                'item_name': item.get('name') or 'Unknown Item',
+                'quantity': qty,
+                'threshold': threshold,
+                'category': item.get('category', ''),
+                'slots': item.get('slots', []),
+                'price': _safe_float(item.get('price', 0.0), 0.0),
+                'status': 'out_of_stock' if qty <= 0 else ('low_stock' if threshold and qty <= threshold else 'ok')
+            })
+
+        return jsonify({
+            'active_term': term_idx,
+            'active_term_label': f"Term {term_idx + 1}",
+            'items': normalized_items,
+            'item_count': len(normalized_items),
+            'total_units': sum(int(i.get('quantity', 0)) for i in normalized_items),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+    except Exception as e:
+        logger.error(f"Term stock overview error: {e}")
+        return jsonify({'error': str(e), 'items': []}), 200
+
+
 @app.route('/api/status/realtime')
 def api_realtime_status():
     """API: Get real-time machine status (stock, sales, connectivity)."""
     try:
+        term_idx = resolve_term_index_from_request(default=0)
         machines = Machine.query.filter_by(is_active=True).all()
         status_data = []
         coin_stock = get_coin_change_stock_snapshot()
+        assigned_inventory = aggregate_assigned_inventory(term_idx=term_idx)
+
+        low_stock_entries = []
+        for item in assigned_inventory:
+            qty = item.get('quantity', 0)
+            threshold = item.get('threshold', 0)
+            if qty <= 0:
+                low_stock_entries.append(item.get('name'))
+            elif threshold and qty <= threshold:
+                low_stock_entries.append(item.get('name'))
         
         logger_inst = get_logger() if get_logger else None
         today_summary = logger_inst.get_today_summary() if logger_inst else {}
         today_items = logger_inst.get_items_sold_summary() if logger_inst else {}
         
         for m in machines:
-            items = Item.query.filter_by(machine_id=m.id).all()
-            low_stock = [i for i in items if i.quantity <= i.low_stock_threshold]
-            
             status_data.append({
                 'machine_id': m.machine_id,
                 'name': m.name,
                 'is_active': m.is_active,
-                'total_items': len(items),
-                'low_stock_count': len(low_stock),
-                'low_stock_items': [i.name for i in low_stock],
+                'total_items': len(assigned_inventory),
+                'low_stock_count': len(low_stock_entries),
+                'low_stock_items': low_stock_entries,
                 'today_transactions': today_summary.get('total_transactions', 0),
                 'today_sales': today_summary.get('total_sales', 0.0),
                 'items_sold_today': today_items,
                 'coin_change_stock': coin_stock,
+                'active_term': term_idx,
+                'active_term_label': f"Term {term_idx + 1}",
             })
         
         return jsonify(status_data), 200
@@ -1350,9 +1398,10 @@ def api_acknowledge_alert(alert_id):
 def get_realtime_status():
     """Get real-time status for all machines"""
     try:
+        term_idx = resolve_term_index_from_request(default=0)
         machines = Machine.query.all()
         result = []
-        assigned_inventory = aggregate_assigned_inventory()
+        assigned_inventory = aggregate_assigned_inventory(term_idx=term_idx)
         total_items_available = sum(item.get('quantity', 0) for item in assigned_inventory)
         low_stock_entries = []
         for item in assigned_inventory:
@@ -1394,7 +1443,9 @@ def get_realtime_status():
                 "today_sales": today_sales_sum,
                 "low_stock_count": len(low_stock_entries),
                 "low_stock_items": low_stock_entries,
-                "items_sold_today": items_sold_today
+                "items_sold_today": items_sold_today,
+                "active_term": term_idx,
+                "active_term_label": f"Term {term_idx + 1}",
             })
         
         return jsonify(result), 200
@@ -1602,6 +1653,33 @@ def _safe_float(value, default=0.0):
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def get_active_term_index(default=0):
+    """Return persisted active kiosk term index from config (0-based)."""
+    cfg = load_config()
+    if not isinstance(cfg, dict):
+        return max(0, int(default))
+
+    raw = cfg.get('assigned_term', default)
+    try:
+        term_idx = int(raw)
+    except Exception:
+        term_idx = int(default)
+    return max(0, term_idx)
+
+
+def resolve_term_index_from_request(default=0):
+    """Resolve term index from query string or persisted config (0-based)."""
+    raw_term = request.args.get('term')
+    if raw_term is None or str(raw_term).strip() == '':
+        return get_active_term_index(default=default)
+
+    try:
+        term_idx = int(float(raw_term))
+    except Exception:
+        term_idx = int(default)
+    return max(0, term_idx)
 
 
 def _coin_stock_status(count, threshold):

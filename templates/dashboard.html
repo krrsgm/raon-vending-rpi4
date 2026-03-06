@@ -338,7 +338,7 @@
         <div id="alertsSection" style="margin-bottom: 30px;">
             <div class="logs-section" style="background: #fff5f5; border-left: 5px solid #e74c3c;">
                 <h3 style="color: #c0392b;">Stock Alerts</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
                     <div style="background: white; padding: 10px; border-radius: 4px; border-left: 4px solid #c0392b;">
                         <div style="font-size: 12px; color: #999; font-weight: bold;">Out of Stock</div>
                         <div style="font-size: 24px; font-weight: bold; color: #c0392b;" id="criticalCount">0</div>
@@ -351,10 +351,25 @@
                         <div style="font-size: 12px; color: #999; font-weight: bold;">Last Updated</div>
                         <div style="font-size: 12px; font-weight: bold; color: #667eea;" id="alertsLastUpdated">--:--</div>
                     </div>
+                    <div style="background: white; padding: 10px; border-radius: 4px; border-left: 4px solid #16a085;">
+                        <div style="font-size: 12px; color: #999; font-weight: bold;">Active Kiosk Term</div>
+                        <div style="font-size: 14px; font-weight: bold; color: #16a085;" id="activeTermLabel">Term 1</div>
+                    </div>
                 </div>
                 <div id="alertsContainer" style="max-height: 400px; overflow-y: auto;">
                     <div style="padding: 20px; text-align: center; color: #999;">Loading alerts...</div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Current Term Stock Bar Graph -->
+        <div class="chart-section" style="margin-bottom: 30px;">
+            <h3>Current Term Item Stocks (Bar Graph)</h3>
+            <div style="font-size: 12px; color: #666; margin-bottom: 10px;">
+                <span id="termStockMeta">Loading current term stock...</span>
+            </div>
+            <div class="chart-container" id="termStockChartContainer" style="height: 420px;">
+                <canvas id="termStockChart"></canvas>
             </div>
         </div>
         
@@ -436,6 +451,7 @@
         <script>
         let sensorChartInstance = null;
         let irChartInstance = null;
+        let termStockChartInstance = null;
         let autoFollowLogsDate = true;
         let autoFollowSensorDate = true;
         let lastAutoDate = null;
@@ -899,8 +915,10 @@
                 const alerts = data.alerts || [];
                 const totalCritical = Number(data.total_critical || 0);
                 const totalWarning = Number(data.total_warning || 0);
+                const activeTermLabel = data.active_term_label || 'Term 1';
                 document.getElementById('criticalCount').textContent = totalCritical;
                 document.getElementById('warningCount').textContent = totalWarning;
+                document.getElementById('activeTermLabel').textContent = activeTermLabel;
                 document.getElementById('alertsLastUpdated').textContent = new Date().toLocaleTimeString();
                 maybePlayStockAlertSound(totalCritical, totalWarning);
 
@@ -934,6 +952,121 @@
             } catch (error) {
                 console.error('Error loading stock alerts:', error);
                 document.getElementById('alertsContainer').innerHTML = '<div style="padding: 10px; color: #e74c3c;">Error loading alerts</div>';
+            }
+        }
+
+        function drawTermStockChart(items, activeTermLabel) {
+            const canvas = document.getElementById('termStockChart');
+            if (!canvas) return;
+
+            const container = document.getElementById('termStockChartContainer');
+            const labels = (items || []).map(i => String(i.item_name || 'Unknown Item'));
+            const quantities = (items || []).map(i => Number(i.quantity || 0));
+            const thresholds = (items || []).map(i => Number(i.threshold || 0));
+            const colors = (items || []).map(i => {
+                const qty = Number(i.quantity || 0);
+                const th = Number(i.threshold || 0);
+                if (qty <= 0) return '#c0392b';
+                if (th > 0 && qty <= th) return '#f39c12';
+                return '#27ae60';
+            });
+
+            if (container) {
+                container.style.height = `${Math.max(420, labels.length * 28)}px`;
+            }
+
+            if (termStockChartInstance) termStockChartInstance.destroy();
+
+            termStockChartInstance = new Chart(canvas.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Current Stock',
+                            data: quantities,
+                            backgroundColor: colors,
+                            borderColor: colors,
+                            borderWidth: 1,
+                        },
+                        {
+                            label: 'Low Stock Threshold',
+                            data: thresholds,
+                            type: 'line',
+                            borderColor: '#34495e',
+                            backgroundColor: '#34495e',
+                            borderWidth: 2,
+                            pointRadius: 2,
+                            tension: 0,
+                        }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `${activeTermLabel} - Stock vs Items`
+                        },
+                        legend: {
+                            display: true,
+                            position: 'bottom'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: { precision: 0 },
+                            title: { display: true, text: 'Stock Quantity' }
+                        },
+                        y: {
+                            ticks: {
+                                autoSkip: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function loadTermStockGraph() {
+            const meta = document.getElementById('termStockMeta');
+            try {
+                const res = await fetch('/api/term-stock');
+                const data = await res.json();
+                const items = (data.items || []).slice().sort((a, b) =>
+                    String(a.item_name || '').localeCompare(String(b.item_name || ''), undefined, { sensitivity: 'base' })
+                );
+                const termLabel = data.active_term_label || 'Term 1';
+                const totalUnits = Number(data.total_units || 0);
+                const itemCount = Number(data.item_count || 0);
+
+                if (meta) {
+                    meta.textContent = `${termLabel} | Items: ${itemCount} | Total Units: ${totalUnits}`;
+                }
+
+                if (items.length === 0) {
+                    if (termStockChartInstance) {
+                        termStockChartInstance.destroy();
+                        termStockChartInstance = null;
+                    }
+                    const container = document.getElementById('termStockChartContainer');
+                    if (container) {
+                        container.innerHTML = '<div style="padding: 24px; text-align: center; color: #999;">No item stock data for current term.</div>';
+                    }
+                    return;
+                }
+
+                const container = document.getElementById('termStockChartContainer');
+                if (container && !document.getElementById('termStockChart')) {
+                    container.innerHTML = '<canvas id="termStockChart"></canvas>';
+                }
+                drawTermStockChart(items, termLabel);
+            } catch (error) {
+                console.error('Error loading term stock graph:', error);
+                if (meta) meta.textContent = 'Error loading current term stock data.';
             }
         }
 
@@ -1004,6 +1137,7 @@
                 await loadSalesLogsByDate(selectedDate, 'logsContainer', 'selectedDateLabel');
 
                 await loadStockAlerts();
+                await loadTermStockGraph();
                 document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
             } catch (error) {
                 console.error('Error updating status:', error);

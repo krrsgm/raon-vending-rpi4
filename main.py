@@ -109,6 +109,7 @@ class MainApp(tk.Tk):
                 self.save_config_to_json()
             except Exception:
                 pass
+        self.assigned_term = self._resolve_assigned_term_from_config()
         try:
             timeout_sec = float(self.config.get("kiosk_inactivity_timeout_sec", 60))
         except Exception:
@@ -842,6 +843,17 @@ class MainApp(tk.Tk):
         except json.JSONDecodeError:
             print(f"Error: Could not decode JSON from {file_path}.")
             return []
+
+    def _resolve_assigned_term_from_config(self):
+        """Return configured active term index (0-based), clamped to supported range."""
+        try:
+            if not isinstance(self.config, dict):
+                return 0
+            raw = self.config.get("assigned_term", 0)
+            term_idx = int(raw)
+        except Exception:
+            term_idx = 0
+        return max(0, min(2, term_idx))
 
     def save_config_to_json(self):
         """Persist current config to disk."""

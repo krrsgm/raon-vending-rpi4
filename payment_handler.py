@@ -137,6 +137,21 @@ class PaymentHandler:
             bill_port = auto_port
         if not coin_hopper_port:
             coin_hopper_port = auto_port
+
+        # Shared reader can only consume one serial port at a time.
+        # If bill and coin ports differ, bill must use dedicated BillAcceptor parsing
+        # (same path used by bill test scripts).
+        try:
+            coin_port_norm = str(coin_port or '').strip()
+            bill_port_norm = str(bill_port or '').strip()
+            if bill_use_shared and coin_port_norm and bill_port_norm and (coin_port_norm != bill_port_norm):
+                logger.info(
+                    "Bill port differs from shared coin port; switching bill acceptor to dedicated serial mode "
+                    f"(coin_port={coin_port_norm}, bill_port={bill_port_norm})"
+                )
+                bill_use_shared = False
+        except Exception:
+            pass
         try:
             # Keep shared reader behavior for coin path unchanged.
             use_shared = True

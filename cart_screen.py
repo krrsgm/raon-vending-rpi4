@@ -32,16 +32,19 @@ class CartScreen(tk.Frame):
         
         # Get coin acceptor config
         coin_cfg = controller.config.get('hardware', {}).get('coin_acceptor', {}) if isinstance(controller.config, dict) else {}
+        configured_coin_serial = coin_cfg.get('serial_port')
+        coin_serial = detect_arduino_serial_port(preferred_port=configured_coin_serial or configured_bill_serial)
         # Default to serial because coin/bill are on Arduino Uno in this wiring layout.
         use_gpio_coin = coin_cfg.get('use_gpio', False)
         coin_gpio_pin = coin_cfg.get('gpio_pin', 17)  # Default GPIO 17
         hopper_cfg = controller.config.get('hardware', {}).get('coin_hopper', {}) if isinstance(controller.config, dict) else {}
-        hopper_serial = detect_arduino_serial_port(preferred_port=hopper_cfg.get('serial_port') or bill_serial)
+        hopper_serial = detect_arduino_serial_port(preferred_port=hopper_cfg.get('serial_port') or coin_serial or bill_serial)
         hopper_baud = hopper_cfg.get('baudrate', 115200)
+        print(f"[CartScreen] Payment serial ports - coin: {coin_serial}, bill: {bill_serial}, hopper: {hopper_serial}")
 
         self.payment_handler = PaymentHandler(
             controller.config,
-            coin_port=bill_serial,
+            coin_port=coin_serial,
             coin_baud=115200,
             bill_port=bill_serial,
             bill_baud=bill_baud,

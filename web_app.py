@@ -17,6 +17,7 @@ import time
 import re
 import io
 import csv
+import socket
 from threading import Thread, Lock
 import logging
 
@@ -1484,35 +1485,35 @@ def _to_bool(value, default=False):
 
 
 def resolve_web_bind_settings(config):
-    """Resolve web server host/port with RAON AP defaults and env overrides.
+    """Resolve web server host/port with dynamic RAON-LAN defaults.
 
-    Defaults:
-      - Prefer binding directly to RAON AP IP (192.168.4.1)
-      - Port 5000
+    Default behavior:
+      - Do NOT bind to a fixed IP.
+      - Bind to 0.0.0.0 and use current runtime LAN IP for access.
+      - Port 5000.
     """
     cfg = config if isinstance(config, dict) else {}
     web_cfg = cfg.get('web_server', {}) if isinstance(cfg.get('web_server', {}), dict) else {}
 
-    # Configure expected RAON access network.
+    # Configure expected RAON access network (for display/logging only).
     raon_ssid = str(
         os.environ.get('WEB_RAON_SSID', web_cfg.get('raon_ssid', 'RAON'))
     ).strip() or 'RAON'
-    raon_ip = str(
-        os.environ.get('WEB_RAON_IP', web_cfg.get('raon_ap_ip', '192.168.4.1'))
-    ).strip() or '192.168.4.1'
+    raon_ip_prefix = str(
+        os.environ.get('WEB_RAON_IP_PREFIX', web_cfg.get('raon_ip_prefix', '192.168.'))
+    ).strip() or '192.168.'
 
-    # If True, attempt to bind directly to RAON IP first.
-    bind_raon_ip = _to_bool(
-        os.environ.get('WEB_BIND_RAON_IP', web_cfg.get('bind_raon_ip', True)),
+    dynamic_raon_ip = _to_bool(
+        os.environ.get('WEB_DYNAMIC_IP', web_cfg.get('dynamic_raon_ip', True)),
         default=True
     )
 
-    host = str(
-        os.environ.get(
-            'WEB_HOST',
-            web_cfg.get('host', raon_ip if bind_raon_ip else '0.0.0.0')
-        )
-    ).strip() or (raon_ip if bind_raon_ip else '0.0.0.0')
+    if dynamic_raon_ip:
+        host = '0.0.0.0'
+    else:
+        host = str(
+            os.environ.get('WEB_HOST', web_cfg.get('host', '0.0.0.0'))
+        ).strip() or '0.0.0.0'
 
     try:
         port = int(os.environ.get('WEB_PORT', web_cfg.get('port', 5000)))
@@ -1523,9 +1524,57 @@ def resolve_web_bind_settings(config):
         'host': host,
         'port': max(1, min(65535, port)),
         'raon_ssid': raon_ssid,
-        'raon_ip': raon_ip,
-        'bind_raon_ip': bind_raon_ip,
+        'raon_ip_prefix': raon_ip_prefix,
+        'dynamic_raon_ip': dynamic_raon_ip,
     }
+
+
+def can_bind_host(host):
+    """Return True when this machine can bind a socket to the requested host."""
+    text = str(host or "").strip()
+    if not text:
+        return False
+    if text in {"0.0.0.0", "::"}:
+        return True
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((text, 0))
+        return True
+    except OSError:
+        return False
+
+
+def detect_runtime_access_ip(preferred_prefix='192.168.'):
+    """Detect current LAN IPv4 for client access (best effort)."""
+    candidates = []
+
+    # Common trick: resolve outbound interface IP without sending packets.
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(('10.255.255.255', 1))
+            ip = sock.getsockname()[0]
+            if ip and ip not in candidates:
+                candidates.append(ip)
+    except Exception:
+        pass
+
+    try:
+        host_ips = socket.gethostbyname_ex(socket.gethostname())[2]
+        for ip in host_ips:
+            if ip and ip not in candidates:
+                candidates.append(ip)
+    except Exception:
+        pass
+
+    valid = [ip for ip in candidates if ip and not ip.startswith('127.')]
+    if not valid:
+        return None
+
+    # Prefer likely RAON/LAN subnet when available.
+    for ip in valid:
+        if str(ip).startswith(str(preferred_prefix or '')):
+            return ip
+    return valid[0]
 
 
 def load_assigned_items():
@@ -1748,11 +1797,25 @@ if __name__ == '__main__':
     bind = resolve_web_bind_settings(config)
     host = bind['host']
     port = bind['port']
+    runtime_ip = detect_runtime_access_ip(bind.get('raon_ip_prefix', '192.168.'))
 
-    logger.info(
-        f"Web UI target WiFi SSID: {bind['raon_ssid']} | "
-        f"Preferred Raspberry Pi URL: http://{bind['raon_ip']}:{port}"
-    )
+    if runtime_ip:
+        logger.info(
+            f"Web UI WiFi SSID: {bind['raon_ssid']} | "
+            f"Open from another device: http://{runtime_ip}:{port}"
+        )
+    else:
+        logger.info(
+            f"Web UI WiFi SSID: {bind['raon_ssid']} | "
+            f"Open from another device using Raspberry Pi LAN IP on port {port}"
+        )
+
+    if host != '0.0.0.0' and not can_bind_host(host):
+        logger.warning(
+            f"Host {host} is not available on this device right now. "
+            f"Using 0.0.0.0:{port} instead."
+        )
+        host = '0.0.0.0'
 
     try:
         app.run(host=host, port=port, debug=False)

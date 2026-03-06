@@ -17,6 +17,7 @@ import time
 import re
 import io
 import csv
+import socket
 from threading import Thread, Lock
 import logging
 
@@ -1066,6 +1067,7 @@ def api_realtime_status():
     try:
         machines = Machine.query.filter_by(is_active=True).all()
         status_data = []
+        coin_stock = get_coin_change_stock_snapshot()
         
         logger_inst = get_logger() if get_logger else None
         today_summary = logger_inst.get_today_summary() if logger_inst else {}
@@ -1084,7 +1086,8 @@ def api_realtime_status():
                 'low_stock_items': [i.name for i in low_stock],
                 'today_transactions': today_summary.get('total_transactions', 0),
                 'today_sales': today_summary.get('total_sales', 0.0),
-                'items_sold_today': today_items
+                'items_sold_today': today_items,
+                'coin_change_stock': coin_stock,
             })
         
         return jsonify(status_data), 200
@@ -1469,6 +1472,113 @@ def load_config():
         return {'esp32_host': '192.168.4.1'}
 
 
+def _to_bool(value, default=False):
+    """Convert common bool-like values to bool."""
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {'1', 'true', 'yes', 'y', 'on'}:
+        return True
+    if text in {'0', 'false', 'no', 'n', 'off'}:
+        return False
+    return bool(default)
+
+
+def resolve_web_bind_settings(config):
+    """Resolve web server host/port with dynamic RAON-LAN defaults.
+
+    Default behavior:
+      - Do NOT bind to a fixed IP.
+      - Bind to 0.0.0.0 and use current runtime LAN IP for access.
+      - Port 5000.
+    """
+    cfg = config if isinstance(config, dict) else {}
+    web_cfg = cfg.get('web_server', {}) if isinstance(cfg.get('web_server', {}), dict) else {}
+
+    # Configure expected RAON access network (for display/logging only).
+    raon_ssid = str(
+        os.environ.get('WEB_RAON_SSID', web_cfg.get('raon_ssid', 'RAON'))
+    ).strip() or 'RAON'
+    raon_ip_prefix = str(
+        os.environ.get('WEB_RAON_IP_PREFIX', web_cfg.get('raon_ip_prefix', '192.168.'))
+    ).strip() or '192.168.'
+
+    dynamic_raon_ip = _to_bool(
+        os.environ.get('WEB_DYNAMIC_IP', web_cfg.get('dynamic_raon_ip', True)),
+        default=True
+    )
+
+    if dynamic_raon_ip:
+        host = '0.0.0.0'
+    else:
+        host = str(
+            os.environ.get('WEB_HOST', web_cfg.get('host', '0.0.0.0'))
+        ).strip() or '0.0.0.0'
+
+    try:
+        port = int(os.environ.get('WEB_PORT', web_cfg.get('port', 5000)))
+    except Exception:
+        port = 5000
+
+    return {
+        'host': host,
+        'port': max(1, min(65535, port)),
+        'raon_ssid': raon_ssid,
+        'raon_ip_prefix': raon_ip_prefix,
+        'dynamic_raon_ip': dynamic_raon_ip,
+    }
+
+
+def can_bind_host(host):
+    """Return True when this machine can bind a socket to the requested host."""
+    text = str(host or "").strip()
+    if not text:
+        return False
+    if text in {"0.0.0.0", "::"}:
+        return True
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((text, 0))
+        return True
+    except OSError:
+        return False
+
+
+def detect_runtime_access_ip(preferred_prefix='192.168.'):
+    """Detect current LAN IPv4 for client access (best effort)."""
+    candidates = []
+
+    # Common trick: resolve outbound interface IP without sending packets.
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(('10.255.255.255', 1))
+            ip = sock.getsockname()[0]
+            if ip and ip not in candidates:
+                candidates.append(ip)
+    except Exception:
+        pass
+
+    try:
+        host_ips = socket.gethostbyname_ex(socket.gethostname())[2]
+        for ip in host_ips:
+            if ip and ip not in candidates:
+                candidates.append(ip)
+    except Exception:
+        pass
+
+    valid = [ip for ip in candidates if ip and not ip.startswith('127.')]
+    if not valid:
+        return None
+
+    # Prefer likely RAON/LAN subnet when available.
+    for ip in valid:
+        if str(ip).startswith(str(preferred_prefix or '')):
+            return ip
+    return valid[0]
+
+
 def load_assigned_items():
     """Load items from assigned_items.json."""
     try:
@@ -1492,6 +1602,49 @@ def _safe_float(value, default=0.0):
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _coin_stock_status(count, threshold):
+    """Return stock status token for dashboard display."""
+    if int(count) <= 0:
+        return 'out'
+    if int(count) <= int(threshold):
+        return 'low'
+    return 'ok'
+
+
+def get_coin_change_stock_snapshot():
+    """Load coin-change stock from config for dashboard/API display."""
+    cfg = load_config()
+    coin_cfg = cfg.get('coin_change_stock', {}) if isinstance(cfg, dict) else {}
+
+    one_raw = coin_cfg.get('one_peso', {}) if isinstance(coin_cfg.get('one_peso', {}), dict) else {}
+    five_raw = coin_cfg.get('five_peso', {}) if isinstance(coin_cfg.get('five_peso', {}), dict) else {}
+
+    one_count = max(0, _safe_int(one_raw.get('count', 0), 0))
+    one_threshold = max(0, _safe_int(one_raw.get('low_threshold', 20), 20))
+    five_count = max(0, _safe_int(five_raw.get('count', 0), 0))
+    five_threshold = max(0, _safe_int(five_raw.get('low_threshold', 20), 20))
+
+    one_value = one_count
+    five_value = five_count * 5
+    total_value = one_value + five_value
+
+    return {
+        'one_peso': {
+            'count': one_count,
+            'threshold': one_threshold,
+            'value': one_value,
+            'status': _coin_stock_status(one_count, one_threshold),
+        },
+        'five_peso': {
+            'count': five_count,
+            'threshold': five_threshold,
+            'value': five_value,
+            'status': _coin_stock_status(five_count, five_threshold),
+        },
+        'total_value': total_value,
+    }
 
 
 def _extract_slots_from_assigned(assigned_data):
@@ -1684,4 +1837,39 @@ def create_app_with_db():
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     create_app_with_db()
-    app.run(host='0.0.0.0', port=5000, debug=False)
+
+    config = load_config()
+    bind = resolve_web_bind_settings(config)
+    host = bind['host']
+    port = bind['port']
+    runtime_ip = detect_runtime_access_ip(bind.get('raon_ip_prefix', '192.168.'))
+
+    if runtime_ip:
+        logger.info(
+            f"Web UI WiFi SSID: {bind['raon_ssid']} | "
+            f"Open from another device: http://{runtime_ip}:{port}"
+        )
+    else:
+        logger.info(
+            f"Web UI WiFi SSID: {bind['raon_ssid']} | "
+            f"Open from another device using Raspberry Pi LAN IP on port {port}"
+        )
+
+    if host != '0.0.0.0' and not can_bind_host(host):
+        logger.warning(
+            f"Host {host} is not available on this device right now. "
+            f"Using 0.0.0.0:{port} instead."
+        )
+        host = '0.0.0.0'
+
+    try:
+        app.run(host=host, port=port, debug=False)
+    except OSError as e:
+        # If direct RAON-IP bind fails (e.g., AP not yet up), fallback to all interfaces.
+        if host != '0.0.0.0':
+            logger.warning(
+                f"Failed to bind {host}:{port} ({e}). Falling back to 0.0.0.0:{port}."
+            )
+            app.run(host='0.0.0.0', port=port, debug=False)
+        else:
+            raise

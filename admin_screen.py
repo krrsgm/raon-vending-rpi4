@@ -464,106 +464,6 @@ class KioskConfigWindow(tk.Toplevel):
             messagebox.showerror('Save Error', f'Failed to save config: {e}', parent=self)
 
 
-class CoinStockEditWindow(tk.Toplevel):
-    """Modal window to edit hopper coin stock and low-stock thresholds."""
-
-    def __init__(self, parent, controller):
-        super().__init__(parent)
-        self.controller = controller
-        self.title("Edit Coin Stock")
-        self.configure(bg="#f0f4f8")
-        self.resizable(False, False)
-        self.transient(parent)
-        self.grab_set()
-        self._build()
-
-    def _build(self):
-        stock = {}
-        try:
-            stock = self.controller.get_coin_change_stock()
-        except Exception:
-            stock = {
-                "one_peso": {"count": 0, "low_threshold": 20},
-                "five_peso": {"count": 0, "low_threshold": 20},
-            }
-
-        frame = tk.Frame(self, bg="#f0f4f8", padx=16, pady=16)
-        frame.pack(fill="both", expand=True)
-
-        tk.Label(
-            frame,
-            text="Coin Hopper Setup",
-            bg="#f0f4f8",
-            fg="#2c3e50",
-            font=("Helvetica", 14, "bold"),
-            anchor="w",
-        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
-
-        tk.Label(frame, text="Denomination", bg="#f0f4f8", font=("Helvetica", 11, "bold")).grid(row=1, column=0, sticky="w")
-        tk.Label(frame, text="Current Count", bg="#f0f4f8", font=("Helvetica", 11, "bold")).grid(row=1, column=1, sticky="w")
-        tk.Label(frame, text="Low Threshold", bg="#f0f4f8", font=("Helvetica", 11, "bold")).grid(row=1, column=2, sticky="w")
-
-        tk.Label(frame, text="₱1 coins", bg="#f0f4f8", font=("Helvetica", 11)).grid(row=2, column=0, sticky="w", pady=6)
-        self.one_count_entry = tk.Entry(frame, width=12)
-        self.one_count_entry.grid(row=2, column=1, sticky="w", pady=6, padx=(8, 0))
-        self.one_count_entry.insert(0, str(stock.get("one_peso", {}).get("count", 0)))
-        self.one_threshold_entry = tk.Entry(frame, width=12)
-        self.one_threshold_entry.grid(row=2, column=2, sticky="w", pady=6, padx=(8, 0))
-        self.one_threshold_entry.insert(0, str(stock.get("one_peso", {}).get("low_threshold", 20)))
-
-        tk.Label(frame, text="₱5 coins", bg="#f0f4f8", font=("Helvetica", 11)).grid(row=3, column=0, sticky="w", pady=6)
-        self.five_count_entry = tk.Entry(frame, width=12)
-        self.five_count_entry.grid(row=3, column=1, sticky="w", pady=6, padx=(8, 0))
-        self.five_count_entry.insert(0, str(stock.get("five_peso", {}).get("count", 0)))
-        self.five_threshold_entry = tk.Entry(frame, width=12)
-        self.five_threshold_entry.grid(row=3, column=2, sticky="w", pady=6, padx=(8, 0))
-        self.five_threshold_entry.insert(0, str(stock.get("five_peso", {}).get("low_threshold", 20)))
-
-        btns = tk.Frame(frame, bg="#f0f4f8")
-        btns.grid(row=4, column=0, columnspan=3, sticky="e", pady=(14, 0))
-
-        tk.Button(
-            btns,
-            text="Save",
-            bg="#27ae60",
-            fg="white",
-            relief="flat",
-            padx=14,
-            command=self._save,
-        ).pack(side="right", padx=(8, 0))
-
-        tk.Button(
-            btns,
-            text="Cancel",
-            bg="#7f8c8d",
-            fg="white",
-            relief="flat",
-            padx=14,
-            command=self.destroy,
-        ).pack(side="right")
-
-    def _save(self):
-        try:
-            one_count = max(0, int(self.one_count_entry.get().strip() or 0))
-            five_count = max(0, int(self.five_count_entry.get().strip() or 0))
-            one_threshold = max(0, int(self.one_threshold_entry.get().strip() or 0))
-            five_threshold = max(0, int(self.five_threshold_entry.get().strip() or 0))
-        except Exception:
-            messagebox.showerror("Invalid Input", "Counts and thresholds must be whole numbers >= 0.", parent=self)
-            return
-
-        try:
-            self.controller.update_coin_change_stock(
-                one_count=one_count,
-                five_count=five_count,
-                one_threshold=one_threshold,
-                five_threshold=five_threshold,
-            )
-            self.destroy()
-        except Exception as e:
-            messagebox.showerror("Save Error", f"Failed to save coin stock: {e}", parent=self)
-
-
 class AdminScreen(tk.Frame):
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent, bg="#f0f4f8")  # Light background
@@ -655,91 +555,6 @@ class AdminScreen(tk.Frame):
         )
         logs_btn.pack(side="right", padx=(0, 8))
 
-        # Button to edit hopper coin counts and thresholds
-        coin_edit_btn = tk.Button(
-            header,
-            text="Edit Coins",
-            font=self.fonts["button"],
-            bg="#f39c12",
-            fg=self.colors["btn_fg"],
-            relief="flat",
-            padx=12,
-            pady=5,
-            command=self.open_coin_stock_editor,
-        )
-        coin_edit_btn.pack(side="right", padx=(0, 8))
-
-        # --- Coin Change Dashboard ---
-        coin_dash = tk.Frame(
-            self,
-            bg="#ffffff",
-            highlightbackground=self.colors["border"],
-            highlightthickness=1,
-            padx=14,
-            pady=10,
-        )
-        coin_dash.pack(fill="x", padx=20, pady=(0, 10))
-
-        tk.Label(
-            coin_dash,
-            text="Change Coin Stock",
-            bg="#ffffff",
-            fg="#2c3e50",
-            font=("Helvetica", 12, "bold"),
-            anchor="w",
-        ).grid(row=0, column=0, sticky="w")
-
-        self.coin_total_value_label = tk.Label(
-            coin_dash,
-            text="Total change value: ₱0",
-            bg="#ffffff",
-            fg="#2c3e50",
-            font=("Helvetica", 11, "bold"),
-            anchor="w",
-        )
-        self.coin_total_value_label.grid(row=0, column=1, sticky="e")
-
-        self.coin_one_info_label = tk.Label(
-            coin_dash,
-            text="₱1 Coins: 0 pcs | Threshold: 0 | Value: ₱0",
-            bg="#ffffff",
-            fg="#2c3e50",
-            font=("Helvetica", 11),
-            anchor="w",
-        )
-        self.coin_one_info_label.grid(row=1, column=0, sticky="w", pady=(8, 2))
-        self.coin_one_status_label = tk.Label(
-            coin_dash,
-            text="Status: OK",
-            bg="#ffffff",
-            fg="#27ae60",
-            font=("Helvetica", 11, "bold"),
-            anchor="e",
-        )
-        self.coin_one_status_label.grid(row=1, column=1, sticky="e", pady=(8, 2))
-
-        self.coin_five_info_label = tk.Label(
-            coin_dash,
-            text="₱5 Coins: 0 pcs | Threshold: 0 | Value: ₱0",
-            bg="#ffffff",
-            fg="#2c3e50",
-            font=("Helvetica", 11),
-            anchor="w",
-        )
-        self.coin_five_info_label.grid(row=2, column=0, sticky="w", pady=2)
-        self.coin_five_status_label = tk.Label(
-            coin_dash,
-            text="Status: OK",
-            bg="#ffffff",
-            fg="#27ae60",
-            font=("Helvetica", 11, "bold"),
-            anchor="e",
-        )
-        self.coin_five_status_label.grid(row=2, column=1, sticky="e", pady=2)
-
-        coin_dash.grid_columnconfigure(0, weight=1)
-        coin_dash.grid_columnconfigure(1, weight=0)
-
         # --- Scrollable Item List ---
         canvas_container = tk.Frame(self, bg=self.colors["background"])
         canvas_container.pack(fill="both", expand=True, padx=20, pady=(0, 20))
@@ -769,7 +584,6 @@ class AdminScreen(tk.Frame):
 
         # Bind mouse wheel to scroll (works on all frames)
         self.bind_all("<MouseWheel>", self._on_mousewheel)
-        self.refresh_coin_dashboard()
 
     def on_canvas_configure(self, event):
         """On canvas resize, update the width of the inner frame."""
@@ -789,7 +603,6 @@ class AdminScreen(tk.Frame):
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def populate_items(self):
-        self.refresh_coin_dashboard()
         # Clear existing items
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
@@ -892,47 +705,6 @@ class AdminScreen(tk.Frame):
 
     def open_kiosk_config(self):
         KioskConfigWindow(self, self.controller)
-
-    def open_coin_stock_editor(self):
-        CoinStockEditWindow(self, self.controller)
-
-    def _format_coin_status(self, count, threshold):
-        if count <= 0:
-            return ("OUT OF STOCK", "#e74c3c")
-        if count <= threshold:
-            return ("LOW STOCK", "#f39c12")
-        return ("OK", "#27ae60")
-
-    def refresh_coin_dashboard(self):
-        try:
-            stock = self.controller.get_coin_change_stock()
-        except Exception:
-            stock = {
-                "one_peso": {"count": 0, "low_threshold": 0},
-                "five_peso": {"count": 0, "low_threshold": 0},
-            }
-
-        one_count = int(stock.get("one_peso", {}).get("count", 0))
-        one_threshold = int(stock.get("one_peso", {}).get("low_threshold", 0))
-        five_count = int(stock.get("five_peso", {}).get("count", 0))
-        five_threshold = int(stock.get("five_peso", {}).get("low_threshold", 0))
-
-        one_value = one_count * 1
-        five_value = five_count * 5
-        total_value = one_value + five_value
-
-        one_status, one_color = self._format_coin_status(one_count, one_threshold)
-        five_status, five_color = self._format_coin_status(five_count, five_threshold)
-
-        self.coin_total_value_label.config(text=f"Total change value: ₱{total_value}")
-        self.coin_one_info_label.config(
-            text=f"₱1 Coins: {one_count} pcs | Threshold: {one_threshold} | Value: ₱{one_value}"
-        )
-        self.coin_one_status_label.config(text=f"Status: {one_status}", fg=one_color)
-        self.coin_five_info_label.config(
-            text=f"₱5 Coins: {five_count} pcs | Threshold: {five_threshold} | Value: ₱{five_value}"
-        )
-        self.coin_five_status_label.config(text=f"Status: {five_status}", fg=five_color)
 
     def edit_item(self, item_data):
         ItemEditWindow(self, self.controller, item_data)

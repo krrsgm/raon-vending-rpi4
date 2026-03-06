@@ -763,13 +763,6 @@ class CartScreen(tk.Frame):
             pass
 
         change_due = max(0.0, float(received) - float(required_amount))
-        # Track actual dispensed change in coin inventory for admin monitoring.
-        try:
-            if float(change_dispensed) > 0 and hasattr(self.controller, "record_change_dispensed"):
-                self.controller.record_change_dispensed(change_dispensed)
-        except Exception as e:
-            print(f"[CartScreen] Failed to record change dispense in coin stock: {e}")
-
         status_text = (
             "Thank you!\n\n"
             f"Coins received: {self.controller.currency_symbol}{coin_amount:.2f}\n"

@@ -117,6 +117,24 @@
             border-radius: 4px;
             font-size: 12px;
         }
+
+        .coin-stock-box {
+            background: #fff8e8;
+            border-left: 4px solid #f39c12;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+
+        .coin-stock-line {
+            margin-top: 4px;
+            color: #555;
+        }
+
+        .coin-status-ok { color: #27ae60; font-weight: bold; }
+        .coin-status-low { color: #f39c12; font-weight: bold; }
+        .coin-status-out { color: #e74c3c; font-weight: bold; }
         
         .items-sold-title { font-weight: bold; color: #333; margin-bottom: 5px; }
         .items-sold-list { color: #667eea; }
@@ -937,6 +955,24 @@
                 (statusData || []).forEach(machine => {
                     const lowStockItems = machine.low_stock_items || [];
                     const itemsList = Object.entries(machine.items_sold_today || {}).map(([name, qty]) => `${name}: ${qty}`).join(', ') || 'None';
+                    const coinStock = machine.coin_change_stock || {};
+                    const one = coinStock.one_peso || {};
+                    const five = coinStock.five_peso || {};
+                    const totalCoinValue = Number(coinStock.total_value || 0);
+                    const oneStatus = String(one.status || 'ok');
+                    const fiveStatus = String(five.status || 'ok');
+
+                    const coinStatusClass = (s) => {
+                        if (s === 'out') return 'coin-status-out';
+                        if (s === 'low') return 'coin-status-low';
+                        return 'coin-status-ok';
+                    };
+
+                    const coinStatusText = (s) => {
+                        if (s === 'out') return 'OUT';
+                        if (s === 'low') return 'LOW';
+                        return 'OK';
+                    };
                     const card = document.createElement('div');
                     card.className = 'machine-card';
                     card.innerHTML = `
@@ -948,6 +984,12 @@
                         <div class="machine-stats">
                             <div class="stat-box"><div class="stat-label-small">Total Items</div><div class="stat-value-small">${machine.total_items}</div></div>
                             <div class="stat-box"><div class="stat-label-small">Today's Sales</div><div class="stat-value-small">\u20B1${Number(machine.today_sales || 0).toFixed(2)}</div></div>
+                        </div>
+                        <div class="coin-stock-box">
+                            <div class="items-sold-title">Change Coins (Hopper)</div>
+                            <div class="coin-stock-line">Total Change Value: <strong>\u20B1${totalCoinValue.toFixed(2)}</strong></div>
+                            <div class="coin-stock-line">₱1: ${Number(one.count || 0)} pcs (threshold ${Number(one.threshold || 0)}) - <span class="${coinStatusClass(oneStatus)}">${coinStatusText(oneStatus)}</span></div>
+                            <div class="coin-stock-line">₱5: ${Number(five.count || 0)} pcs (threshold ${Number(five.threshold || 0)}) - <span class="${coinStatusClass(fiveStatus)}">${coinStatusText(fiveStatus)}</span></div>
                         </div>
                         <div class="items-sold"><div class="items-sold-title">Today's Items Sold:</div><div class="items-sold-list">${escapeHtml(itemsList)}</div></div>
                     `;

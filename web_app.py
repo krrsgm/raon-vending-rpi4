@@ -1067,6 +1067,7 @@ def api_realtime_status():
     try:
         machines = Machine.query.filter_by(is_active=True).all()
         status_data = []
+        coin_stock = get_coin_change_stock_snapshot()
         
         logger_inst = get_logger() if get_logger else None
         today_summary = logger_inst.get_today_summary() if logger_inst else {}
@@ -1085,7 +1086,8 @@ def api_realtime_status():
                 'low_stock_items': [i.name for i in low_stock],
                 'today_transactions': today_summary.get('total_transactions', 0),
                 'today_sales': today_summary.get('total_sales', 0.0),
-                'items_sold_today': today_items
+                'items_sold_today': today_items,
+                'coin_change_stock': coin_stock,
             })
         
         return jsonify(status_data), 200
@@ -1600,6 +1602,49 @@ def _safe_float(value, default=0.0):
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _coin_stock_status(count, threshold):
+    """Return stock status token for dashboard display."""
+    if int(count) <= 0:
+        return 'out'
+    if int(count) <= int(threshold):
+        return 'low'
+    return 'ok'
+
+
+def get_coin_change_stock_snapshot():
+    """Load coin-change stock from config for dashboard/API display."""
+    cfg = load_config()
+    coin_cfg = cfg.get('coin_change_stock', {}) if isinstance(cfg, dict) else {}
+
+    one_raw = coin_cfg.get('one_peso', {}) if isinstance(coin_cfg.get('one_peso', {}), dict) else {}
+    five_raw = coin_cfg.get('five_peso', {}) if isinstance(coin_cfg.get('five_peso', {}), dict) else {}
+
+    one_count = max(0, _safe_int(one_raw.get('count', 0), 0))
+    one_threshold = max(0, _safe_int(one_raw.get('low_threshold', 20), 20))
+    five_count = max(0, _safe_int(five_raw.get('count', 0), 0))
+    five_threshold = max(0, _safe_int(five_raw.get('low_threshold', 20), 20))
+
+    one_value = one_count
+    five_value = five_count * 5
+    total_value = one_value + five_value
+
+    return {
+        'one_peso': {
+            'count': one_count,
+            'threshold': one_threshold,
+            'value': one_value,
+            'status': _coin_stock_status(one_count, one_threshold),
+        },
+        'five_peso': {
+            'count': five_count,
+            'threshold': five_threshold,
+            'value': five_value,
+            'status': _coin_stock_status(five_count, five_threshold),
+        },
+        'total_value': total_value,
+    }
 
 
 def _extract_slots_from_assigned(assigned_data):

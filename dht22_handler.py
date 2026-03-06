@@ -51,6 +51,7 @@ class SharedSerialReader(threading.Thread):
         self._last_coin_event_ms = 0
         self._coin_event_debounce_ms = 250
         self._allowed_coin_values = {1.0, 5.0, 10.0}
+        self._allowed_bill_values = {20.0, 50.0, 100.0}
         self.suspended = False
         # Match lines like: "DHT1: 25.0C 60%"
         self.pattern = re.compile(r"(DHT1|DHT2).*?:\s*([\-0-9.]+)\s*C\s*([\-0-9.]+)\s*%?", re.IGNORECASE)
@@ -59,6 +60,7 @@ class SharedSerialReader(threading.Thread):
         self.coin_pattern = re.compile(r"\[COIN\].*?Value:\s*[^\d-]*([-\d.]+)(?:.*?Total:\s*[^\d-]*([-\d.]+))?", re.IGNORECASE)
         self.balance_pattern = re.compile(r"BALANCE:\s*[^\d-]*([-\d.]+)", re.IGNORECASE)
         self.bill_pattern = re.compile(r"(?:BILL\s+INSERTED|BILL)[:\s]*(?:\u20B1|P)?\s*(\d+)", re.IGNORECASE)
+        self.bill_pulses_pattern = re.compile(r"PULSES[:\s]*(\d+)", re.IGNORECASE)
         self.tec_pattern = re.compile(r"TEC\s*:\s*(ON|OFF)", re.IGNORECASE)
 
     def run(self):
@@ -187,7 +189,24 @@ class SharedSerialReader(threading.Thread):
                             amount = float(m5.group(1))
                         except Exception:
                             amount = None
-                        if amount is not None:
+                        if amount is not None and amount in self._allowed_bill_values:
+                            with self._lock:
+                                self.bill_total += amount
+                            callbacks = list(self._bill_callbacks)
+                            for cb in callbacks:
+                                try:
+                                    cb(self.bill_total)
+                                except Exception:
+                                    pass
+                        continue
+                    m5p = self.bill_pulses_pattern.search(line)
+                    if m5p:
+                        try:
+                            pulses = int(m5p.group(1))
+                            amount = float(pulses * 10)
+                        except Exception:
+                            amount = None
+                        if amount is not None and amount in self._allowed_bill_values:
                             with self._lock:
                                 self.bill_total += amount
                             callbacks = list(self._bill_callbacks)

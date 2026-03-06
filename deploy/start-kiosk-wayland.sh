@@ -29,6 +29,37 @@ if command -v wlr-randr >/dev/null 2>&1; then
   done
 fi
 
+# Keep touchscreen orientation in sync with portrait display rotation.
+# Rotation mapping here matches 270 degrees (clockwise) output transform.
+apply_touch_rotation_x11() {
+  if ! command -v xinput >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local touch_matrix="0 1 0 -1 0 1 0 0 1"
+  local calib_matrix="0 1 0 -1 0 1"
+  local device_found=1
+
+  while IFS= read -r device; do
+    [ -z "$device" ] && continue
+    device_found=0
+    xinput set-prop "$device" "Coordinate Transformation Matrix" $touch_matrix >/dev/null 2>&1 || true
+    xinput set-prop "$device" "libinput Calibration Matrix" $calib_matrix >/dev/null 2>&1 || true
+  done < <(
+    xinput --list --name-only 2>/dev/null | grep -Ei "touch|touchscreen|goodix|elan|ft5x06|waveshare|egalax" || true
+  )
+
+  return $device_found
+}
+
+# Retry touch rotation because touch devices can appear a bit later than display init.
+for _ in $(seq 1 12); do
+  if apply_touch_rotation_x11; then
+    break
+  fi
+  sleep 1
+done
+
 # Hide desktop taskbar/panel for kiosk mode (Wayland and X11 variants).
 for _ in $(seq 1 10); do
   pkill -x wf-panel-pi >/dev/null 2>&1 || true

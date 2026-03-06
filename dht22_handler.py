@@ -6,11 +6,6 @@ import threading
 import re
 
 try:
-    from bill_acceptor import parse_bill_amount_from_line
-except Exception:
-    parse_bill_amount_from_line = None
-
-try:
     import serial
     import serial.tools.list_ports
     SERIAL_AVAILABLE = True
@@ -56,7 +51,6 @@ class SharedSerialReader(threading.Thread):
         self._last_coin_event_ms = 0
         self._coin_event_debounce_ms = 250
         self._allowed_coin_values = {1.0, 5.0, 10.0}
-        self._allowed_bill_values = {20.0, 50.0, 100.0}
         self.suspended = False
         # Match lines like: "DHT1: 25.0C 60%"
         self.pattern = re.compile(r"(DHT1|DHT2).*?:\s*([\-0-9.]+)\s*C\s*([\-0-9.]+)\s*%?", re.IGNORECASE)
@@ -64,6 +58,7 @@ class SharedSerialReader(threading.Thread):
         self.ir2_pattern = re.compile(r"IR2.*?:\s*(BLOCKED|CLEAR)", re.IGNORECASE)
         self.coin_pattern = re.compile(r"\[COIN\].*?Value:\s*[^\d-]*([-\d.]+)(?:.*?Total:\s*[^\d-]*([-\d.]+))?", re.IGNORECASE)
         self.balance_pattern = re.compile(r"BALANCE:\s*[^\d-]*([-\d.]+)", re.IGNORECASE)
+        self.bill_pattern = re.compile(r"(?:BILL\s+INSERTED|BILL)[:\s]*(?:\u20B1|P)?\s*(\d+)", re.IGNORECASE)
         self.tec_pattern = re.compile(r"TEC\s*:\s*(ON|OFF)", re.IGNORECASE)
 
     def run(self):
@@ -186,19 +181,13 @@ class SharedSerialReader(threading.Thread):
                             with self._lock:
                                 self.coin_total = total
                         continue
-                    bill_amount = None
-                    if parse_bill_amount_from_line:
+                    m5 = self.bill_pattern.search(line)
+                    if m5:
                         try:
-                            bill_amount = parse_bill_amount_from_line(line, accepted_denominations=self._allowed_bill_values)
-                        except Exception:
-                            bill_amount = None
-                    if bill_amount is not None:
-                        try:
-                            amount = float(bill_amount)
+                            amount = float(m5.group(1))
                         except Exception:
                             amount = None
                         if amount is not None:
-                            print(f"[ESP32DHTReader] BILL parsed: {amount} from '{line}'")
                             with self._lock:
                                 self.bill_total += amount
                             callbacks = list(self._bill_callbacks)
@@ -208,9 +197,6 @@ class SharedSerialReader(threading.Thread):
                                 except Exception:
                                     pass
                         continue
-                    upper_line = line.upper()
-                    if ("BILL" in upper_line) or ("INSERT" in upper_line) or ("PULSES:" in upper_line):
-                        print(f"[ESP32DHTReader] BILL line not parsed: '{line}'")
                     m6 = self.tec_pattern.search(line)
                     if m6:
                         with self._lock:

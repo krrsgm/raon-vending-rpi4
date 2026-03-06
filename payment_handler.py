@@ -123,12 +123,8 @@ class PaymentHandler:
             use_gpio_coin (bool): If True, use GPIO-based coin acceptor (Raspberry Pi)
             coin_gpio_pin (int): GPIO pin for coin acceptor (default 17)
         """
-        # Shared serial reader for Arduino Uno (DHT/IR/coin/bill) when enabled.
+        # Shared serial reader for Arduino Uno (DHT/IR/coin/bill) if enabled.
         # This avoids multiple consumers opening the same USB serial port.
-        coin_cfg = config.get('hardware', {}).get('coin_acceptor', {}) if isinstance(config, dict) else {}
-        bill_cfg = config.get('hardware', {}).get('bill_acceptor', {}) if isinstance(config, dict) else {}
-        bill_use_shared = bool(bill_cfg.get('use_arduino_shared', True))
-
         shared_reader = None
         auto_port = detect_arduino_serial_port(preferred_port=coin_port or bill_port or coin_hopper_port)
         if not coin_port:
@@ -138,11 +134,10 @@ class PaymentHandler:
         if not coin_hopper_port:
             coin_hopper_port = auto_port
         try:
-            # Keep shared reader behavior for coin path unchanged.
+            # Coin/bill/hopper are read from Arduino Uno serial in this build.
             use_shared = True
             if use_shared and get_shared_serial_reader:
-                shared_port = coin_port or bill_port
-                shared_reader = get_shared_serial_reader(port=shared_port, baudrate=coin_baud or 115200)
+                shared_reader = get_shared_serial_reader(port=coin_port or bill_port, baudrate=coin_baud or 115200)
         except Exception:
             shared_reader = None
         self._shared_reader = shared_reader
@@ -152,6 +147,7 @@ class PaymentHandler:
         # hardware.coin_acceptor.accepted_values = [5, 10]
         # hardware.coin_acceptor.event_debounce_ms = 350
         try:
+            coin_cfg = config.get('hardware', {}).get('coin_acceptor', {}) if isinstance(config, dict) else {}
             allowed_cfg = coin_cfg.get('accepted_values', [1, 5, 10])
             debounce_cfg = int(coin_cfg.get('event_debounce_ms', 250))
         except Exception:
@@ -225,8 +221,6 @@ class PaymentHandler:
                 else:
                     chosen_baud = int(bill_baud)
 
-                bill_shared_reader = shared_reader if bill_use_shared else None
-                mode_label = "shared-reader" if bill_shared_reader is not None else "dedicated-serial"
                 self.bill_acceptor = BillAcceptor(
                     port=bill_port,
                     baudrate=chosen_baud,
@@ -234,9 +228,8 @@ class PaymentHandler:
                     esp32_serial_port=bill_esp32_serial_port,
                     esp32_host=bill_esp32_host,
                     esp32_port=bill_esp32_port,
-                    shared_reader=bill_shared_reader
+                    shared_reader=shared_reader
                 )
-                print(f"DEBUG: BillAcceptor mode={mode_label}, bill_port={bill_port}, coin_port={coin_port}")
                 print(f"DEBUG: BillAcceptor created (before connect)")
                 if self.bill_acceptor.connect():
                     print(f"DEBUG: BillAcceptor connected successfully")

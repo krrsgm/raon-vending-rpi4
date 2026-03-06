@@ -208,6 +208,9 @@ class SharedSerialReader(threading.Thread):
                                 except Exception:
                                     pass
                         continue
+                    upper_line = line.upper()
+                    if ("BILL" in upper_line) or ("INSERT" in upper_line) or ("PULSES:" in upper_line):
+                        print(f"[ESP32DHTReader] BILL line not parsed: '{line}'")
                     m6 = self.tec_pattern.search(line)
                     if m6:
                         with self._lock:

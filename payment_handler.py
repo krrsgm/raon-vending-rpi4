@@ -137,21 +137,6 @@ class PaymentHandler:
             bill_port = auto_port
         if not coin_hopper_port:
             coin_hopper_port = auto_port
-
-        # Shared reader can only consume one serial port at a time.
-        # If bill and coin ports differ, bill must use dedicated BillAcceptor parsing
-        # (same path used by bill test scripts).
-        try:
-            coin_port_norm = str(coin_port or '').strip()
-            bill_port_norm = str(bill_port or '').strip()
-            if bill_use_shared and coin_port_norm and bill_port_norm and (coin_port_norm != bill_port_norm):
-                logger.info(
-                    "Bill port differs from shared coin port; switching bill acceptor to dedicated serial mode "
-                    f"(coin_port={coin_port_norm}, bill_port={bill_port_norm})"
-                )
-                bill_use_shared = False
-        except Exception:
-            pass
         try:
             # Keep shared reader behavior for coin path unchanged.
             use_shared = True
@@ -241,6 +226,7 @@ class PaymentHandler:
                     chosen_baud = int(bill_baud)
 
                 bill_shared_reader = shared_reader if bill_use_shared else None
+                mode_label = "shared-reader" if bill_shared_reader is not None else "dedicated-serial"
                 self.bill_acceptor = BillAcceptor(
                     port=bill_port,
                     baudrate=chosen_baud,
@@ -250,6 +236,7 @@ class PaymentHandler:
                     esp32_port=bill_esp32_port,
                     shared_reader=bill_shared_reader
                 )
+                print(f"DEBUG: BillAcceptor mode={mode_label}, bill_port={bill_port}, coin_port={coin_port}")
                 print(f"DEBUG: BillAcceptor created (before connect)")
                 if self.bill_acceptor.connect():
                     print(f"DEBUG: BillAcceptor connected successfully")

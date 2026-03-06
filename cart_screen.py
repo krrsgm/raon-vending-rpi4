@@ -23,6 +23,7 @@ class CartScreen(tk.Frame):
         # If TB74 is connected to the ESP32 and the ESP32 forwards bill events,
         # enable esp32 proxy mode and supply the serial port or host from config.
         bill_cfg = controller.config.get('hardware', {}).get('bill_acceptor', {}) if isinstance(controller.config, dict) else {}
+        bill_use_shared = bool(bill_cfg.get('use_arduino_shared', True))
         configured_bill_serial = bill_cfg.get('serial_port')
         bill_serial = detect_arduino_serial_port(preferred_port=configured_bill_serial)
         bill_baud = bill_cfg.get('baudrate') or bill_cfg.get('serial_baud')
@@ -34,13 +35,16 @@ class CartScreen(tk.Frame):
         coin_cfg = controller.config.get('hardware', {}).get('coin_acceptor', {}) if isinstance(controller.config, dict) else {}
         configured_coin_serial = coin_cfg.get('serial_port')
         coin_serial = detect_arduino_serial_port(preferred_port=configured_coin_serial or configured_bill_serial)
+        if bill_use_shared and coin_serial:
+            # Shared Arduino serial mode: ensure bill uses the exact same stream as coin.
+            bill_serial = coin_serial
         # Default to serial because coin/bill are on Arduino Uno in this wiring layout.
         use_gpio_coin = coin_cfg.get('use_gpio', False)
         coin_gpio_pin = coin_cfg.get('gpio_pin', 17)  # Default GPIO 17
         hopper_cfg = controller.config.get('hardware', {}).get('coin_hopper', {}) if isinstance(controller.config, dict) else {}
         hopper_serial = detect_arduino_serial_port(preferred_port=hopper_cfg.get('serial_port') or coin_serial or bill_serial)
         hopper_baud = hopper_cfg.get('baudrate', 115200)
-        print(f"[CartScreen] Payment serial ports - coin: {coin_serial}, bill: {bill_serial}, hopper: {hopper_serial}")
+        print(f"[CartScreen] Payment serial ports - coin: {coin_serial}, bill: {bill_serial}, hopper: {hopper_serial}, bill_shared: {bill_use_shared}")
 
         self.payment_handler = PaymentHandler(
             controller.config,

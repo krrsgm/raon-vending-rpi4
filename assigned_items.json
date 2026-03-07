@@ -1,4 +1,4 @@
-[
+﻿[
     {
         "terms":  [
                       {
@@ -12,13 +12,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "SS1",
-                          "name":  "SS1 - Sensor - IR Sensor, Photodiode, PIR Sensor",
-                          "category":  null,
-                          "price":  185.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Transistor",
+                          "category":  "Electronics",
+                          "price":  185,
+                          "quantity":  3,
                           "image":  "images/SS1.png",
-                          "description":  "P185.0",
+                          "description":  "2N3904",
                           "low_stock_threshold":  3
                       },
                       {
@@ -46,13 +46,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "FC",
-                          "name":  "FC - Ferric Chloride - Ferric Chloride, Glove",
-                          "category":  null,
-                          "price":  36.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Voltage Regulator",
+                          "category":  "Power Supply",
+                          "price":  36,
+                          "quantity":  1,
                           "image":  "images/FC.png",
-                          "description":  "P36.0",
+                          "description":  "LM317",
                           "low_stock_threshold":  3
                       },
                       {
@@ -80,13 +80,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "SD",
-                          "name":  "SD - Solder Bundle - Soldering Lead,Soldering Paster",
-                          "category":  null,
-                          "price":  110.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Transistor",
+                          "category":  "Electronics",
+                          "price":  110,
+                          "quantity":  1,
                           "image":  "images/SD.png",
-                          "description":  "P110.0",
+                          "description":  "Transistor",
                           "low_stock_threshold":  3
                       },
                       {
@@ -114,13 +114,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "JMM",
-                          "name":  "JMM - Jumper Wires (Male to Male)",
-                          "category":  null,
-                          "price":  87.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Stranded Wire 22AWG",
+                          "category":  "General",
+                          "price":  87,
+                          "quantity":  1,
                           "image":  "images/JMM.png",
-                          "description":  "P87.0",
+                          "description":  "Stranded Wire 22AWG",
                           "low_stock_threshold":  3
                       },
                       {
@@ -148,13 +148,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "JFF",
-                          "name":  "JFF - Jumper Wires (Female to Female)",
-                          "category":  null,
-                          "price":  87.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Stranded Wire 18AWG",
+                          "category":  "General",
+                          "price":  87,
+                          "quantity":  1,
                           "image":  "images/JFF.png",
-                          "description":  "P87.0",
+                          "description":  "Stranded Wire 18AWG",
                           "low_stock_threshold":  3
                       },
                       {
@@ -182,13 +182,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "JMF",
-                          "name":  "JMF - Jumper Wires (Male to Female)",
-                          "category":  null,
-                          "price":  87.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Solid Wire 22AWG",
+                          "category":  "General",
+                          "price":  87,
+                          "quantity":  1,
                           "image":  "images/JMF.png",
-                          "description":  "P87.0",
+                          "description":  "Solid Wire 22AWG",
                           "low_stock_threshold":  3
                       },
                       {
@@ -216,13 +216,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "BB",
-                          "name":  "BB - Breadboard",
-                          "category":  null,
-                          "price":  90.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Power Supply Miscellaneous",
+                          "category":  "Power Supply",
+                          "price":  90,
+                          "quantity":  1,
                           "image":  "images/BB.png",
-                          "description":  "P90.0",
+                          "description":  "Zener Diode",
                           "low_stock_threshold":  3
                       },
                       {
@@ -250,13 +250,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "AC",
-                          "name":  "AC - Alligator Clips",
-                          "category":  null,
-                          "price":  137.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Developer",
+                          "category":  "General",
+                          "price":  137,
+                          "quantity":  1,
                           "image":  "images/AC.png",
-                          "description":  "P137.0",
+                          "description":  "Developer",
                           "low_stock_threshold":  3
                       },
                       {
@@ -284,13 +284,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "UNO",
-                          "name":  "UNO - Arduino UNO",
-                          "category":  null,
-                          "price":  180.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Power Supply Diode",
+                          "category":  "Power Supply",
+                          "price":  180,
+                          "quantity":  6,
                           "image":  "images/UNO.png",
-                          "description":  "P180.0",
+                          "description":  "1N5400 (6), 1N4001 (2)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -318,13 +318,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "PSCB",
-                          "name":  "PSCB - Power Supply Circuit Board - PCB 3x5",
-                          "category":  null,
-                          "price":  94.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Power Supply Voltmeter",
+                          "category":  "Power Supply",
+                          "price":  94,
+                          "quantity":  1,
                           "image":  "images/PSCB.png",
-                          "description":  "P94.0",
+                          "description":  "Voltmeter",
                           "low_stock_threshold":  3
                       },
                       {
@@ -351,42 +351,96 @@
                           "description":  "P338.0",
                           "low_stock_threshold":  3
                       },
-                      null,
+                      {
+                          "code":  "",
+                          "name":  "Power Supply Binding Post",
+                          "category":  "Power Supply",
+                          "price":  0,
+                          "quantity":  1,
+                          "image":  "",
+                          "description":  "Binding Post",
+                          "low_stock_threshold":  3
+                      },
                       null
                   ]
     },
     {
         "terms":  [
                       null,
-                      null,
+                      {
+                          "code":  "",
+                          "name":  "Power Supply Potentiometer \u0026 Resistor",
+                          "category":  "Power Supply",
+                          "price":  0,
+                          "quantity":  1,
+                          "image":  "",
+                          "description":  "5K Ohm Potentiometer (1), 1000 Ohms (1)",
+                          "low_stock_threshold":  3
+                      },
                       null
                   ]
     },
     {
         "terms":  [
                       null,
-                      null,
+                      {
+                          "code":  "",
+                          "name":  "Solder Lead",
+                          "category":  "General",
+                          "price":  0,
+                          "quantity":  1,
+                          "image":  "",
+                          "description":  "Solder Lead",
+                          "low_stock_threshold":  3
+                      },
                       null
                   ]
     },
     {
         "terms":  [
                       null,
-                      null,
+                      {
+                          "code":  "",
+                          "name":  "Push Button \u0026 Switch",
+                          "category":  "General",
+                          "price":  0,
+                          "quantity":  5,
+                          "image":  "",
+                          "description":  "Push Button (5), Switch (1)",
+                          "low_stock_threshold":  3
+                      },
                       null
                   ]
     },
     {
         "terms":  [
                       null,
-                      null,
+                      {
+                          "code":  "",
+                          "name":  "Light Emitting Diode",
+                          "category":  "General",
+                          "price":  0,
+                          "quantity":  6,
+                          "image":  "",
+                          "description":  "LED",
+                          "low_stock_threshold":  3
+                      },
                       null
                   ]
     },
     {
         "terms":  [
                       null,
-                      null,
+                      {
+                          "code":  "",
+                          "name":  "Power Supply Capacitor",
+                          "category":  "Power Supply",
+                          "price":  0,
+                          "quantity":  1,
+                          "image":  "",
+                          "description":  "Capacitor",
+                          "low_stock_threshold":  3
+                      },
                       null
                   ]
     },
@@ -403,13 +457,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "D1",
-                          "name":  "D1 - Diode - 1N4002, 1N5400",
-                          "category":  null,
-                          "price":  39.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Capacitors 1",
+                          "category":  "General",
+                          "price":  39,
+                          "quantity":  3,
                           "image":  "images/D1.png",
-                          "description":  "P39.0",
+                          "description":  "0.1uF (3), 0.22uF (3), 0.47uF (3), 1uF (3), 2.2uF (3)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -437,13 +491,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "T1",
-                          "name":  "T1 - Transistor 1 - 2N3904, 2N3906, TIP3055, TIP2955",
-                          "category":  null,
-                          "price":  211.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Capacitors 2",
+                          "category":  "General",
+                          "price":  211,
+                          "quantity":  3,
                           "image":  "images/T1.png",
-                          "description":  "P211.0",
+                          "description":  "3.3uF (3), 4.7uF (3), 10uF (3), 22uF (3)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -471,13 +525,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "VR1",
-                          "name":  "VR1 - Voltage Regulator - LM7805, LM317T",
-                          "category":  null,
-                          "price":  110.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Capacitors 3",
+                          "category":  "General",
+                          "price":  110,
+                          "quantity":  3,
                           "image":  "images/VR1.png",
-                          "description":  "P110.0",
+                          "description":  "33uF (3), 47uF 16V (3), 47uF 25V (3)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -505,13 +559,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "IC1",
-                          "name":  "IC1 - AND-NAND - 7408, 7421, 7400, 7420",
-                          "category":  null,
-                          "price":  146.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Capacitors 4",
+                          "category":  "General",
+                          "price":  146,
+                          "quantity":  3,
                           "image":  "images/IC1.png",
-                          "description":  "P146.0",
+                          "description":  "100uF 16V (3), 100uF 25V (3), 220uF (3)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -539,13 +593,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "IC2",
-                          "name":  "IC2 - OR-NOR - 7432, 7431, 7402, 7425",
-                          "category":  null,
-                          "price":  63.0,
+                          "code":  "",
+                          "name":  "Resistors 1",
+                          "category":  "General",
+                          "price":  63,
                           "quantity":  10,
                           "image":  "images/IC2.png",
-                          "description":  "P63.0",
+                          "description":  "10 (10), 22 (10), 47 (10), 100 (10), 150 (10), 200 (10), 220 (10), 270 (10)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -573,13 +627,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "IC3",
-                          "name":  "IC3 - XOR-XNOR - 7486, 74268, 74266",
-                          "category":  null,
-                          "price":  63.0,
+                          "code":  "",
+                          "name":  "Resistors 2",
+                          "category":  "General",
+                          "price":  63,
                           "quantity":  10,
                           "image":  "images/IC3.png",
-                          "description":  "P63.0",
+                          "description":  "330 (10), 470 (10), 530 (10), 680 (10), 1K (10), 2K (10), 2.2k (10), 3.3k (10)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -607,13 +661,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "IC4",
-                          "name":  "IC4 - NOT - 7404",
-                          "category":  null,
-                          "price":  63.0,
+                          "code":  "",
+                          "name":  "Resistors 3",
+                          "category":  "General",
+                          "price":  63,
                           "quantity":  10,
                           "image":  "images/IC4.png",
-                          "description":  "P63.0",
+                          "description":  "4.7k (10), 5.1k (10), 6.8k (10), 10k (10), 20k (10), 47k (10), 51k (10), 68k (10)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -641,13 +695,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "IC5",
-                          "name":  "IC5 - MUX - 74153, 74155",
-                          "category":  null,
-                          "price":  106.0,
+                          "code":  "",
+                          "name":  "Resistors 4",
+                          "category":  "General",
+                          "price":  106,
                           "quantity":  10,
                           "image":  "images/IC5.png",
-                          "description":  "P106.0",
+                          "description":  "100k (10), 220k (10), 300k (10), 470k (10), 680k (10), 1M (10)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -675,13 +729,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "IC6",
-                          "name":  "IC6 - Display - 74147, 7448, 7 Segment Cathode",
-                          "category":  null,
-                          "price":  129.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "AND NAND",
+                          "category":  "Digital Electronics",
+                          "price":  129,
+                          "quantity":  2,
                           "image":  "images/IC6.png",
-                          "description":  "P129.0",
+                          "description":  "74LS08 (2), 74LS21 (2), 74LS00 (2), 74LS20 (2)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -709,13 +763,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "IC7",
-                          "name":  "IC7 - Sequential IC - 74195, 74194, 74193",
-                          "category":  null,
-                          "price":  150.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "OR NOR",
+                          "category":  "Digital Electronics",
+                          "price":  150,
+                          "quantity":  2,
                           "image":  "images/IC7.png",
-                          "description":  "P150.0",
+                          "description":  "74LS32 (2), 74LS02 (2)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -743,13 +797,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "M1",
-                          "name":  "M1 - Miscellaneous - 555 Timer, LM393 , 74LS74",
-                          "category":  null,
-                          "price":  86.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "XOR",
+                          "category":  "Digital Electronics",
+                          "price":  86,
+                          "quantity":  2,
                           "image":  "images/M1.png",
-                          "description":  "P86.0",
+                          "description":  "74LS86 (2)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -777,13 +831,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "SR22",
-                          "name":  "SR22 - Stranded Wires - 22 AWG",
-                          "category":  null,
-                          "price":  113.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "NOT",
+                          "category":  "Digital Electronics",
+                          "price":  113,
+                          "quantity":  2,
                           "image":  "images/SR22.png",
-                          "description":  "P113.0",
+                          "description":  "74LS04 (2)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -811,13 +865,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "SR18",
-                          "name":  "SR18 - Stranded Wires - 18 AWG",
-                          "category":  null,
-                          "price":  105.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Demultiplexer",
+                          "category":  "Digital Electronics",
+                          "price":  105,
+                          "quantity":  1,
                           "image":  "images/SR18.png",
-                          "description":  "P105.0",
+                          "description":  "74LS155 (1)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -845,13 +899,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "SD22",
-                          "name":  "SD22 - Solid Wires - 22 AWG",
-                          "category":  null,
-                          "price":  83.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Display",
+                          "category":  "Digital Electronics",
+                          "price":  83,
+                          "quantity":  1,
                           "image":  "images/SD22.png",
-                          "description":  "P83.0",
+                          "description":  "74147 (1), 7448 (1), 7 Segment Cathode (1)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -879,13 +933,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "PB",
-                          "name":  "PB - Push Buttons - Push Buttons",
-                          "category":  null,
-                          "price":  13.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Miscellaneous",
+                          "category":  "Digital Electronics",
+                          "price":  13,
+                          "quantity":  1,
                           "image":  "images/PB.png",
-                          "description":  "P13.0",
+                          "description":  "74LS194 (1), 74LS193 (1), LM555 (2), LM393 (1), 74LS74 (1)",
                           "low_stock_threshold":  3
                       },
                       {
@@ -912,16 +966,7 @@
                           "description":  "P13.0",
                           "low_stock_threshold":  3
                       },
-                      {
-                          "code":  "SW",
-                          "name":  "SW - Switches",
-                          "category":  null,
-                          "price":  13.0,
-                          "quantity":  10,
-                          "image":  "images/SW.png",
-                          "description":  "P13.0",
-                          "low_stock_threshold":  3
-                      },
+                      null,
                       {
                           "code":  "SW",
                           "name":  "SW - Switches",
@@ -947,13 +992,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "LED",
-                          "name":  "LED - LED - LED",
-                          "category":  null,
-                          "price":  32.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Jumper Wire - Male to Male",
+                          "category":  "General",
+                          "price":  32,
+                          "quantity":  5,
                           "image":  "images/LED.png",
-                          "description":  "P32.0",
+                          "description":  "Jumper Wire - Male to Male",
                           "low_stock_threshold":  3
                       },
                       {
@@ -981,13 +1026,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "R1",
-                          "name":  "R1 - Resistor 1 - 10, 22, 47, 100",
-                          "category":  null,
-                          "price":  48.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Jumper Wire - Female to Female",
+                          "category":  "General",
+                          "price":  48,
+                          "quantity":  5,
                           "image":  "images/R1.png",
-                          "description":  "P48.0",
+                          "description":  "Jumper Wire - Female to Female",
                           "low_stock_threshold":  3
                       },
                       {
@@ -1015,13 +1060,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "R2",
-                          "name":  "R2 - Resistor 2 - 150, 200, 220, 270",
-                          "category":  null,
-                          "price":  48.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Jumper Wire - Male to Female",
+                          "category":  "General",
+                          "price":  48,
+                          "quantity":  5,
                           "image":  "images/R2.png",
-                          "description":  "P48.0",
+                          "description":  "Jumper Wire - Male to Female",
                           "low_stock_threshold":  3
                       },
                       {
@@ -1049,13 +1094,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "R3",
-                          "name":  "R3 - Resistor 3 - 330, 470, 530, 680",
-                          "category":  null,
-                          "price":  48.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Breadboard",
+                          "category":  "General",
+                          "price":  48,
+                          "quantity":  1,
                           "image":  "images/R3.png",
-                          "description":  "P48.0",
+                          "description":  "Breadboard",
                           "low_stock_threshold":  3
                       },
                       {
@@ -1083,13 +1128,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "R4",
-                          "name":  "R4 - Resistor 4 - 1K, 2K, 2.2k, 3.3k",
-                          "category":  null,
-                          "price":  48.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Alligator Clip",
+                          "category":  "General",
+                          "price":  48,
+                          "quantity":  2,
                           "image":  "images/R4.png",
-                          "description":  "P48.0",
+                          "description":  "Alligator Clip",
                           "low_stock_threshold":  3
                       },
                       {
@@ -1117,13 +1162,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "R5",
-                          "name":  "R5 - Resistor 5 - 4.7k, 5.1k, 6.8k, 10k",
-                          "category":  null,
-                          "price":  48.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "ESP32",
+                          "category":  "Digital Electronics",
+                          "price":  48,
+                          "quantity":  1,
                           "image":  "images/R5.png",
-                          "description":  "P48.0",
+                          "description":  "ESP33",
                           "low_stock_threshold":  3
                       },
                       {
@@ -1151,13 +1196,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "R6",
-                          "name":  "R6 - Resistor 6 - 20k, 47k, 51k, 68k",
-                          "category":  null,
-                          "price":  48.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Expansion Module",
+                          "category":  "Digital Electronics",
+                          "price":  48,
+                          "quantity":  1,
                           "image":  "images/R6.png",
-                          "description":  "P48.0",
+                          "description":  "Expansion Module",
                           "low_stock_threshold":  3
                       },
                       {
@@ -1185,13 +1230,13 @@
                           "low_stock_threshold":  3
                       },
                       {
-                          "code":  "R7",
-                          "name":  "R7 - Resistor 7 - 100k, 220k, 300k, 470k",
-                          "category":  null,
-                          "price":  48.0,
-                          "quantity":  10,
+                          "code":  "",
+                          "name":  "Ferric Chloride",
+                          "category":  "General",
+                          "price":  48,
+                          "quantity":  1,
                           "image":  "images/R7.png",
-                          "description":  "P48.0",
+                          "description":  "Ferric Chloride",
                           "low_stock_threshold":  3
                       },
                       {

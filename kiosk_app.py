@@ -126,7 +126,7 @@ class KioskFrame(tk.Frame):
         self.header_px = int(screen_height * 0.15)  # 15% of screen height for header
         self.footer_px = int(screen_height * 0.05)  # 5% of screen height for footer
         self.touch_dead_zone_top_px = 50
-        self.touch_dead_zone_bottom_start_px = 1400
+        self.touch_dead_zone_bottom_start_px = 1500
         self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
 
         # Fonts proportional to screen height
@@ -707,7 +707,7 @@ class KioskFrame(tk.Frame):
         # Populate grid with item cards after first paint to reduce startup lag
         self.after(1, self.populate_items)
 
-        # System Status Panel occupies the lower non-touch zone (Y >= 1400).
+        # System Status Panel occupies the lower non-touch zone (Y >= 1500).
         status_zone_height = self.touch_dead_zone_bottom_px if self.touch_dead_zone_bottom_px > 0 else max(70, self.footer_px)
         self.status_zone = tk.Frame(self, bg='#111111', height=status_zone_height)
         self.status_zone.pack(side='bottom', fill='x')

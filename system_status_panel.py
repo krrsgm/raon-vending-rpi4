@@ -116,6 +116,27 @@ class SystemStatusPanel(tk.Frame):
         
         # Far right section: Overall Health
         self.create_health_section(content_frame)
+
+        proponents_text = (
+            "Proponents: Briñosa, Mesheil Pauline S. | "
+            "Recaña, Ricarena F. | "
+            "Santillan, Nelmar C. | "
+            "Silo, Raphael Carlos R. | "
+            "Tolosa, Angel G. | "
+            "Tornilla, Nasher S. | "
+            "BSECESEP-T-4A-T"
+        )
+        proponents_label = tk.Label(
+            main_container,
+            text=proponents_text,
+            font=('Helvetica', 7),
+            bg='#2c3e50',
+            fg='#bdc3c7',
+            anchor='w',
+            justify='left',
+            wraplength=1800
+        )
+        proponents_label.pack(fill='x', pady=(6, 0))
     
     def create_dht22_section(self, parent):
         """Create DHT22 sensor reading section."""

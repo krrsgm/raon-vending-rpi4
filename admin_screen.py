@@ -569,6 +569,10 @@ class AdminScreen(tk.Frame):
         tk.Frame.__init__(self, parent, bg="#f0f4f8")  # Light background
         self.controller = controller
         self.scan_start_x = 0  # For drag-to-scroll
+        screen_height = controller.winfo_screenheight()
+        self.touch_dead_zone_top_px = 100
+        self.touch_dead_zone_bottom_start_px = 1700
+        self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
 
         self.fonts = {
             "header": tkfont.Font(family="Helvetica", size=24, weight="bold"),
@@ -587,11 +591,26 @@ class AdminScreen(tk.Frame):
             "btn_fg": "#ffffff",
         }
 
+        # Non-touch top area.
+        self.top_dead_zone = tk.Frame(self, bg="#000000", height=self.touch_dead_zone_top_px)
+        self.top_dead_zone.pack(side="top", fill="x")
+        self.top_dead_zone.pack_propagate(False)
+
+        # Touch-active area for all admin controls/content.
+        self.touch_container = tk.Frame(self, bg=self.colors["background"])
+        self.touch_container.pack(fill="both", expand=True)
+
+        # Non-touch bottom area.
+        if self.touch_dead_zone_bottom_px > 0:
+            self.bottom_dead_zone = tk.Frame(self, bg="#000000", height=self.touch_dead_zone_bottom_px)
+            self.bottom_dead_zone.pack(side="bottom", fill="x")
+            self.bottom_dead_zone.pack_propagate(False)
+
         self.create_widgets()
         self.bind("<<ShowFrame>>", lambda e: self.populate_items())
 
         exit_label = tk.Label(
-            self,
+            self.touch_container,
             text="Press 'Esc' to return to Selection Screen",
             font=("Helvetica", 12),
             fg="#7f8c8d",  # Gray text
@@ -600,8 +619,10 @@ class AdminScreen(tk.Frame):
         exit_label.pack(side="bottom", pady=20)
 
     def create_widgets(self):
+        root = self.touch_container
+
         # --- Header ---
-        header = tk.Frame(self, bg=self.colors["background"])
+        header = tk.Frame(root, bg=self.colors["background"])
         header.pack(fill="x", padx=20, pady=20)
         tk.Label(
             header,
@@ -671,7 +692,7 @@ class AdminScreen(tk.Frame):
 
         # --- Coin Change Dashboard ---
         coin_dash = tk.Frame(
-            self,
+            root,
             bg="#ffffff",
             highlightbackground=self.colors["border"],
             highlightthickness=1,
@@ -741,7 +762,7 @@ class AdminScreen(tk.Frame):
         coin_dash.grid_columnconfigure(1, weight=0)
 
         # --- Scrollable Item List ---
-        canvas_container = tk.Frame(self, bg=self.colors["background"])
+        canvas_container = tk.Frame(root, bg=self.colors["background"])
         canvas_container.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
         self.canvas = tk.Canvas(

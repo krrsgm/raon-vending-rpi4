@@ -246,23 +246,30 @@ class CartScreen(tk.Frame):
                 highlightthickness=1,
             )
             item_frame.pack(fill="x", pady=5)
-            item_frame.grid_columnconfigure(1, weight=1)
+            item_frame.grid_columnconfigure(0, weight=1, minsize=360)
+            item_frame.grid_columnconfigure(1, weight=0)
 
             # --- Left side: Name and Price ---
             info_frame = tk.Frame(item_frame, bg="white")
-            info_frame.grid(row=0, column=0, padx=15, pady=10, sticky="nw")
+            info_frame.grid(row=0, column=0, padx=15, pady=10, sticky="nsew")
+            raw_name = (
+                f"{item['name']} (Slot {item.get('_slot_number')})"
+                if item.get('_slot_number') is not None
+                else item["name"]
+            )
+            display_name = str(raw_name)
+            if len(display_name) > 68:
+                display_name = display_name[:65].rstrip() + "..."
 
             name_label = tk.Label(
                 info_frame,
-                text=(
-                    f"{item['name']} (Slot {item.get('_slot_number')})"
-                    if item.get('_slot_number') is not None
-                    else item["name"]
-                ),
+                text=display_name,
                 font=self.fonts["item_name"],
                 bg="white",
                 fg=self.colors["text_fg"],
                 anchor="w",
+                justify="left",
+                wraplength=680,
             )
             name_label.pack(fill="x")
 
@@ -326,11 +333,11 @@ class CartScreen(tk.Frame):
                 text=f"{self.controller.currency_symbol}{total_price:.2f}",
                 font=self.fonts["item_name"],
                 bg="white",
-                fg=self.colors["text_fg"],
-                width=10,
+                fg=self.colors["total_fg"],
+                width=12,
                 anchor="e",
             )
-            price_label.pack(side="left", padx=20)
+            price_label.pack(side="left", padx=(12, 20))
 
             # Delete button
             delete_btn = tk.Button(

@@ -109,7 +109,7 @@ class CartScreen(tk.Frame):
             "action_button": tkfont.Font(family="Helvetica", size=18, weight="bold"),
         }
         screen_height = controller.winfo_screenheight()
-        self.touch_dead_zone_top_px = 50
+        self.touch_dead_zone_top_px = 70
         self.touch_dead_zone_bottom_start_px = 1600
         self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
 
@@ -129,9 +129,25 @@ class CartScreen(tk.Frame):
             fg="#ffffff",
         ).pack(pady=(self.touch_dead_zone_top_px, 8))
 
-        # Action buttons are moved near the top so they stay in touchable area.
+        # --- Main content area for cart items ---
+        self.cart_items_frame = tk.Frame(self, bg=self.colors["background"])
+        self.cart_items_frame.pack(fill="both", expand=True, padx=50, pady=(10, 6))
+
+        # --- Footer for totals ---
+        footer = tk.Frame(self, bg=self.colors["background"])
+        footer.pack(fill="x", padx=50, pady=(0, 10))
+
+        self.total_label = tk.Label(
+            footer,
+            font=self.fonts["total"],
+            bg=footer["bg"],
+            fg=self.colors["total_fg"],
+        )
+        self.total_label.pack(pady=(0, 8))
+
+        # Keep primary actions in lower touchable area (above status zone).
         action_bar = tk.Frame(self, bg=self.colors["background"])
-        action_bar.pack(fill="x", padx=50, pady=(10, 8))
+        action_bar.pack(fill="x", padx=50, pady=(0, 10))
 
         back_button = tk.Button(
             action_bar,
@@ -162,22 +178,6 @@ class CartScreen(tk.Frame):
         )
         self.checkout_button.pack(side="left", expand=True, fill="x", padx=(5, 0))
         self._style_button(self.checkout_button, hover_bg=self.colors["primary_btn_hover"])
-
-        # --- Main content area for cart items ---
-        self.cart_items_frame = tk.Frame(self, bg=self.colors["background"])
-        self.cart_items_frame.pack(fill="both", expand=True, padx=50, pady=(0, 6))
-
-        # --- Footer for totals ---
-        footer = tk.Frame(self, bg=self.colors["background"])
-        footer.pack(fill="x", padx=50, pady=(0, 10))
-
-        self.total_label = tk.Label(
-            footer,
-            font=self.fonts["total"],
-            bg=footer["bg"],
-            fg=self.colors["total_fg"],
-        )
-        self.total_label.pack(pady=(0, 8))
 
         # --- System Status Panel ---
         status_zone_height = self.touch_dead_zone_bottom_px if self.touch_dead_zone_bottom_px > 0 else 120

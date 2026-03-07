@@ -4,6 +4,7 @@ from PIL import Image
 import os
 import io
 from fix_paths import get_absolute_path
+from system_status_panel import SystemStatusPanel
 
 def pil_to_photoimage(pil_image):
     """Convert PIL Image to Tkinter PhotoImage using PPM format (no ImageTk needed)"""
@@ -20,6 +21,10 @@ class ItemScreen(tk.Frame):
         self.max_quantity = 1
         self.current_item = None
         self.photo_image = None # To hold a reference to the image
+        screen_height = controller.winfo_screenheight()
+        self.touch_dead_zone_top_px = 70
+        self.touch_dead_zone_bottom_start_px = 1600
+        self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
 
         # --- Color and Font Scheme ---
         self.colors = {
@@ -74,9 +79,20 @@ class ItemScreen(tk.Frame):
         btn.bind("<Leave>", _on_leave)
 
     def create_widgets(self):
+        header = tk.Frame(self, bg='#2222a8', height=max(96, self.touch_dead_zone_top_px + 44))
+        header.pack(fill='x')
+        header.pack_propagate(False)
+        tk.Label(
+            header,
+            text="Item Details",
+            font=self.fonts['name'],
+            bg='#2222a8',
+            fg='white'
+        ).pack(pady=(self.touch_dead_zone_top_px, 6))
+
         # Main frame uses pack for a single-column layout
         main_frame = tk.Frame(self, bg=self.colors['background'])
-        main_frame.pack(expand=True, fill='both', padx=50, pady=50)
+        main_frame.pack(expand=True, fill='both', padx=50, pady=(14, 8))
 
         # --- Top: Image ---
         image_frame = tk.Frame(
@@ -159,8 +175,8 @@ class ItemScreen(tk.Frame):
         self.quantity_label.pack(side='right')
 
         # --- Action Buttons (Back and Cart) ---
-        action_frame = tk.Frame(details_frame, bg=self.colors['background'])
-        action_frame.pack(fill='x', pady=(10, 0))
+        action_frame = tk.Frame(self, bg=self.colors['background'])
+        action_frame.pack(fill='x', padx=50, pady=(8, 8))
 
         back_button = tk.Button(
             action_frame,
@@ -186,7 +202,13 @@ class ItemScreen(tk.Frame):
         self._style_button(cart_button, hover_bg='#2f3fc6')
         cart_button.pack(side='left', expand=True, fill='x', padx=(5, 0))
 
-        # Test Dispense button removed to prevent dispensing without payment
+        status_zone_height = self.touch_dead_zone_bottom_px if self.touch_dead_zone_bottom_px > 0 else 120
+        self.status_zone = tk.Frame(self, bg="#111111", height=status_zone_height)
+        self.status_zone.pack(side="bottom", fill="x")
+        self.status_zone.pack_propagate(False)
+
+        self.status_panel = SystemStatusPanel(self.status_zone, controller=self.controller)
+        self.status_panel.pack(fill='both', expand=True)
 
     def add_to_cart(self):
         """Handles adding the item to the cart via the controller."""

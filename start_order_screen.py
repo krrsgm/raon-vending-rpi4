@@ -12,11 +12,11 @@ class StartOrderScreen(tk.Frame):
 
         screen_height = self.winfo_screenheight()
         screen_width = self.winfo_screenwidth()
-        touch_dead_zone_top = 50
+        touch_dead_zone_top = 70
         touch_dead_zone_bottom_start = 1500
         touch_dead_zone_bottom = max(0, screen_height - touch_dead_zone_bottom_start)
-        title_font = tkfont.Font(family="Helvetica", size=max(24, int(screen_height * 0.045)), weight="bold")
-        instructions_font = tkfont.Font(family="Helvetica", size=max(10, int(screen_height * 0.017)))
+        title_font = tkfont.Font(family="Helvetica", size=max(22, int(screen_height * 0.04)), weight="bold")
+        instructions_font = tkfont.Font(family="Helvetica", size=max(9, int(screen_height * 0.0155)))
 
         # Non-touch top area visualized as black.
         top_dead_zone = tk.Frame(self, bg="#000000", height=touch_dead_zone_top)
@@ -34,7 +34,7 @@ class StartOrderScreen(tk.Frame):
             bottom_dead_zone.pack_propagate(False)
 
         center_panel = tk.Frame(content, bg=primary_blue)
-        center_panel.place(relx=0.5, rely=0.5, anchor="center")
+        center_panel.place(relx=0.5, rely=0.49, anchor="center")
 
         title = tk.Label(
             center_panel,
@@ -67,9 +67,9 @@ class StartOrderScreen(tk.Frame):
             fg="white",
             anchor="w",
             justify="left",
-            wraplength=max(640, int(screen_width * 0.85)),
+            wraplength=max(560, int(screen_width * 0.78)),
         )
-        instructions.pack(pady=(20, 0))
+        instructions.pack(pady=(14, 0), padx=max(16, int(screen_width * 0.04)))
 
         # Hidden button flow: allow touch/click anywhere on this screen to proceed.
         content.bind("<Button-1>", lambda _e: self.controller.start_order())

@@ -391,6 +391,28 @@ class MainApp(tk.Tk):
             pass
         return None
 
+    def _should_invert_tec_status(self):
+        """Return True when TEC active state should be inverted for UI/status."""
+        try:
+            tec_cfg = (
+                self.config.get('hardware', {}).get('tec_relay', {})
+                if isinstance(self.config, dict) else {}
+            )
+            if not isinstance(tec_cfg, dict):
+                return False
+
+            # Explicit flags take priority.
+            for key in ("status_inverted", "invert_status_display", "active_low", "relay_active_low"):
+                if key in tec_cfg:
+                    return bool(tec_cfg.get(key))
+
+            # Most Arduino relay modules are active-low by default.
+            if bool(tec_cfg.get("control_via_arduino", True)):
+                return True
+        except Exception:
+            pass
+        return False
+
     def _ensure_sensor_data_logger(self):
         """Initialize sensor logger lazily so both bridge and transaction paths can use it."""
         if self._sensor_data_logger is not None:
@@ -606,6 +628,10 @@ class MainApp(tk.Tk):
     def _on_tec_status_update(self, enabled, active, target_temp, current_temp):
         """Handle TEC controller status updates - update status panel."""
         try:
+            panel_active = bool(active)
+            if self._should_invert_tec_status():
+                panel_active = not panel_active
+
             # Update all frames that expose a status_panel so UI shows
             # sensor/TEC updates regardless of which view is active.
             for frame in self.frames.values():
@@ -613,10 +639,10 @@ class MainApp(tk.Tk):
                     if hasattr(frame, 'status_panel') and frame.status_panel:
                         # Schedule widget updates on the main/UI thread
                         try:
-                            frame.after(0, lambda f=frame, e=enabled, a=active, t=target_temp, c=current_temp: f.status_panel.update_tec_status(enabled=e, active=a, target_temp=t, current_temp=c))
+                            frame.after(0, lambda f=frame, e=enabled, a=panel_active, t=target_temp, c=current_temp: f.status_panel.update_tec_status(enabled=e, active=a, target_temp=t, current_temp=c))
                         except Exception:
                             # Fallback: direct call if scheduling fails
-                            frame.status_panel.update_tec_status(enabled=enabled, active=active, target_temp=target_temp, current_temp=current_temp)
+                            frame.status_panel.update_tec_status(enabled=enabled, active=panel_active, target_temp=target_temp, current_temp=current_temp)
                 except Exception:
                     pass
             
@@ -626,11 +652,16 @@ class MainApp(tk.Tk):
                 # Only log if this is a significant change or periodic (checked by logger)
                 logger.log_temperature(
                     sensor_1_temp=current_temp,
-                    relay_status=active,
+                    relay_status=panel_active,
                     target_temp=target_temp
                 )
             except Exception as e:
                 print(f"[MainApp] Error logging temperature: {e}")
+
+            self._update_latest_sensor_snapshot(
+                relay_status=panel_active,
+                target_temp=target_temp
+            )
         except Exception as e:
             print(f"[MainApp] Error updating TEC status panel: {e}")
     

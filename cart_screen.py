@@ -1123,12 +1123,13 @@ class CartScreen(tk.Frame):
         try:
             proceed = messagebox.askyesno(
                 "Confirm Cancel",
-                "Are you sure you want to cancel payment?"
+                "Are you sure you want to cancel payment?",
+                parent=getattr(self, "payment_window", None),
             )
         except Exception:
             proceed = True
         if proceed:
-            self.cancel_payment()
+            self._cancel_payment_and_route(route="start_order")
 
     def cancel_payment(self, event=None):
         """Stop payment flow and return to start order screen."""
@@ -1188,6 +1189,10 @@ class CartScreen(tk.Frame):
                 self.controller.show_kiosk()
             else:
                 self.controller.show_start_order()
+            try:
+                self.controller.focus_force()
+            except Exception:
+                pass
         except Exception:
             pass
                 

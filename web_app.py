@@ -1674,6 +1674,27 @@ def detect_runtime_access_ip(preferred_prefix='192.168.', preferred_interfaces=N
     return valid[0]
 
 
+def configure_werkzeug_startup_log_filter():
+    """Hide localhost-only startup URLs that confuse remote clients."""
+    blocked_markers = (
+        '127.0.0.1',
+        'localhost',
+        'Running on all addresses',
+        'Press CTRL+C to quit',
+    )
+
+    class _StartupFilter(logging.Filter):
+        def filter(self, record):
+            try:
+                message = str(record.getMessage())
+            except Exception:
+                return True
+            return not any(marker in message for marker in blocked_markers)
+
+    wz_logger = logging.getLogger('werkzeug')
+    wz_logger.addFilter(_StartupFilter())
+
+
 def load_assigned_items():
     """Load items from assigned_items.json."""
     try:
@@ -1958,6 +1979,7 @@ def create_app_with_db():
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
+    configure_werkzeug_startup_log_filter()
     create_app_with_db()
 
     config = load_config()
@@ -1974,6 +1996,7 @@ if __name__ == '__main__':
             f"Web UI WiFi SSID: {bind['raon_ssid']} | "
             f"Open from another device: http://{runtime_ip}:{port}"
         )
+        logger.info(f"Dashboard URL (use this on connected devices): http://{runtime_ip}:{port}")
     else:
         logger.info(
             f"Web UI WiFi SSID: {bind['raon_ssid']} | "

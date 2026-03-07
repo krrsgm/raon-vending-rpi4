@@ -125,8 +125,8 @@ class KioskFrame(tk.Frame):
         screen_height = controller.winfo_screenheight()
         self.header_px = int(screen_height * 0.15)  # 15% of screen height for header
         self.footer_px = int(screen_height * 0.05)  # 5% of screen height for footer
-        self.touch_dead_zone_top_px = 70
-        self.touch_dead_zone_bottom_start_px = 1600
+        self.touch_dead_zone_top_px = 100
+        self.touch_dead_zone_bottom_start_px = 1800
         self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
 
         # Fonts proportional to screen height
@@ -1303,3 +1303,4 @@ class KioskFrame(tk.Frame):
 
         self._image_path_cache[raw] = resolved_path
         return resolved_path
+

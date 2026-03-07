@@ -109,8 +109,8 @@ class CartScreen(tk.Frame):
             "action_button": tkfont.Font(family="Helvetica", size=18, weight="bold"),
         }
         screen_height = controller.winfo_screenheight()
-        self.touch_dead_zone_top_px = 70
-        self.touch_dead_zone_bottom_start_px = 1600
+        self.touch_dead_zone_top_px = 100
+        self.touch_dead_zone_bottom_start_px = 1800
         self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
 
         # --- Header ---
@@ -374,23 +374,17 @@ class CartScreen(tk.Frame):
                 # Backwards compatibility: older PaymentHandler might not accept on_change_update
                 self.payment_handler.start_payment_session(total_amount, on_payment_update=self._on_payment_update)
             
-            # Create payment status window at ~80% of screen, centered
+            # Create fullscreen payment status window for kiosk readability.
             self.payment_window = tk.Toplevel(self)
             self.payment_window.title("Insert Payment")
-            self.payment_window.geometry("400x400")
-            payment_wraplength = 480
+            payment_wraplength = 900
             try:
                 self.payment_window.update_idletasks()
                 screen_w = self.payment_window.winfo_screenwidth()
                 screen_h = self.payment_window.winfo_screenheight()
-                target_w = max(550, int(screen_w * 0.8))
-                target_h = max(500, int(screen_h * 0.8))
-                target_w = min(target_w, max(300, screen_w - 40))
-                target_h = min(target_h, max(260, screen_h - 40))
-                x = max(0, (screen_w - target_w) // 2)
-                y = max(0, (screen_h - target_h) // 2)
-                self.payment_window.geometry(f"{target_w}x{target_h}+{x}+{y}")
-                payment_wraplength = max(480, int(target_w * 0.85))
+                self.payment_window.geometry(f"{screen_w}x{screen_h}+0+0")
+                self.payment_window.attributes("-fullscreen", True)
+                payment_wraplength = max(800, int(screen_w * 0.84))
             except Exception:
                 pass
             # Attach to the main toplevel window so focus and touch events work
@@ -428,15 +422,20 @@ class CartScreen(tk.Frame):
             
             # Styling
             self.payment_window.configure(bg=self.colors["payment_bg"])
-            
+            big_title_font = tkfont.Font(family="Helvetica", size=32, weight="bold")
+            big_amount_font = tkfont.Font(family="Helvetica", size=54, weight="bold")
+            big_status_font = tkfont.Font(family="Helvetica", size=24)
+            section_title_font = tkfont.Font(family="Helvetica", size=20, weight="bold")
+            item_list_font = tkfont.Font(family="Helvetica", size=18)
+
             # Amount required
             amount_frame = tk.Frame(self.payment_window, bg=self.colors["payment_bg"])
-            amount_frame.pack(fill="x", pady=(20,0))
+            amount_frame.pack(fill="x", pady=(30, 0))
             
             tk.Label(
                 amount_frame,
                 text="Amount Required:",
-                font=self.fonts["item_details"],
+                font=big_title_font,
                 bg=self.colors["payment_bg"],
                 fg=self.colors["text_fg"]
             ).pack()
@@ -444,7 +443,7 @@ class CartScreen(tk.Frame):
             tk.Label(
                 amount_frame,
                 text=f"{self.controller.currency_symbol}{total_amount:.2f}",
-                font=self.fonts["header"],
+                font=big_amount_font,
                 bg=self.colors["payment_bg"],
                 fg=self.colors["payment_fg"]
             ).pack()
@@ -456,7 +455,7 @@ class CartScreen(tk.Frame):
             self.payment_status = tk.Label(
                 status_frame,
                 text="Coins: {0}0.00 | Bills: {0}0.00\nTotal Received: {0}0.00\nRemaining: {0}{1:.2f}".format(self.controller.currency_symbol, total_amount),
-                font=tkfont.Font(family="Helvetica", size=11),
+                font=big_status_font,
                 bg=self.colors["payment_bg"],
                 fg=self.colors["payment_fg"],
                 justify=tk.LEFT,
@@ -469,7 +468,7 @@ class CartScreen(tk.Frame):
             self.change_label = tk.Label(
                 status_frame,
                 text="",
-                font=self.fonts["item_details"],
+                font=section_title_font,
                 bg=self.colors["payment_bg"],
                 fg=self.colors["payment_fg"]
             )
@@ -478,7 +477,7 @@ class CartScreen(tk.Frame):
             self.change_progress_label = tk.Label(
                 status_frame,
                 text="",
-                font=tkfont.Font(family="Helvetica", size=11),
+                font=tkfont.Font(family="Helvetica", size=18),
                 bg=self.colors["payment_bg"],
                 fg=self.colors["text_fg"],
                 justify=tk.LEFT,
@@ -490,10 +489,10 @@ class CartScreen(tk.Frame):
             tk.Label(
                 self.payment_window,
                 text="Accepted Payment Methods:",
-                font=self.fonts["item_details"],
+                font=section_title_font,
                 bg=self.colors["payment_bg"],
                 fg=self.colors["text_fg"]
-            ).pack(pady=(20,5))
+            ).pack(pady=(12, 5))
             
             coins_text = (
                 f"Coins: {self.controller.currency_symbol}1, {self.controller.currency_symbol}5, {self.controller.currency_symbol}10 (Old and New)\n"
@@ -503,19 +502,62 @@ class CartScreen(tk.Frame):
             tk.Label(
                 self.payment_window,
                 text=coins_text,
-                font=tkfont.Font(family="Helvetica", size=11),
+                font=tkfont.Font(family="Helvetica", size=16),
                 bg=self.colors["payment_bg"],
                 fg=self.colors["text_fg"],
                 justify=tk.LEFT,
                 wraplength=payment_wraplength,
                 anchor='w'
             ).pack()
+
+            # Items to be paid (uses lower available space in fullscreen mode).
+            items_section = tk.Frame(self.payment_window, bg=self.colors["payment_bg"])
+            items_section.pack(fill="both", expand=True, padx=36, pady=(18, 8))
+
+            tk.Label(
+                items_section,
+                text="Items to be Paid:",
+                font=section_title_font,
+                bg=self.colors["payment_bg"],
+                fg=self.colors["text_fg"],
+                anchor="w"
+            ).pack(fill="x", pady=(0, 6))
+
+            items_list_lines = []
+            for entry in self.controller.cart:
+                item_data = entry.get("item", {})
+                item_name = item_data.get("name", "Unknown Item")
+                qty = int(entry.get("quantity", 0) or 0)
+                unit_price = float(item_data.get("price", 0.0) or 0.0)
+                line_total = qty * unit_price
+                slot_no = item_data.get("_slot_number")
+                slot_text = f" (Slot {slot_no})" if slot_no is not None else ""
+                items_list_lines.append(
+                    f"- {item_name}{slot_text}  x{qty}  =  {self.controller.currency_symbol}{line_total:.2f}"
+                )
+
+            items_text = "\n".join(items_list_lines) if items_list_lines else "- No items in cart"
+            self.payment_items_label = tk.Label(
+                items_section,
+                text=items_text,
+                font=item_list_font,
+                bg="#ffffff",
+                fg=self.colors["text_fg"],
+                justify="left",
+                anchor="nw",
+                wraplength=max(760, payment_wraplength),
+                padx=16,
+                pady=12,
+                relief="solid",
+                bd=1
+            )
+            self.payment_items_label.pack(fill="both", expand=True)
             
             # Cancel button
             cancel_btn = tk.Button(
                 self.payment_window,
                 text="Cancel Payment",
-                font=self.fonts["item_details"],
+                font=section_title_font,
                 command=self.cancel_payment,
                 bg=self.colors["secondary_btn_bg"],
                 fg="#ffffff",
@@ -523,7 +565,7 @@ class CartScreen(tk.Frame):
                 activeforeground="#ffffff",
                 relief="flat"
             )
-            cancel_btn.pack(pady=20)
+            cancel_btn.pack(pady=(6, 20))
             self._style_button(cancel_btn, hover_bg=self.colors["secondary_btn_hover"])
             
             # Start updating payment status
@@ -1083,4 +1125,5 @@ class CartScreen(tk.Frame):
         """Handle cleanup when closing"""
         if hasattr(self, 'payment_handler'):
             self.payment_handler.cleanup()
+
 

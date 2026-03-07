@@ -13,7 +13,7 @@ class StartOrderScreen(tk.Frame):
         screen_height = self.winfo_screenheight()
         screen_width = self.winfo_screenwidth()
         touch_dead_zone_top = 100
-        touch_dead_zone_bottom_start = 1800
+        touch_dead_zone_bottom_start = 1700
         touch_dead_zone_bottom = max(0, screen_height - touch_dead_zone_bottom_start)
         title_font = tkfont.Font(family="Helvetica", size=max(20, int(screen_height * 0.036)), weight="bold")
         instructions_font = tkfont.Font(family="Helvetica", size=max(8, int(screen_height * 0.014)))

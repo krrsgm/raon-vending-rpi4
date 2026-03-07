@@ -110,7 +110,7 @@ class CartScreen(tk.Frame):
         }
         screen_height = controller.winfo_screenheight()
         self.touch_dead_zone_top_px = 100
-        self.touch_dead_zone_bottom_start_px = 1800
+        self.touch_dead_zone_bottom_start_px = 1700
         self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
 
         # --- Header ---
@@ -463,6 +463,18 @@ class CartScreen(tk.Frame):
                 wraplength=payment_wraplength
             )
             self.payment_status.pack()
+
+            self.cancel_warning_label = tk.Label(
+                status_frame,
+                text="",
+                font=tkfont.Font(family="Helvetica", size=18, weight="bold"),
+                bg=self.colors["payment_bg"],
+                fg="#c0392b",
+                justify=tk.LEFT,
+                anchor='w',
+                wraplength=payment_wraplength
+            )
+            self.cancel_warning_label.pack_forget()
             
             # Change status (initially hidden)
             self.change_label = tk.Label(
@@ -615,6 +627,14 @@ class CartScreen(tk.Frame):
                 )
                 
                 self.payment_status.config(text=status_text)
+                if received > 0:
+                    self.cancel_warning_label.config(
+                        text=(
+                            "Warning: Canceling now will NOT return inserted "
+                            "coins or bills."
+                        )
+                    )
+                    self.cancel_warning_label.pack(pady=(10, 0))
                 
                 if received >= total_amount:
                     self._schedule_complete_payment()
@@ -687,6 +707,14 @@ class CartScreen(tk.Frame):
         def _apply_update():
             try:
                 self.payment_status.config(text=status_text)
+                if amount > 0 and getattr(self, "cancel_warning_label", None):
+                    self.cancel_warning_label.config(
+                        text=(
+                            "Warning: Canceling now will NOT return inserted "
+                            "coins or bills."
+                        )
+                    )
+                    self.cancel_warning_label.pack(pady=(10, 0))
             except Exception as e:
                 print(f"[PAYMENT] Error updating UI: {e}")
 
@@ -1125,5 +1153,6 @@ class CartScreen(tk.Frame):
         """Handle cleanup when closing"""
         if hasattr(self, 'payment_handler'):
             self.payment_handler.cleanup()
+
 
 

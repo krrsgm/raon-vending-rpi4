@@ -23,7 +23,7 @@ class ItemScreen(tk.Frame):
         self.photo_image = None # To hold a reference to the image
         screen_height = controller.winfo_screenheight()
         self.touch_dead_zone_top_px = 100
-        self.touch_dead_zone_bottom_start_px = 1800
+        self.touch_dead_zone_bottom_start_px = 1700
         self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
 
         # --- Color and Font Scheme ---
@@ -300,4 +300,5 @@ class ItemScreen(tk.Frame):
                 text="No Image",
                 font=self.fonts['image_placeholder'],
             )
+
 

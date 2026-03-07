@@ -16,7 +16,6 @@ class StartOrderScreen(tk.Frame):
         touch_dead_zone_bottom_start = 1500
         touch_dead_zone_bottom = max(0, screen_height - touch_dead_zone_bottom_start)
         title_font = tkfont.Font(family="Helvetica", size=max(24, int(screen_height * 0.045)), weight="bold")
-        subtitle_font = tkfont.Font(family="Helvetica", size=max(12, int(screen_height * 0.02)))
         instructions_font = tkfont.Font(family="Helvetica", size=max(10, int(screen_height * 0.017)))
 
         # Non-touch top area visualized as black.
@@ -72,31 +71,8 @@ class StartOrderScreen(tk.Frame):
         )
         instructions.pack(pady=(20, 0))
 
-        proponents_text = (
-            "Proponents: Briñosa, Mesheil Pauline S.\n"
-            "Recaña, Ricarena F.\n"
-            "Santillan, Nelmar C.\n"
-            "Silo, Raphael Carlos R.\n"
-            "Tolosa, Angel G.\n"
-            "Tornilla, Nasher S.\n"
-            "BSECESEP-T-4A-T"
-        )
-        proponents_font = tkfont.Font(family="Helvetica", size=max(9, int(screen_height * 0.013)))
-        proponents_label = tk.Label(
-            content,
-            text=proponents_text,
-            font=proponents_font,
-            bg=primary_blue,
-            fg="white",
-            anchor="w",
-            justify="left",
-            wraplength=max(640, int(screen_width * 0.9)),
-        )
-        proponents_label.pack(side="bottom", fill="x", padx=max(16, int(screen_width * 0.05)), pady=(8, 18))
-
         # Hidden button flow: allow touch/click anywhere on this screen to proceed.
         content.bind("<Button-1>", lambda _e: self.controller.start_order())
         center_panel.bind("<Button-1>", lambda _e: self.controller.start_order())
         title.bind("<Button-1>", lambda _e: self.controller.start_order())
         instructions.bind("<Button-1>", lambda _e: self.controller.start_order())
-        proponents_label.bind("<Button-1>", lambda _e: self.controller.start_order())

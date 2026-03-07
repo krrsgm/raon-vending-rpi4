@@ -108,44 +108,33 @@ class CartScreen(tk.Frame):
             "qty_btn": tkfont.Font(family="Helvetica", size=14, weight="bold"),
             "action_button": tkfont.Font(family="Helvetica", size=18, weight="bold"),
         }
+        screen_height = controller.winfo_screenheight()
+        self.touch_dead_zone_top_px = 50
+        self.touch_dead_zone_bottom_start_px = 1600
+        self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
 
         # --- Header ---
         header = tk.Frame(
             self,
-            bg=self.colors["header_bg"],
-            highlightbackground=self.colors["border"],
-            highlightthickness=1,
+            bg="#2222a8",
+            height=max(96, self.touch_dead_zone_top_px + 46),
         )
-        header.pack(fill="x", pady=(0, 10))
+        header.pack(fill="x")
+        header.pack_propagate(False)
         tk.Label(
             header,
             text="Your Cart",
             font=self.fonts["header"],
             bg=header["bg"],
-            fg=self.colors["text_fg"],
-        ).pack(pady=20)
+            fg="#ffffff",
+        ).pack(pady=(self.touch_dead_zone_top_px, 8))
 
-        # --- Main content area for cart items ---
-        self.cart_items_frame = tk.Frame(self, bg=self.colors["background"])
-        self.cart_items_frame.pack(fill="both", expand=True, padx=50)
-
-        # --- Footer for totals and buttons ---
-        footer = tk.Frame(self, bg=self.colors["background"])
-        footer.pack(fill="x", padx=50, pady=20)
-
-        self.total_label = tk.Label(
-            footer,
-            font=self.fonts["total"],
-            bg=footer["bg"],
-            fg=self.colors["total_fg"],
-        )
-        self.total_label.pack(pady=(0, 20))
-
-        action_frame = tk.Frame(footer, bg=self.colors["background"])
-        action_frame.pack(fill="x")
+        # Action buttons are moved near the top so they stay in touchable area.
+        action_bar = tk.Frame(self, bg=self.colors["background"])
+        action_bar.pack(fill="x", padx=50, pady=(10, 8))
 
         back_button = tk.Button(
-            action_frame,
+            action_bar,
             text="Back to Shopping",
             font=self.fonts["action_button"],
             bg=self.colors["secondary_btn_bg"],
@@ -160,7 +149,7 @@ class CartScreen(tk.Frame):
         self._style_button(back_button, hover_bg=self.colors["secondary_btn_hover"])
 
         self.checkout_button = tk.Button(
-            action_frame,
+            action_bar,
             text="Pay",
             font=self.fonts["action_button"],
             bg=self.colors["primary_btn_bg"],
@@ -174,9 +163,30 @@ class CartScreen(tk.Frame):
         self.checkout_button.pack(side="left", expand=True, fill="x", padx=(5, 0))
         self._style_button(self.checkout_button, hover_bg=self.colors["primary_btn_hover"])
 
+        # --- Main content area for cart items ---
+        self.cart_items_frame = tk.Frame(self, bg=self.colors["background"])
+        self.cart_items_frame.pack(fill="both", expand=True, padx=50, pady=(0, 6))
+
+        # --- Footer for totals ---
+        footer = tk.Frame(self, bg=self.colors["background"])
+        footer.pack(fill="x", padx=50, pady=(0, 10))
+
+        self.total_label = tk.Label(
+            footer,
+            font=self.fonts["total"],
+            bg=footer["bg"],
+            fg=self.colors["total_fg"],
+        )
+        self.total_label.pack(pady=(0, 8))
+
         # --- System Status Panel ---
-        self.status_panel = SystemStatusPanel(self, controller=self.controller)
-        self.status_panel.pack(side='bottom', fill='x')
+        status_zone_height = self.touch_dead_zone_bottom_px if self.touch_dead_zone_bottom_px > 0 else 120
+        self.status_zone = tk.Frame(self, bg="#111111", height=status_zone_height)
+        self.status_zone.pack(side="bottom", fill="x")
+        self.status_zone.pack_propagate(False)
+
+        self.status_panel = SystemStatusPanel(self.status_zone, controller=self.controller)
+        self.status_panel.pack(fill='both', expand=True)
 
     def _style_button(self, btn, hover_bg=None, hover_fg=None):
         base_bg = btn.cget("bg")

@@ -24,7 +24,7 @@ class SystemStatusPanel(tk.Frame):
     def __init__(self, master=None, controller=None, **kwargs):
         super().__init__(master, **kwargs)
         self.controller = controller
-        self.configure(bg='#2c3e50', height=100)
+        self.configure(bg='#2c3e50', height=140)
         self.pack_propagate(False)
         
         # Status data (will be updated by callbacks)
@@ -71,7 +71,7 @@ class SystemStatusPanel(tk.Frame):
         title_label = tk.Label(
             title_frame,
             text='🔧 SYSTEM STATUS',
-            font=('Helvetica', 10, 'bold'),
+            font=('Helvetica', 12, 'bold'),
             bg='#2c3e50',
             fg='#ecf0f1'
         )
@@ -85,7 +85,7 @@ class SystemStatusPanel(tk.Frame):
             members_label = tk.Label(
                 title_frame,
                 text=members_text,
-                font=('Helvetica', 8),
+                font=('Helvetica', 10),
                 bg='#2c3e50',
                 fg='#95a5a6'
             )
@@ -95,7 +95,7 @@ class SystemStatusPanel(tk.Frame):
         self.status_indicator = tk.Label(
             title_frame,
             text='●',
-            font=('Helvetica', 14),
+            font=('Helvetica', 18),
             bg='#2c3e50',
             fg='#27ae60'  # Green for operational
         )
@@ -118,18 +118,13 @@ class SystemStatusPanel(tk.Frame):
         self.create_health_section(content_frame)
 
         proponents_text = (
-            "Proponents: Briñosa, Mesheil Pauline S. | "
-            "Recaña, Ricarena F. | "
-            "Santillan, Nelmar C. | "
-            "Silo, Raphael Carlos R. | "
-            "Tolosa, Angel G. | "
-            "Tornilla, Nasher S. | "
+            "Proponents: Brinosa, Recana, Santillan, Silo, Tolosa, Tornilla\n"
             "BSECESEP-T-4A-T"
         )
         proponents_label = tk.Label(
             main_container,
             text=proponents_text,
-            font=('Helvetica', 7),
+            font=('Helvetica', 9, 'bold'),
             bg='#2c3e50',
             fg='#bdc3c7',
             anchor='w',
@@ -147,7 +142,7 @@ class SystemStatusPanel(tk.Frame):
         header = tk.Label(
             section,
             text='🌡️ ENVIRONMENT',
-            font=('Helvetica', 9, 'bold'),
+            font=('Helvetica', 11, 'bold'),
             bg='#34495e',
             fg='#3498db'
         )
@@ -157,12 +152,12 @@ class SystemStatusPanel(tk.Frame):
         s1_frame = tk.Frame(section, bg='#34495e')
         s1_frame.pack(fill='x', padx=6, pady=1)
         
-        tk.Label(s1_frame, text='S1:', font=('Helvetica', 8), bg='#34495e', fg='#bdc3c7').pack(side='left', padx=(0, 4))
+        tk.Label(s1_frame, text='S1:', font=('Helvetica', 10), bg='#34495e', fg='#bdc3c7').pack(side='left', padx=(0, 4))
         
         self.dht22_s1_label = tk.Label(
             s1_frame,
             text='Temp: --°C',
-            font=('Helvetica', 8),
+            font=('Helvetica', 10),
             bg='#34495e',
             fg='#ecf0f1'
         )
@@ -173,7 +168,7 @@ class SystemStatusPanel(tk.Frame):
         self.dht22_s1_humid = tk.Label(
             s1_frame,
             text='Humid: --%',
-            font=('Helvetica', 8),
+            font=('Helvetica', 10),
             bg='#34495e',
             fg='#ecf0f1'
         )
@@ -183,12 +178,12 @@ class SystemStatusPanel(tk.Frame):
         s2_frame = tk.Frame(section, bg='#34495e')
         s2_frame.pack(fill='x', padx=6, pady=1)
         
-        tk.Label(s2_frame, text='S2:', font=('Helvetica', 8), bg='#34495e', fg='#bdc3c7').pack(side='left', padx=(0, 4))
+        tk.Label(s2_frame, text='S2:', font=('Helvetica', 10), bg='#34495e', fg='#bdc3c7').pack(side='left', padx=(0, 4))
         
         self.dht22_s2_label = tk.Label(
             s2_frame,
             text='Temp: --°C',
-            font=('Helvetica', 8),
+            font=('Helvetica', 10),
             bg='#34495e',
             fg='#ecf0f1'
         )
@@ -199,7 +194,7 @@ class SystemStatusPanel(tk.Frame):
         self.dht22_s2_humid = tk.Label(
             s2_frame,
             text='Humid: --%',
-            font=('Helvetica', 8),
+            font=('Helvetica', 10),
             bg='#34495e',
             fg='#ecf0f1'
         )
@@ -214,7 +209,7 @@ class SystemStatusPanel(tk.Frame):
         header = tk.Label(
             section,
             text='❄️ TEC COOLER',
-            font=('Helvetica', 9, 'bold'),
+            font=('Helvetica', 11, 'bold'),
             bg='#34495e',
             fg='#3498db'
         )
@@ -227,7 +222,7 @@ class SystemStatusPanel(tk.Frame):
         self.tec_status_label = tk.Label(
             status_frame,
             text='Status: OFF',
-            font=('Helvetica', 8),
+            font=('Helvetica', 10),
             bg='#34495e',
             fg='#e74c3c'
         )
@@ -238,7 +233,7 @@ class SystemStatusPanel(tk.Frame):
         self.tec_target_label = tk.Label(
             status_frame,
             text='Target: --°C',
-            font=('Helvetica', 8),
+            font=('Helvetica', 10),
             bg='#34495e',
             fg='#ecf0f1'
         )
@@ -248,12 +243,12 @@ class SystemStatusPanel(tk.Frame):
         temp_frame = tk.Frame(section, bg='#34495e')
         temp_frame.pack(fill='x', padx=6, pady=1)
         
-        tk.Label(temp_frame, text='Current:', font=('Helvetica', 8), bg='#34495e', fg='#bdc3c7').pack(side='left', padx=(0, 4))
+        tk.Label(temp_frame, text='Current:', font=('Helvetica', 10), bg='#34495e', fg='#bdc3c7').pack(side='left', padx=(0, 4))
         
         self.tec_current_label = tk.Label(
             temp_frame,
             text='--°C',
-            font=('Helvetica', 8),
+            font=('Helvetica', 10),
             bg='#34495e',
             fg='#ecf0f1'
         )
@@ -268,7 +263,7 @@ class SystemStatusPanel(tk.Frame):
         header = tk.Label(
             section,
             text='📡 IR SENSORS',
-            font=('Helvetica', 9, 'bold'),
+            font=('Helvetica', 11, 'bold'),
             bg='#34495e',
             fg='#3498db'
         )
@@ -281,7 +276,7 @@ class SystemStatusPanel(tk.Frame):
         self.ir_s1_indicator = tk.Label(
             s1_frame,
             text='●',
-            font=('Helvetica', 10),
+            font=('Helvetica', 12),
             bg='#34495e',
             fg='#95a5a6'  # Gray for unknown
         )
@@ -290,7 +285,7 @@ class SystemStatusPanel(tk.Frame):
         self.ir_s1_label = tk.Label(
             s1_frame,
             text='S1: --',
-            font=('Helvetica', 8),
+            font=('Helvetica', 10),
             bg='#34495e',
             fg='#ecf0f1'
         )
@@ -303,7 +298,7 @@ class SystemStatusPanel(tk.Frame):
         self.ir_s2_indicator = tk.Label(
             s2_frame,
             text='●',
-            font=('Helvetica', 10),
+            font=('Helvetica', 12),
             bg='#34495e',
             fg='#95a5a6'  # Gray for unknown
         )
@@ -312,7 +307,7 @@ class SystemStatusPanel(tk.Frame):
         self.ir_s2_label = tk.Label(
             s2_frame,
             text='S2: --',
-            font=('Helvetica', 8),
+            font=('Helvetica', 10),
             bg='#34495e',
             fg='#ecf0f1'
         )
@@ -325,7 +320,7 @@ class SystemStatusPanel(tk.Frame):
         self.ir_mode_label = tk.Label(
             mode_frame,
             text='Mode: any',
-            font=('Helvetica', 8),
+            font=('Helvetica', 10),
             bg='#34495e',
             fg='#f39c12'
         )
@@ -340,7 +335,7 @@ class SystemStatusPanel(tk.Frame):
         header = tk.Label(
             section,
             text='⚙️ SYSTEM',
-            font=('Helvetica', 9, 'bold'),
+            font=('Helvetica', 11, 'bold'),
             bg='#34495e',
             fg='#3498db'
         )
@@ -353,7 +348,7 @@ class SystemStatusPanel(tk.Frame):
         self.health_indicator = tk.Label(
             health_frame,
             text='●',
-            font=('Helvetica', 10),
+            font=('Helvetica', 12),
             bg='#34495e',
             fg='#27ae60'
         )
@@ -362,7 +357,7 @@ class SystemStatusPanel(tk.Frame):
         self.health_label = tk.Label(
             health_frame,
             text='Operational',
-            font=('Helvetica', 8),
+            font=('Helvetica', 10),
             bg='#34495e',
             fg='#ecf0f1'
         )
@@ -375,7 +370,7 @@ class SystemStatusPanel(tk.Frame):
         self.uptime_label = tk.Label(
             uptime_frame,
             text='Uptime: 00:00',
-            font=('Helvetica', 8),
+            font=('Helvetica', 10),
             bg='#34495e',
             fg='#bdc3c7'
         )
@@ -567,3 +562,5 @@ class SystemStatusPanel(tk.Frame):
             self.uptime_label.config(text=uptime_text)
         except Exception:
             pass
+
+

@@ -1,8 +1,16 @@
 Install helpers for Raspberry Pi
 
+Fastest setup (recommended):
+
+```bash
+cd ~/raon-vending-rpi4
+sudo bash deploy/install-autostart-services.sh
+```
+
 Files added:
-- raon-vending.service â€” systemd unit to run the kiosk as a service
-- 99-raon-serial.rules â€” udev rule to give dialout access and a stable symlink for common USB serial devices
+- raon-vending.service — systemd unit to run the kiosk as a service
+- 99-raon-serial.rules — udev rule to give dialout access and a stable symlink for common USB serial devices
+- install-autostart-services.sh — installs and enables both raon-vending and raon-web-app safely
 
 How to install (on the Pi):
 

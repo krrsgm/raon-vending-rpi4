@@ -125,6 +125,9 @@ class KioskFrame(tk.Frame):
         screen_height = controller.winfo_screenheight()
         self.header_px = int(screen_height * 0.15)  # 15% of screen height for header
         self.footer_px = int(screen_height * 0.05)  # 5% of screen height for footer
+        self.touch_dead_zone_top_px = 50
+        self.touch_dead_zone_bottom_start_px = 1400
+        self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
 
         # Fonts proportional to screen height
         title_size = int(screen_height * 0.035)  # 3.5% of height
@@ -542,9 +545,18 @@ class KioskFrame(tk.Frame):
 
         right_frame = tk.Frame(self.header, bg=header_bg)
         right_frame.pack(side='right', padx=12)
-        
+
+        # Keep top dead-zone visuals for branding only (logo/header),
+        # and place touch controls below Y=50.
+        controls_bar = tk.Frame(self, bg=header_bg, height=max(66, self.touch_dead_zone_top_px + 16))
+        controls_bar.pack(side='top', fill='x')
+        controls_bar.pack_propagate(False)
+
+        controls_right = tk.Frame(controls_bar, bg=header_bg)
+        controls_right.pack(side='right', padx=12, pady=6)
+
         cart_btn = tk.Button(
-            right_frame,
+            controls_right,
             text='Cart',
             bg='white',
             fg='#2222a8',
@@ -695,9 +707,14 @@ class KioskFrame(tk.Frame):
         # Populate grid with item cards after first paint to reduce startup lag
         self.after(1, self.populate_items)
 
-        # System Status Panel (shows hardware and sensor status)
-        self.status_panel = SystemStatusPanel(self, controller=self.controller)
-        self.status_panel.pack(side='bottom', fill='x')
+        # System Status Panel occupies the lower non-touch zone (Y >= 1400).
+        status_zone_height = self.touch_dead_zone_bottom_px if self.touch_dead_zone_bottom_px > 0 else max(70, self.footer_px)
+        self.status_zone = tk.Frame(self, bg='#111111', height=status_zone_height)
+        self.status_zone.pack(side='bottom', fill='x')
+        self.status_zone.pack_propagate(False)
+
+        self.status_panel = SystemStatusPanel(self.status_zone, controller=self.controller)
+        self.status_panel.pack(fill='both', expand=True)
 
         # Note: Developer names are now shown in system status panel only (no redundant footer)
 

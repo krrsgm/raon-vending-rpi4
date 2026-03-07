@@ -175,16 +175,31 @@
             width: min(92vw, 760px);
             max-width: 760px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .payment-content h2 { font-size: 48px; margin-bottom: 28px; color: #333; }
+        .payment-label { font-size: 32px; margin-bottom: 14px; color: #444; font-weight: 700; }
+
+        #paymentRequired,
+        #paymentComplete,
+        #paymentError {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
         }
         
-        .payment-content h2 { font-size: 42px; margin-bottom: 24px; color: #333; }
-        .payment-label { font-size: 26px; margin-bottom: 12px; color: #444; font-weight: 600; }
-        
         .amount-display {
-            font-size: 72px;
+            font-size: 88px;
             font-weight: bold;
             color: #667eea;
             margin: 22px 0;
+            line-height: 1.05;
         }
         
         .progress-bar {
@@ -203,7 +218,7 @@
         }
         
         .waiting-text {
-            font-size: 30px;
+            font-size: 40px;
             font-weight: 700;
             color: #666;
             margin-top: 24px;
@@ -231,9 +246,9 @@
         @media (max-width: 768px) {
             .payment-content { padding: 28px; width: 94vw; }
             .payment-content h2 { font-size: 32px; }
-            .payment-label { font-size: 20px; }
-            .amount-display { font-size: 52px; }
-            .waiting-text { font-size: 24px; }
+            .payment-label { font-size: 24px; }
+            .amount-display { font-size: 62px; }
+            .waiting-text { font-size: 30px; }
             .complete-message { font-size: 26px; }
             .error-message { font-size: 22px; }
             .payment-modal .checkout-btn { font-size: 20px; padding: 16px; }

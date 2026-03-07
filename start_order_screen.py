@@ -6,18 +6,33 @@ class StartOrderScreen(tk.Frame):
     """Simple kiosk landing screen with a Start Order action."""
 
     def __init__(self, parent, controller):
-        super().__init__(parent, bg="#2222a8")
+        super().__init__(parent, bg="#000000")
         self.controller = controller
         primary_blue = "#2222a8"
 
         screen_height = self.winfo_screenheight()
         screen_width = self.winfo_screenwidth()
+        touch_dead_zone_top = 50
+        touch_dead_zone_bottom_start = 1400
+        touch_dead_zone_bottom = max(0, screen_height - touch_dead_zone_bottom_start)
         title_font = tkfont.Font(family="Helvetica", size=max(24, int(screen_height * 0.045)), weight="bold")
         subtitle_font = tkfont.Font(family="Helvetica", size=max(12, int(screen_height * 0.02)))
         instructions_font = tkfont.Font(family="Helvetica", size=max(10, int(screen_height * 0.017)))
 
+        # Non-touch top area visualized as black.
+        top_dead_zone = tk.Frame(self, bg="#000000", height=touch_dead_zone_top)
+        top_dead_zone.pack(side="top", fill="x")
+        top_dead_zone.pack_propagate(False)
+
+        # Main touch-active content area.
         content = tk.Frame(self, bg=primary_blue)
         content.pack(expand=True, fill="both")
+
+        # Non-touch bottom area visualized as black.
+        if touch_dead_zone_bottom > 0:
+            bottom_dead_zone = tk.Frame(self, bg="#000000", height=touch_dead_zone_bottom)
+            bottom_dead_zone.pack(side="bottom", fill="x")
+            bottom_dead_zone.pack_propagate(False)
 
         center_panel = tk.Frame(content, bg=primary_blue)
         center_panel.place(relx=0.5, rely=0.5, anchor="center")

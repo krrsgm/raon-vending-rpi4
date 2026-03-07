@@ -1170,7 +1170,6 @@
                     card.className = 'machine-card';
                     card.innerHTML = `
                         <div class="machine-header">
-                            <h2>${escapeHtml(machine.name)}</h2>
                             <span class="status-badge">${machine.is_active ? 'Active' : 'Offline'}</span>
                         </div>
                         ${lowStockItems.length > 0 ? `<div class="low-stock-alert"><div style="font-weight: bold; color: #c0392b;">Low Stock Alert:</div><div class="alert-items">${lowStockItems.map(escapeHtml).join(', ')}</div></div>` : ''}

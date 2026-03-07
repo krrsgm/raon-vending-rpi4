@@ -1,0 +1,2053 @@
+"""
+web_app.py - Flask web application replacing Tkinter UI for RAON Vending Machine.
+Provides:
+  - Kiosk UI (item selection, payment, vending)
+  - Multi-machine inventory dashboard
+  - API for payment/vending control integration
+"""
+
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, make_response
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import func
+from datetime import datetime, timedelta
+import json
+import os
+import sys
+import time
+import re
+import io
+import csv
+import socket
+import subprocess
+from threading import Thread, Lock
+import logging
+
+# Add parent directory to path so we can import existing modules
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Import existing vending modules (unchanged)
+try:
+    from esp32_client import pulse_slot
+    from payment_handler import PaymentHandler
+    from fix_paths import get_absolute_path
+    from daily_sales_logger import get_logger
+except ImportError as e:
+    print(f"Warning: Could not import vending modules: {e}")
+    pulse_slot = None
+    PaymentHandler = None
+    get_logger = None
+
+# Flask setup
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-key-change-in-production')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///vending_machine.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+logger = logging.getLogger(__name__)
+
+# ============================================================================
+# DATABASE MODELS
+# ============================================================================
+
+class Machine(db.Model):
+    """Represents a vending machine."""
+    id = db.Column(db.Integer, primary_key=True)
+    machine_id = db.Column(db.String(50), unique=True, nullable=False)  # e.g., 'RAON-001'
+    name = db.Column(db.String(100), nullable=False)
+    esp32_host = db.Column(db.String(100), nullable=False)  # IP or serial://...
+    last_seen = db.Column(db.DateTime, default=datetime.utcnow)
+    is_active = db.Column(db.Boolean, default=True)
+    
+    items = db.relationship('Item', backref='machine', lazy=True, cascade='all, delete-orphan')
+    sales = db.relationship('Sale', backref='machine', lazy=True, cascade='all, delete-orphan')
+
+
+class Item(db.Model):
+    """Represents an item in a vending machine."""
+    id = db.Column(db.Integer, primary_key=True)
+    machine_id = db.Column(db.Integer, db.ForeignKey('machine.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    quantity = db.Column(db.Integer, default=0)  # Current stock
+    slots = db.Column(db.String(255), default='')  # Comma-separated slot numbers
+    image_url = db.Column(db.String(255), default='')
+    category = db.Column(db.String(50), default='')
+    description = db.Column(db.String(255), default='')
+    low_stock_threshold = db.Column(db.Integer, default=3)
+
+
+class Sale(db.Model):
+    """Represents a sale transaction."""
+    id = db.Column(db.Integer, primary_key=True)
+    machine_id = db.Column(db.Integer, db.ForeignKey('machine.id'), nullable=False)
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=True)
+    item_name = db.Column(db.String(100), nullable=False)
+    quantity = db.Column(db.Integer, default=1)
+    amount_received = db.Column(db.Float, nullable=False)
+    coin_amount = db.Column(db.Float, default=0.0)
+    bill_amount = db.Column(db.Float, default=0.0)
+    change_dispensed = db.Column(db.Float, default=0.0)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class LowStockAlert(db.Model):
+    """Represents a low stock warning alert."""
+    id = db.Column(db.Integer, primary_key=True)
+    machine_id = db.Column(db.Integer, db.ForeignKey('machine.id'), nullable=False)
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
+    item_name = db.Column(db.String(100), nullable=False)
+    current_quantity = db.Column(db.Integer, nullable=False)
+    threshold = db.Column(db.Integer, nullable=False)
+    alert_type = db.Column(db.String(50), default='low_stock')  # 'low_stock', 'out_of_stock'
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    acknowledged = db.Column(db.Boolean, default=False)
+
+
+# ============================================================================
+# GLOBAL STATE & PAYMENT HANDLER
+# ============================================================================
+
+payment_handler = None
+payment_lock = Lock()
+current_payment_session = {
+    'in_progress': False,
+    'required_amount': 0.0,
+    'received_amount': 0.0,
+    'items': []
+}
+
+
+def should_init_payment_handler(config):
+    """Web app must never own payment hardware; main.py is the hardware owner."""
+    return False
+
+
+def init_payment_handler(config):
+    """Initialize the payment handler with config."""
+    global payment_handler
+    try:
+        if PaymentHandler:
+            coin_cfg = config.get('hardware', {}).get('coin_acceptor', {}) if isinstance(config, dict) else {}
+            payment_handler = PaymentHandler(
+                config=config,
+                use_gpio_coin=bool(coin_cfg.get('use_gpio', False)),
+                coin_gpio_pin=coin_cfg.get('gpio_pin', 17)
+            )
+            logger.info("Payment handler initialized")
+            return True
+    except Exception as e:
+        logger.error(f"Failed to initialize payment handler: {e}")
+    return False
+
+
+# ============================================================================
+# ROUTES - KIOSK UI
+# ============================================================================
+
+@app.route('/')
+def home():
+    """Redirect to dashboard."""
+    return redirect(url_for('inventory_dashboard'))
+
+
+# ============================================================================
+# ROUTES - DASHBOARD & MONITORING
+# ============================================================================
+
+def _filter_dashboard_sales_logs(raw_lines):
+    """Keep only sales/payment log entries for dashboard logs view."""
+    if not raw_lines:
+        return []
+
+    excluded_markers = (
+        'temperature',
+        'dht',
+        'tec',
+        'relay',
+        'ir sensor',
+        'ir1',
+        'ir2',
+        'sensor',
+    )
+    included_markers = (
+        'sale',
+        'sold',
+        'payment',
+        'coin',
+        'bill',
+        'change',
+        'transaction',
+        'dispense_result',
+        'dispense',
+    )
+
+    filtered = []
+    for line in raw_lines:
+        text = str(line).strip()
+        if not text:
+            continue
+
+        lower = text.lower()
+        if any(marker in lower for marker in excluded_markers):
+            continue
+        if any(marker in lower for marker in included_markers):
+            filtered.append(line)
+
+    return filtered
+
+
+def _resolve_sale_item_name(sale):
+    """Resolve display name for a sale row, preferring persisted sale.item_name."""
+    placeholder_names = {
+        'unknown',
+        'unknown item',
+        'n/a',
+        'na',
+        'none',
+        'null',
+        '-',
+        '--',
+    }
+
+    try:
+        if getattr(sale, 'item_name', None):
+            name = str(sale.item_name).strip()
+            if name and name.lower() not in placeholder_names:
+                return name
+    except Exception:
+        pass
+
+    try:
+        if getattr(sale, 'item_id', None):
+            item = Item.query.get(sale.item_id)
+            if item and item.name:
+                return item.name
+    except Exception:
+        pass
+
+    return "Unknown Item"
+
+
+def _resolve_logs_dir():
+    """Resolve logs directory reliably regardless of current working directory."""
+    try:
+        logger_inst = get_logger() if get_logger else None
+        if logger_inst and getattr(logger_inst, 'logs_dir', None):
+            return logger_inst.logs_dir
+    except Exception:
+        pass
+
+    try:
+        if get_absolute_path:
+            return get_absolute_path('logs')
+    except Exception:
+        pass
+
+    return 'logs'
+
+
+def _extract_log_seconds(text):
+    """Extract HH:MM:SS from a log line and return seconds since midnight."""
+    try:
+        m = re.search(r'(\d{2}):(\d{2}):(\d{2})', str(text))
+        if not m:
+            return None
+        hh, mm, ss = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return (hh * 3600) + (mm * 60) + ss
+    except Exception:
+        return None
+
+
+def _extract_item_name_from_sale_log(text):
+    """Best-effort parse of item name from a sale log line."""
+    try:
+        s = str(text).strip()
+        # Example: [12:34:56] Soda x2 - ?40.00
+        m = re.search(r'\]\s*(.*?)\s*-\s*.*?\d', s)
+        if not m:
+            return None
+        name = m.group(1).strip()
+        return name if name else None
+    except Exception:
+        return None
+
+
+def _parse_ir_detected(value):
+    """Parse IR CSV cell to detection bool (True/False/None unknown)."""
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if not text:
+        return None
+    if text in ('1', 'true', 'detected', 'blocked', 'high'):
+        return True
+    if text in ('0', 'false', 'not detected', 'clear', 'low'):
+        return False
+    if 'detect' in text or 'block' in text:
+        return True
+    if 'clear' in text:
+        return False
+    try:
+        return float(text) > 0
+    except Exception:
+        return None
+
+
+def _build_ir_dispense_logs(date_str, sales_struct):
+    """Build IR dispense event log lines and optionally map nearest sale item."""
+    sensor_log_file = os.path.join(_resolve_logs_dir(), f"sensor_data_{date_str}.csv")
+    if not os.path.exists(sensor_log_file):
+        return []
+
+    sale_candidates = [
+        s for s in sales_struct
+        if s.get('seconds') is not None and s.get('item_name')
+    ]
+
+    ir_logs = []
+    prev_ir1 = None
+    prev_ir2 = None
+
+    try:
+        import csv
+        with open(sensor_log_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                ir1 = _parse_ir_detected(row.get('IR_Sensor1_Detection'))
+                ir2 = _parse_ir_detected(row.get('IR_Sensor2_Detection'))
+
+                fired = []
+                if ir1 is True and prev_ir1 is not True:
+                    fired.append('IR1')
+                if ir2 is True and prev_ir2 is not True:
+                    fired.append('IR2')
+
+                prev_ir1 = ir1
+                prev_ir2 = ir2
+
+                if not fired:
+                    continue
+
+                ts_raw = row.get('DateTime', row.get('Timestamp', '')) or ''
+                sec = _extract_log_seconds(ts_raw)
+                hhmmss = '??:??:??'
+                m = re.search(r'(\d{2}:\d{2}:\d{2})', str(ts_raw))
+                if m:
+                    hhmmss = m.group(1)
+
+                item_hint = None
+                if sec is not None and sale_candidates:
+                    nearest = min(sale_candidates, key=lambda s: abs(s['seconds'] - sec))
+                    if abs(nearest['seconds'] - sec) <= 30:
+                        item_hint = nearest.get('item_name')
+
+                ir_text = '/'.join(fired)
+                if item_hint:
+                    line = f"[{hhmmss}] DISPENSE DETECTED ({ir_text}) - Item: {item_hint}"
+                else:
+                    line = f"[{hhmmss}] DISPENSE DETECTED ({ir_text})"
+
+                ir_logs.append({
+                    'line': line,
+                    'seconds': sec
+                })
+    except Exception as e:
+        logger.error(f"Error building IR dispense logs: {e}")
+        return []
+
+    return ir_logs
+
+
+def _extract_hhmmss(text):
+    """Extract HH:MM:SS text from a line."""
+    try:
+        m = re.search(r'(\d{2}:\d{2}:\d{2})', str(text))
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return "??:??:??"
+
+
+def _normalize_date_str(date_value):
+    """Normalize date input to YYYY-MM-DD; fallback to local today."""
+    try:
+        text = str(date_value or "").strip()
+        if not text:
+            raise ValueError("empty")
+        return datetime.strptime(text, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except Exception:
+        return datetime.now().strftime("%Y-%m-%d")
+
+
+def _parse_money_value(text, label):
+    """Parse a numeric money value from a labeled field."""
+    try:
+        pattern = rf"{re.escape(label)}:\s*[^0-9\-]*([0-9]+(?:\.[0-9]+)?)"
+        m = re.search(pattern, str(text), re.IGNORECASE)
+        if m:
+            return float(m.group(1))
+    except Exception:
+        pass
+    return 0.0
+
+
+def _parse_transaction_line(text):
+    """Parse a TRANSACTION log line into structured fields."""
+    line = str(text).strip()
+    if "TRANSACTION |" not in line or "Items:" not in line:
+        return None
+
+    items_text = "Unknown Item"
+    try:
+        m_items = re.search(r"Items:\s*(.*?)\s*\|\s*Coins:", line, re.IGNORECASE)
+        if m_items:
+            parsed_items = m_items.group(1).strip()
+            if parsed_items:
+                items_text = parsed_items
+    except Exception:
+        pass
+
+    return {
+        'raw': line,
+        'hhmmss': _extract_hhmmss(line),
+        'seconds': _extract_log_seconds(line),
+        'items': items_text,
+        'coins': _parse_money_value(line, "Coins"),
+        'bills': _parse_money_value(line, "Bills"),
+        'total': _parse_money_value(line, "Total"),
+        'change': _parse_money_value(line, "Change"),
+    }
+
+
+def _parse_transaction_time_line(text):
+    """Parse a TRANSACTION_TIME line."""
+    line = str(text).strip()
+    if "TRANSACTION_TIME" not in line:
+        return None
+
+    duration_text = "N/A"
+    try:
+        m_duration = re.search(r"Duration:\s*([^|]+)", line, re.IGNORECASE)
+        if m_duration:
+            duration_text = m_duration.group(1).strip()
+    except Exception:
+        pass
+
+    return {
+        'seconds': _extract_log_seconds(line),
+        'duration': duration_text,
+    }
+
+
+def _parse_dispense_result_line(text):
+    """Parse DISPENSE_RESULT line from sales log."""
+    line = str(text).strip()
+    if "DISPENSE_RESULT" not in line:
+        return None
+
+    try:
+        m = re.search(
+            r"DISPENSE_RESULT\s*\|\s*Slot:\s*([^|]+)\s*\|\s*Item:\s*([^|]+)\s*\|\s*Status:\s*([A-Za-z_]+)",
+            line,
+            re.IGNORECASE
+        )
+        if not m:
+            return None
+        return {
+            'seconds': _extract_log_seconds(line),
+            'slot': m.group(1).strip(),
+            'item': m.group(2).strip(),
+            'status': m.group(3).strip().upper(),
+        }
+    except Exception:
+        return None
+
+
+def _load_ir_sensor_status_events(date_str):
+    """Load IR status snapshots from sensor_data csv for a date."""
+    sensor_log_file = os.path.join(_resolve_logs_dir(), f"sensor_data_{date_str}.csv")
+    if not os.path.exists(sensor_log_file):
+        return []
+
+    events = []
+    try:
+        import csv
+        with open(sensor_log_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                ir1 = _parse_ir_detected(row.get('IR_Sensor1_Detection'))
+                ir2 = _parse_ir_detected(row.get('IR_Sensor2_Detection'))
+                if ir1 is None and ir2 is None:
+                    continue
+
+                ir1_text = "DETECTED" if ir1 is True else ("CLEAR" if ir1 is False else "--")
+                ir2_text = "DETECTED" if ir2 is True else ("CLEAR" if ir2 is False else "--")
+                ts_raw = row.get('DateTime', row.get('Timestamp', '')) or ''
+                events.append({
+                    'seconds': _extract_log_seconds(ts_raw),
+                    'status': f"IR1 {ir1_text}, IR2 {ir2_text}",
+                })
+    except Exception as e:
+        logger.error(f"Error loading IR sensor status events: {e}")
+        return []
+
+    return events
+
+
+def _match_duration_for_transaction(txn, tx_time_events, used_indexes):
+    """Match a transaction duration from TRANSACTION_TIME logs."""
+    txn_sec = txn.get('seconds')
+    if not tx_time_events:
+        return "N/A"
+
+    best_idx = None
+    best_delta = None
+
+    if txn_sec is not None:
+        for i, ev in enumerate(tx_time_events):
+            if i in used_indexes:
+                continue
+            ev_sec = ev.get('seconds')
+            if ev_sec is None:
+                continue
+            delta = abs(ev_sec - txn_sec)
+            if best_delta is None or delta < best_delta:
+                best_delta = delta
+                best_idx = i
+
+    if best_idx is not None and best_delta is not None and best_delta <= 300:
+        used_indexes.add(best_idx)
+        return tx_time_events[best_idx].get('duration', "N/A")
+
+    for i, ev in enumerate(tx_time_events):
+        if i in used_indexes:
+            continue
+        used_indexes.add(i)
+        return ev.get('duration', "N/A")
+
+    return "N/A"
+
+
+def _match_ir_status_for_transaction(txn, ir_sensor_events, dispense_events):
+    """Match IR status for a transaction using sensor snapshots, then dispense results."""
+    txn_sec = txn.get('seconds')
+    txn_items = str(txn.get('items', '')).lower()
+
+    if txn_sec is not None and ir_sensor_events:
+        nearest = None
+        nearest_delta = None
+        for ev in ir_sensor_events:
+            ev_sec = ev.get('seconds')
+            if ev_sec is None:
+                continue
+            delta = abs(ev_sec - txn_sec)
+            if nearest_delta is None or delta < nearest_delta:
+                nearest = ev
+                nearest_delta = delta
+        if nearest and nearest_delta is not None and nearest_delta <= 90:
+            return nearest.get('status', 'N/A')
+
+    candidates = []
+    if txn_sec is not None:
+        for ev in dispense_events:
+            ev_sec = ev.get('seconds')
+            if ev_sec is None:
+                continue
+            if abs(ev_sec - txn_sec) <= 90:
+                candidates.append(ev)
+    elif dispense_events:
+        candidates = list(dispense_events)
+
+    if not candidates:
+        return "N/A"
+
+    item_matched = [ev for ev in candidates if ev.get('item', '').strip().lower() in txn_items]
+    if item_matched:
+        candidates = item_matched
+
+    statuses = [str(ev.get('status', '')).upper() for ev in candidates if ev.get('status')]
+    if not statuses:
+        return "N/A"
+    if any(s == 'FAILED' for s in statuses):
+        return "FAILED"
+    if any(s == 'SUCCESS' for s in statuses):
+        return "SUCCESS"
+    return "/".join(sorted(set(statuses)))
+
+
+def _build_sales_rows_for_date(date_str, logs_dir):
+    """Build structured sales rows for dashboard display/export."""
+    log_file = os.path.join(logs_dir, f"sales_{date_str}.log")
+    raw_logs = []
+    if os.path.exists(log_file):
+        try:
+            with open(log_file, 'r', encoding='utf-8') as f:
+                raw_logs = [str(line).strip() for line in f if str(line).strip()]
+        except Exception as e:
+            logger.error(f"Error reading sales log file: {e}")
+
+    transaction_events = []
+    tx_time_events = []
+    dispense_events = []
+
+    for line in raw_logs:
+        tx = _parse_transaction_line(line)
+        if tx:
+            transaction_events.append(tx)
+            continue
+
+        tx_time = _parse_transaction_time_line(line)
+        if tx_time:
+            tx_time_events.append(tx_time)
+            continue
+
+        disp = _parse_dispense_result_line(line)
+        if disp:
+            dispense_events.append(disp)
+
+    ir_sensor_events = _load_ir_sensor_status_events(date_str)
+
+    rows = []
+    used_duration_indexes = set()
+    for tx in transaction_events:
+        duration_text = _match_duration_for_transaction(tx, tx_time_events, used_duration_indexes)
+        ir_status_text = _match_ir_status_for_transaction(tx, ir_sensor_events, dispense_events)
+        total_inserted = float(tx['total'] or 0.0)
+        change_dispensed = float(tx['change'] or 0.0)
+        net_collected = total_inserted - change_dispensed
+        rows.append({
+            'time': tx['hhmmss'],
+            'transaction_time': duration_text,
+            'item': tx['items'],
+            'coins': tx['coins'],
+            'bills': tx['bills'],
+            'total': total_inserted,
+            'change': change_dispensed,
+            'net_collected': net_collected,
+            'ir_status': ir_status_text,
+        })
+
+    return rows
+
+
+# ============================================================================
+# ROUTES - INVENTORY DASHBOARD (Multi-Machine)
+# ============================================================================
+
+@app.route('/dashboard')
+def inventory_dashboard():
+    """Inventory dashboard for all machines."""
+    machines = Machine.query.filter_by(is_active=True).all()
+    
+    dashboard_data = []
+    for machine in machines:
+        items = Item.query.filter_by(machine_id=machine.id).all()
+        low_stock_items = [i for i in items if i.quantity <= i.low_stock_threshold]
+        
+        recent_sales = Sale.query.filter_by(machine_id=machine.id)\
+            .order_by(Sale.timestamp.desc()).limit(10).all()
+        
+        total_sales_today = db.session.query(func.sum(Sale.coin_amount + Sale.bill_amount))\
+            .filter_by(machine_id=machine.id)\
+            .filter(Sale.timestamp > datetime.utcnow() - timedelta(hours=24)).scalar() or 0.0
+        
+        dashboard_data.append({
+            'machine': machine,
+            'items': items,
+            'low_stock': low_stock_items,
+            'recent_sales': recent_sales,
+            'total_sales_today': total_sales_today
+        })
+    
+    return render_template('dashboard.html', machines_data=dashboard_data, currency='₱')
+
+
+@app.route('/api/sales/today')
+def api_sales_today():
+    """API: Get today's sales summary from logs."""
+    try:
+        logger_inst = get_logger() if get_logger else None
+        if not logger_inst:
+            return jsonify({'error': 'Logger not available'}), 500
+        
+        summary = logger_inst.get_today_summary()
+        items_sold = logger_inst.get_items_sold_summary()
+        total_inserted = float(summary.get('total_sales', 0.0) or 0.0)
+        total_change = float(summary.get('total_change', 0.0) or 0.0)
+        total_net_collected = total_inserted - total_change
+        
+        return jsonify({
+            'date': summary['date'],
+            'total_transactions': summary['total_transactions'],
+            'total_sales': total_inserted,
+            'total_inserted': total_inserted,
+            'total_coins': summary['total_coins'],
+            'total_bills': summary['total_bills'],
+            'total_change': total_change,
+            'total_net_collected': total_net_collected,
+            'items_sold': items_sold
+        }), 200
+    except Exception as e:
+        logger.error(f"Sales today error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sales/logs')
+def api_sales_logs():
+    """API: Get sales logs for a specific date (default today)."""
+    try:
+        logger_inst = get_logger() if get_logger else None
+        if not logger_inst:
+            return jsonify({'error': 'Logger not available'}), 500
+
+        date_str = _normalize_date_str(request.args.get('date'))
+        logs_dir = logger_inst.logs_dir
+        rows = _build_sales_rows_for_date(date_str, logs_dir)
+        total_inserted = sum(float(row.get('total', 0.0) or 0.0) for row in rows)
+        total_change = sum(float(row.get('change', 0.0) or 0.0) for row in rows)
+        total_net_collected = total_inserted - total_change
+
+        merged_logs = []
+        for row in rows:
+            merged_logs.append(
+                f"[{row['time']}] "
+                f"Transaction Time: {row['transaction_time']} | "
+                f"Item: {row['item']} | "
+                f"Coins: {row['coins']:.2f} | "
+                f"Bills: {row['bills']:.2f} | "
+                f"Inserted: {row['total']:.2f} | "
+                f"Change: {row['change']:.2f} | "
+                f"Net: {row['net_collected']:.2f} | "
+                f"IR Status: {row['ir_status']}"
+            )
+
+        return jsonify({
+            'logs': merged_logs,
+            'date': date_str,
+            'count': len(merged_logs),
+            'summary': {
+                'total_inserted': total_inserted,
+                'total_change': total_change,
+                'total_net_collected': total_net_collected
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"Sales logs error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sales/previous-day')
+def api_sales_previous_day():
+    """API: Get sales logs from the previous day."""
+    try:
+        logger_inst = get_logger() if get_logger else None
+        if not logger_inst:
+            return jsonify({'error': 'Logger not available'}), 500
+        
+        from datetime import datetime as dt
+        yesterday = (dt.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        logs_dir = logger_inst.logs_dir
+        log_file = os.path.join(logs_dir, f"sales_{yesterday}.log")
+        
+        if not os.path.exists(log_file):
+            return jsonify({'logs': [], 'date': yesterday, 'summary': {
+                'total_transactions': 0,
+                'total_sales': 0.0,
+                'total_coins': 0.0,
+                'total_bills': 0.0,
+                'items_sold': {}
+            }}), 200
+        
+        logs = []
+        try:
+            with open(log_file, 'r', encoding='utf-8') as f:
+                logs = _filter_dashboard_sales_logs(f.readlines())
+        except Exception as e:
+            logger.error(f"Error reading log file: {e}")
+        
+        # Try to get summary for previous day
+        summary = {
+            'total_transactions': len(logs),
+            'total_sales': 0.0,
+            'total_coins': 0.0,
+            'total_bills': 0.0,
+            'items_sold': {}
+        }
+        
+        return jsonify({
+            'logs': logs,
+            'date': yesterday,
+            'count': len(logs),
+            'summary': summary
+        }), 200
+    except Exception as e:
+        logger.error(f"Previous day sales error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sensor-readings')
+def api_sensor_readings():
+    """API: Get sensor readings for a specific date (default today)."""
+    try:
+        from datetime import datetime as dt
+        date_str = request.args.get('date', dt.now().strftime("%Y-%m-%d"))
+        
+        # Resolve logs folder robustly (service/cwd-safe)
+        sensor_log_dir = _resolve_logs_dir()
+        sensor_log_file = os.path.join(sensor_log_dir, f"sensor_data_{date_str}.csv")
+        
+        if not os.path.exists(sensor_log_file):
+            return jsonify({
+                'readings': [],
+                'date': date_str,
+                'stats': {
+                    'avg_temp1': 0,
+                    'avg_temp2': 0,
+                    'avg_humidity1': 0,
+                    'avg_humidity2': 0
+                }
+            }), 200
+        
+        readings = []
+        temps1, temps2, humidity1, humidity2 = [], [], [], []
+        
+        try:
+            import csv
+            with open(sensor_log_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    reading = {
+                        'timestamp': row.get('DateTime', row.get('Timestamp', '')),
+                        'temp1': float(row.get('Sensor1_Temp_C', 0)) if row.get('Sensor1_Temp_C') else None,
+                        'humidity1': float(row.get('Sensor1_Humidity_Pct', 0)) if row.get('Sensor1_Humidity_Pct') else None,
+                        'temp2': float(row.get('Sensor2_Temp_C', 0)) if row.get('Sensor2_Temp_C') else None,
+                        'humidity2': float(row.get('Sensor2_Humidity_Pct', 0)) if row.get('Sensor2_Humidity_Pct') else None,
+                        'ir1': row.get('IR_Sensor1_Detection', ''),
+                        'ir2': row.get('IR_Sensor2_Detection', ''),
+                        'relay': row.get('Relay_Status', ''),
+                        'target_temp': float(row.get('Target_Temp_C', 0)) if row.get('Target_Temp_C') else None
+                    }
+                    readings.append(reading)
+                    
+                    # Collect stats
+                    if reading['temp1'] is not None:
+                        temps1.append(reading['temp1'])
+                    if reading['temp2'] is not None:
+                        temps2.append(reading['temp2'])
+                    if reading['humidity1'] is not None:
+                        humidity1.append(reading['humidity1'])
+                    if reading['humidity2'] is not None:
+                        humidity2.append(reading['humidity2'])
+        except Exception as e:
+            logger.error(f"Error reading sensor log file: {e}")
+        
+        # Calculate averages
+        stats = {
+            'avg_temp1': sum(temps1) / len(temps1) if temps1 else 0,
+            'avg_temp2': sum(temps2) / len(temps2) if temps2 else 0,
+            'avg_humidity1': sum(humidity1) / len(humidity1) if humidity1 else 0,
+            'avg_humidity2': sum(humidity2) / len(humidity2) if humidity2 else 0,
+            'readings_count': len(readings)
+        }
+        
+        return jsonify({
+            'readings': readings,
+            'date': date_str,
+            'stats': stats
+        }), 200
+    except Exception as e:
+        logger.error(f"Sensor readings error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sensor-readings/previous-day')
+def api_sensor_readings_previous_day():
+    """API: Get sensor readings from the previous day."""
+    try:
+        from datetime import datetime as dt
+        yesterday = (dt.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        
+        # Resolve logs folder robustly (service/cwd-safe)
+        sensor_log_dir = _resolve_logs_dir()
+        sensor_log_file = os.path.join(sensor_log_dir, f"sensor_data_{yesterday}.csv")
+        
+        if not os.path.exists(sensor_log_file):
+            return jsonify({
+                'readings': [],
+                'date': yesterday,
+                'stats': {
+                    'avg_temp1': 0,
+                    'avg_temp2': 0,
+                    'avg_humidity1': 0,
+                    'avg_humidity2': 0
+                }
+            }), 200
+        
+        readings = []
+        temps1, temps2, humidity1, humidity2 = [], [], [], []
+        
+        try:
+            import csv
+            with open(sensor_log_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    reading = {
+                        'timestamp': row.get('DateTime', row.get('Timestamp', '')),
+                        'temp1': float(row.get('Sensor1_Temp_C', 0)) if row.get('Sensor1_Temp_C') else None,
+                        'humidity1': float(row.get('Sensor1_Humidity_Pct', 0)) if row.get('Sensor1_Humidity_Pct') else None,
+                        'temp2': float(row.get('Sensor2_Temp_C', 0)) if row.get('Sensor2_Temp_C') else None,
+                        'humidity2': float(row.get('Sensor2_Humidity_Pct', 0)) if row.get('Sensor2_Humidity_Pct') else None,
+                        'ir1': row.get('IR_Sensor1_Detection', ''),
+                        'ir2': row.get('IR_Sensor2_Detection', ''),
+                        'relay': row.get('Relay_Status', ''),
+                        'target_temp': float(row.get('Target_Temp_C', 0)) if row.get('Target_Temp_C') else None
+                    }
+                    readings.append(reading)
+                    
+                    # Collect stats
+                    if reading['temp1'] is not None:
+                        temps1.append(reading['temp1'])
+                    if reading['temp2'] is not None:
+                        temps2.append(reading['temp2'])
+                    if reading['humidity1'] is not None:
+                        humidity1.append(reading['humidity1'])
+                    if reading['humidity2'] is not None:
+                        humidity2.append(reading['humidity2'])
+        except Exception as e:
+            logger.error(f"Error reading sensor log file: {e}")
+        
+        # Calculate averages
+        stats = {
+            'avg_temp1': sum(temps1) / len(temps1) if temps1 else 0,
+            'avg_temp2': sum(temps2) / len(temps2) if temps2 else 0,
+            'avg_humidity1': sum(humidity1) / len(humidity1) if humidity1 else 0,
+            'avg_humidity2': sum(humidity2) / len(humidity2) if humidity2 else 0,
+            'readings_count': len(readings)
+        }
+        
+        return jsonify({
+            'readings': readings,
+            'date': yesterday,
+            'stats': stats
+        }), 200
+    except Exception as e:
+        logger.error(f"Previous day sensor readings error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/export/sales.csv')
+def api_export_sales_csv():
+    """Export structured sales logs as CSV for a selected date."""
+    try:
+        logger_inst = get_logger() if get_logger else None
+        logs_dir = logger_inst.logs_dir if logger_inst and getattr(logger_inst, 'logs_dir', None) else _resolve_logs_dir()
+        date_str = _normalize_date_str(request.args.get('date'))
+        rows = _build_sales_rows_for_date(date_str, logs_dir)
+
+        out = io.StringIO()
+        writer = csv.writer(out)
+        writer.writerow([
+            "Date",
+            "Time",
+            "Transaction_Time",
+            "Item",
+            "Coins",
+            "Bills",
+            "Inserted",
+            "Change",
+            "Net_Collected",
+            "IR_Status",
+        ])
+        for row in rows:
+            writer.writerow([
+                date_str,
+                row.get('time', ''),
+                row.get('transaction_time', ''),
+                row.get('item', ''),
+                f"{float(row.get('coins', 0.0) or 0.0):.2f}",
+                f"{float(row.get('bills', 0.0) or 0.0):.2f}",
+                f"{float(row.get('total', 0.0) or 0.0):.2f}",
+                f"{float(row.get('change', 0.0) or 0.0):.2f}",
+                f"{float(row.get('net_collected', 0.0) or 0.0):.2f}",
+                row.get('ir_status', ''),
+            ])
+
+        response = make_response(out.getvalue())
+        response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+        response.headers['Content-Disposition'] = f'attachment; filename=sales_{date_str}.csv'
+        return response
+    except Exception as e:
+        logger.error(f"Export sales CSV error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/export/sensor.csv')
+def api_export_sensor_csv():
+    """Export sensor readings as CSV for a selected date."""
+    try:
+        date_str = _normalize_date_str(request.args.get('date'))
+        sensor_log_dir = _resolve_logs_dir()
+        sensor_log_file = os.path.join(sensor_log_dir, f"sensor_data_{date_str}.csv")
+
+        out = io.StringIO()
+        writer = csv.writer(out)
+        writer.writerow([
+            "Date",
+            "Timestamp",
+            "Temp1_C",
+            "Humidity1_Pct",
+            "Temp2_C",
+            "Humidity2_Pct",
+            "IR1",
+            "IR2",
+            "Relay_Status",
+            "Target_Temp_C",
+        ])
+
+        if os.path.exists(sensor_log_file):
+            with open(sensor_log_file, 'r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    writer.writerow([
+                        date_str,
+                        row.get('DateTime', row.get('Timestamp', '')),
+                        row.get('Sensor1_Temp_C', ''),
+                        row.get('Sensor1_Humidity_Pct', ''),
+                        row.get('Sensor2_Temp_C', ''),
+                        row.get('Sensor2_Humidity_Pct', ''),
+                        row.get('IR_Sensor1_Detection', ''),
+                        row.get('IR_Sensor2_Detection', ''),
+                        row.get('Relay_Status', ''),
+                        row.get('Target_Temp_C', ''),
+                    ])
+
+        response = make_response(out.getvalue())
+        response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+        response.headers['Content-Disposition'] = f'attachment; filename=sensor_data_{date_str}.csv'
+        return response
+    except Exception as e:
+        logger.error(f"Export sensor CSV error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/stock-alerts')
+def api_stock_alerts():
+    """API: Get active stock alerts (low stock and out of stock items)."""
+    try:
+        alerts = []
+        term_idx = resolve_term_index_from_request(default=0)
+        machines = Machine.query.filter_by(is_active=True).all()
+        assigned_items = aggregate_assigned_inventory(term_idx=term_idx)
+
+        for machine in machines:
+            for item in assigned_items:
+                qty = item.get('quantity', 0)
+                threshold = item.get('threshold', 0)
+                alert_type = None
+
+                if qty <= 0:
+                    alert_type = 'out_of_stock'
+                elif threshold and qty <= threshold:
+                    alert_type = 'low_stock'
+                
+                if not alert_type:
+                    continue
+
+                alerts.append({
+                    'machine_id': machine.machine_id,
+                    'machine_name': machine.name,
+                    'item_id': None,
+                    'item_name': item.get('name'),
+                    'category': item.get('category', ''),
+                    'current_quantity': qty,
+                    'threshold': threshold,
+                    'price': item.get('price', 0.0),
+                    'slots': ','.join(str(s) for s in item.get('slots', [])),
+                    'alert_type': alert_type,
+                    'timestamp': datetime.utcnow().isoformat()
+                })
+        
+        # Sort by alert type (out_of_stock first) then by machine and item name
+        alerts.sort(key=lambda x: (0 if x['alert_type'] == 'out_of_stock' else 1, x['machine_id'], x['item_name']))
+        
+        return jsonify({
+            'alerts': alerts,
+            'total_critical': sum(1 for a in alerts if a['alert_type'] == 'out_of_stock'),
+            'total_warning': sum(1 for a in alerts if a['alert_type'] == 'low_stock'),
+            'active_term': term_idx,
+            'active_term_label': f"Term {term_idx + 1}",
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+    except Exception as e:
+        logger.error(f"Stock alerts error: {e}")
+        return jsonify({'error': str(e), 'alerts': []}), 200
+
+
+@app.route('/api/term-stock')
+def api_term_stock():
+    """API: Get stock overview for all items in the active kiosk term."""
+    try:
+        term_idx = resolve_term_index_from_request(default=0)
+        items = aggregate_assigned_inventory(term_idx=term_idx)
+        items_sorted = sorted(items, key=lambda x: str(x.get('name', '')).lower())
+
+        normalized_items = []
+        for item in items_sorted:
+            qty = _safe_int(item.get('quantity', 0), 0)
+            threshold = _safe_int(item.get('threshold', 0), 0)
+            normalized_items.append({
+                'item_name': item.get('name') or 'Unknown Item',
+                'quantity': qty,
+                'threshold': threshold,
+                'category': item.get('category', ''),
+                'slots': item.get('slots', []),
+                'price': _safe_float(item.get('price', 0.0), 0.0),
+                'status': 'out_of_stock' if qty <= 0 else ('low_stock' if threshold and qty <= threshold else 'ok')
+            })
+
+        return jsonify({
+            'active_term': term_idx,
+            'active_term_label': f"Term {term_idx + 1}",
+            'items': normalized_items,
+            'item_count': len(normalized_items),
+            'total_units': sum(int(i.get('quantity', 0)) for i in normalized_items),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+    except Exception as e:
+        logger.error(f"Term stock overview error: {e}")
+        return jsonify({'error': str(e), 'items': []}), 200
+
+
+@app.route('/api/status/realtime')
+def api_realtime_status():
+    """API: Get real-time machine status (stock, sales, connectivity)."""
+    try:
+        term_idx = resolve_term_index_from_request(default=0)
+        machines = Machine.query.filter_by(is_active=True).all()
+        status_data = []
+        coin_stock = get_coin_change_stock_snapshot()
+        assigned_inventory = aggregate_assigned_inventory(term_idx=term_idx)
+
+        low_stock_entries = []
+        for item in assigned_inventory:
+            qty = item.get('quantity', 0)
+            threshold = item.get('threshold', 0)
+            if qty <= 0:
+                low_stock_entries.append(item.get('name'))
+            elif threshold and qty <= threshold:
+                low_stock_entries.append(item.get('name'))
+        
+        logger_inst = get_logger() if get_logger else None
+        today_summary = logger_inst.get_today_summary() if logger_inst else {}
+        today_items = logger_inst.get_items_sold_summary() if logger_inst else {}
+        
+        for m in machines:
+            status_data.append({
+                'machine_id': m.machine_id,
+                'name': m.name,
+                'is_active': m.is_active,
+                'total_items': len(assigned_inventory),
+                'low_stock_count': len(low_stock_entries),
+                'low_stock_items': low_stock_entries,
+                'today_transactions': today_summary.get('total_transactions', 0),
+                'today_sales': today_summary.get('total_sales', 0.0),
+                'items_sold_today': today_items,
+                'coin_change_stock': coin_stock,
+                'active_term': term_idx,
+                'active_term_label': f"Term {term_idx + 1}",
+            })
+        
+        return jsonify(status_data), 200
+    except Exception as e:
+        logger.error(f"Realtime status error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/machines')
+def api_machines():
+    """API: List all machines with status."""
+    machines = Machine.query.filter_by(is_active=True).all()
+    data = []
+    for m in machines:
+        items = Item.query.filter_by(machine_id=m.id).all()
+        low_stock = sum(1 for i in items if i.quantity <= i.low_stock_threshold)
+        data.append({
+            'id': m.machine_id,
+            'name': m.name,
+            'last_seen': m.last_seen.isoformat(),
+            'items_count': len(items),
+            'low_stock_count': low_stock,
+            'esp32_host': m.esp32_host
+        })
+    return jsonify(data), 200
+
+
+@app.route('/api/machines/<machine_id>/items')
+def api_machine_items(machine_id):
+    """API: Get items for a specific machine."""
+    machine = Machine.query.filter_by(machine_id=machine_id).first()
+    if not machine:
+        return jsonify({'error': 'Not found'}), 404
+    
+    items = Item.query.filter_by(machine_id=machine.id).all()
+    data = [{
+        'name': i.name,
+        'price': i.price,
+        'quantity': i.quantity,
+        'category': i.category,
+        'image_url': i.image_url,
+        'low_stock_threshold': i.low_stock_threshold
+    } for i in items]
+    
+    return jsonify(data), 200
+
+
+@app.route('/api/machines/<machine_id>/items/<item_name>/restock', methods=['POST'])
+def api_restock_item(machine_id, item_name):
+    """API: Update item quantity (for restocking)."""
+    try:
+        data = request.get_json()
+        quantity = data.get('quantity', 0)
+        
+        machine = Machine.query.filter_by(machine_id=machine_id).first()
+        item = Item.query.filter_by(machine_id=machine.id, name=item_name).first()
+        
+        if not item:
+            return jsonify({'error': 'Item not found'}), 404
+        
+        item.quantity = quantity
+        machine.last_seen = datetime.utcnow()
+        db.session.commit()
+        
+        return jsonify({'success': True, 'new_quantity': item.quantity}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sales/record', methods=['POST'])
+def api_record_sale():
+    """API: Record a sale, decrement stock, and check for low stock."""
+    try:
+        data = request.get_json()
+        machine_id = data.get('machine_id', 'RAON-001')
+        item_name = data.get('item_name')
+        quantity = data.get('quantity', 1)
+        amount_received = data.get('amount_received', 0.0)
+        coin_amount = data.get('coin_amount', 0.0)
+        bill_amount = data.get('bill_amount', 0.0)
+        change_dispensed = data.get('change_dispensed', 0.0)
+        
+        machine = Machine.query.filter_by(machine_id=machine_id).first()
+        if not machine:
+            return jsonify({'error': 'Machine not found'}), 404
+        
+        item = Item.query.filter_by(machine_id=machine.id, name=item_name).first()
+        if not item:
+            return jsonify({'error': 'Item not found'}), 404
+        
+        # Create sale record
+        sale = Sale(
+            machine_id=machine.id,
+            item_id=item.id,
+            item_name=item_name,
+            quantity=quantity,
+            amount_received=amount_received,
+            coin_amount=coin_amount,
+            bill_amount=bill_amount,
+            change_dispensed=change_dispensed,
+            timestamp=datetime.utcnow()
+        )
+        db.session.add(sale)
+        
+        # Decrement stock
+        item.quantity = max(0, item.quantity - quantity)
+        machine.last_seen = datetime.utcnow()
+        db.session.commit()
+        
+        # Check for low stock and create alert if needed
+        alert_created = False
+        alert_type = 'low_stock'
+        
+        if item.quantity == 0:
+            alert_type = 'out_of_stock'
+        
+        if item.quantity <= item.low_stock_threshold:
+            # Check if alert already exists for this item today
+            existing_alert = LowStockAlert.query.filter_by(
+                machine_id=machine.id,
+                item_id=item.id,
+                alert_type=alert_type,
+                acknowledged=False
+            ).filter(
+                LowStockAlert.timestamp > datetime.utcnow() - timedelta(hours=24)
+            ).first()
+            
+            if not existing_alert:
+                alert = LowStockAlert(
+                    machine_id=machine.id,
+                    item_id=item.id,
+                    item_name=item_name,
+                    current_quantity=item.quantity,
+                    threshold=item.low_stock_threshold,
+                    alert_type=alert_type,
+                    timestamp=datetime.utcnow(),
+                    acknowledged=False
+                )
+                db.session.add(alert)
+                db.session.commit()
+                alert_created = True
+        
+        return jsonify({
+            'success': True,
+            'sale_id': sale.id,
+            'item_name': item_name,
+            'new_quantity': item.quantity,
+            'low_stock_alert': {
+                'created': alert_created,
+                'type': alert_type if alert_created else None,
+                'message': f'⚠️ {item_name} is now LOW STOCK! Only {item.quantity} left!' if item.quantity > 0 and alert_created else f'❌ {item_name} is OUT OF STOCK!' if alert_created else None
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"Record sale error: {e}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/low-stock-alerts')
+def api_low_stock_alerts():
+    """API: Get all unacknowledged low stock alerts."""
+    try:
+        machine_id = request.args.get('machine_id', 'RAON-001')
+        
+        machine = Machine.query.filter_by(machine_id=machine_id).first()
+        if not machine:
+            return jsonify({'alerts': []}), 200
+
+        # Ensure alerts exist for any currently low/out-of-stock items
+        try:
+            items = Item.query.filter_by(machine_id=machine.id).all()
+            for item in items:
+                if item.quantity <= 0:
+                    alert_type = 'out_of_stock'
+                elif item.quantity <= item.low_stock_threshold:
+                    alert_type = 'low_stock'
+                else:
+                    continue
+
+                existing_alert = LowStockAlert.query.filter_by(
+                    machine_id=machine.id,
+                    item_id=item.id,
+                    alert_type=alert_type,
+                    acknowledged=False
+                ).filter(
+                    LowStockAlert.timestamp > datetime.utcnow() - timedelta(days=7)
+                ).first()
+
+                if not existing_alert:
+                    alert = LowStockAlert(
+                        machine_id=machine.id,
+                        item_id=item.id,
+                        item_name=item.name,
+                        current_quantity=item.quantity,
+                        threshold=item.low_stock_threshold,
+                        alert_type=alert_type,
+                        timestamp=datetime.utcnow(),
+                        acknowledged=False
+                    )
+                    db.session.add(alert)
+            db.session.commit()
+        except Exception as e:
+            logger.error(f"Low stock alert sync error: {e}")
+            db.session.rollback()
+        
+        # Get unacknowledged alerts from last 7 days
+        alerts = LowStockAlert.query.filter_by(
+            machine_id=machine.id,
+            acknowledged=False
+        ).filter(
+            LowStockAlert.timestamp > datetime.utcnow() - timedelta(days=7)
+        ).order_by(LowStockAlert.timestamp.desc()).all()
+        
+        alert_list = []
+        for alert in alerts:
+            alert_list.append({
+                'id': alert.id,
+                'item_name': alert.item_name,
+                'current_quantity': alert.current_quantity,
+                'threshold': alert.threshold,
+                'alert_type': alert.alert_type,
+                'timestamp': alert.timestamp.isoformat(),
+                'severity': 'critical' if alert.alert_type == 'out_of_stock' else 'warning'
+            })
+        
+        return jsonify({
+            'alerts': alert_list,
+            'total_active_alerts': len(alert_list)
+        }), 200
+    except Exception as e:
+        logger.error(f"Low stock alerts error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/low-stock-alerts/<int:alert_id>/acknowledge', methods=['POST'])
+def api_acknowledge_alert(alert_id):
+    """API: Mark a low stock alert as acknowledged."""
+    try:
+        alert = LowStockAlert.query.filter_by(id=alert_id).first()
+        if not alert:
+            return jsonify({'error': 'Alert not found'}), 404
+        
+        alert.acknowledged = True
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Alert for {alert.item_name} acknowledged'
+        }), 200
+    except Exception as e:
+        logger.error(f"Acknowledge alert error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# DASHBOARD API ENDPOINTS
+# ============================================================================
+
+@app.route('/api/status/realtime')
+def get_realtime_status():
+    """Get real-time status for all machines"""
+    try:
+        term_idx = resolve_term_index_from_request(default=0)
+        machines = Machine.query.all()
+        result = []
+        assigned_inventory = aggregate_assigned_inventory(term_idx=term_idx)
+        total_items_available = sum(item.get('quantity', 0) for item in assigned_inventory)
+        low_stock_entries = []
+        for item in assigned_inventory:
+            qty = item.get('quantity', 0)
+            threshold = item.get('threshold', 0)
+            if qty <= 0:
+                low_stock_entries.append(item.get('name'))
+            elif threshold and qty <= threshold:
+                low_stock_entries.append(item.get('name'))
+        
+        for machine in machines:
+            items = Item.query.filter_by(machine_id=machine.id).all()
+            
+            # Calculate low stock items
+            # Calculate today's sales using local date (matches log file naming).
+            today = datetime.now().date()
+            today_sales_sum = db.session.query(func.sum(Sale.coin_amount + Sale.bill_amount)).filter(
+                Sale.item_id.in_([i.id for i in items]),
+                func.date(Sale.timestamp) == today
+            ).scalar() or 0.0
+            
+            # Count items sold today
+            items_sold_today = {}
+            sales = Sale.query.filter(
+                Sale.machine_id == machine.id,
+                func.date(Sale.timestamp) == today
+            ).all()
+            
+            for sale in sales:
+                item_name = _resolve_sale_item_name(sale)
+                qty = sale.quantity if getattr(sale, 'quantity', None) and sale.quantity > 0 else 1
+                items_sold_today[item_name] = items_sold_today.get(item_name, 0) + qty
+            
+            result.append({
+                "id": machine.id,
+                "name": machine.name,
+                "is_active": True,
+                "total_items": total_items_available,
+                "today_sales": today_sales_sum,
+                "low_stock_count": len(low_stock_entries),
+                "low_stock_items": low_stock_entries,
+                "items_sold_today": items_sold_today,
+                "active_term": term_idx,
+                "active_term_label": f"Term {term_idx + 1}",
+            })
+        
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error(f"Error getting realtime status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/db/sales/today')
+def get_today_sales():
+    """Get today's sales summary"""
+    try:
+        today = datetime.now().date()
+        sales = Sale.query.filter(func.date(Sale.timestamp) == today).all()
+        
+        total_inserted = sum(float((s.coin_amount or 0.0) + (s.bill_amount or 0.0)) for s in sales)
+        total_change = sum(float(s.change_dispensed or 0.0) for s in sales)
+        total_net_collected = total_inserted - total_change
+        total_transactions = len(sales)
+        items_sold = {}
+        
+        for sale in sales:
+            item_name = _resolve_sale_item_name(sale)
+            qty = sale.quantity if getattr(sale, 'quantity', None) and sale.quantity > 0 else 1
+            items_sold[item_name] = items_sold.get(item_name, 0) + qty
+        
+        return jsonify({
+            "total_sales": total_inserted,
+            "total_inserted": total_inserted,
+            "total_change": total_change,
+            "total_net_collected": total_net_collected,
+            "total_transactions": total_transactions,
+            "items_sold": items_sold
+        }), 200
+    except Exception as e:
+        logger.error(f"Error getting today's sales: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/db/sales/logs')
+def get_sales_logs():
+    """Get today's sales logs"""
+    try:
+        today = datetime.now().date()
+        sales = Sale.query.filter(func.date(Sale.timestamp) == today).order_by(Sale.timestamp.desc()).limit(100).all()
+        
+        logs = []
+        for sale in sales:
+            # Use item_name directly, or fallback to database lookup if item_id exists
+            item_name = sale.item_name
+            if not item_name and sale.item_id:
+                item = Item.query.get(sale.item_id)
+                if item:
+                    item_name = item.name
+            
+            if item_name:
+                inserted = float((sale.coin_amount or 0.0) + (sale.bill_amount or 0.0))
+                change = float(sale.change_dispensed or 0.0)
+                net_collected = inserted - change
+                qty = sale.quantity if sale.quantity > 1 else ''
+                qty_text = f" x{qty}" if qty else ''
+                logs.append(
+                    f"[{sale.timestamp.strftime('%H:%M:%S')}] {item_name}{qty_text} | "
+                    f"Inserted: {inserted:.2f} | Change: {change:.2f} | Net: {net_collected:.2f}"
+                )
+        
+        return jsonify({"logs": logs}), 200
+    except Exception as e:
+        logger.error(f"Error getting sales logs: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================================================
+# ADMIN INITIALIZATION
+# ============================================================================
+
+def load_config():
+    """Load config from config.json."""
+    try:
+        config_path = get_absolute_path('config.json') if get_absolute_path else 'config.json'
+        with open(config_path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.warning(f"Could not load config: {e}")
+        return {'esp32_host': '192.168.4.1'}
+
+
+def _to_bool(value, default=False):
+    """Convert common bool-like values to bool."""
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {'1', 'true', 'yes', 'y', 'on'}:
+        return True
+    if text in {'0', 'false', 'no', 'n', 'off'}:
+        return False
+    return bool(default)
+
+
+def resolve_web_bind_settings(config):
+    """Resolve web server host/port with dynamic RAON-LAN defaults.
+
+    Default behavior:
+      - Do NOT bind to a fixed IP.
+      - Bind to 0.0.0.0 and use current runtime LAN IP for access.
+      - Port 5000.
+    """
+    cfg = config if isinstance(config, dict) else {}
+    web_cfg = cfg.get('web_server', {}) if isinstance(cfg.get('web_server', {}), dict) else {}
+
+    # Configure expected RAON access network (for display/logging only).
+    raon_ssid = str(
+        os.environ.get('WEB_RAON_SSID', web_cfg.get('raon_ssid', 'RAON'))
+    ).strip() or 'RAON'
+    raon_ip_prefix = str(
+        os.environ.get('WEB_RAON_IP_PREFIX', web_cfg.get('raon_ip_prefix', '192.168.'))
+    ).strip() or '192.168.'
+
+    dynamic_raon_ip = _to_bool(
+        os.environ.get('WEB_DYNAMIC_IP', web_cfg.get('dynamic_raon_ip', True)),
+        default=True
+    )
+    wifi_interfaces_raw = os.environ.get(
+        'WEB_WIFI_INTERFACES',
+        web_cfg.get('wifi_interfaces', 'wlan0,ap0,uap0')
+    )
+    wifi_interfaces = []
+    for token in str(wifi_interfaces_raw or '').split(','):
+        iface = token.strip()
+        if iface and iface not in wifi_interfaces:
+            wifi_interfaces.append(iface)
+
+    if dynamic_raon_ip:
+        host = '0.0.0.0'
+    else:
+        host = str(
+            os.environ.get('WEB_HOST', web_cfg.get('host', '0.0.0.0'))
+        ).strip() or '0.0.0.0'
+
+    try:
+        port = int(os.environ.get('WEB_PORT', web_cfg.get('port', 5000)))
+    except Exception:
+        port = 5000
+
+    return {
+        'host': host,
+        'port': max(1, min(65535, port)),
+        'raon_ssid': raon_ssid,
+        'raon_ip_prefix': raon_ip_prefix,
+        'dynamic_raon_ip': dynamic_raon_ip,
+        'wifi_interfaces': wifi_interfaces,
+    }
+
+
+def can_bind_host(host):
+    """Return True when this machine can bind a socket to the requested host."""
+    text = str(host or "").strip()
+    if not text:
+        return False
+    if text in {"0.0.0.0", "::"}:
+        return True
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((text, 0))
+        return True
+    except OSError:
+        return False
+
+
+def _get_ipv4_from_interface(interface_name):
+    """Return first IPv4 for a Linux network interface (best effort)."""
+    text = str(interface_name or '').strip()
+    if not text:
+        return None
+    try:
+        completed = subprocess.run(
+            ['ip', '-4', '-o', 'addr', 'show', 'dev', text],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=1.5
+        )
+    except Exception:
+        return None
+
+    if completed.returncode != 0:
+        return None
+
+    for line in completed.stdout.splitlines():
+        match = re.search(r'\sinet\s+(\d+\.\d+\.\d+\.\d+)/', line)
+        if match:
+            return match.group(1)
+    return None
+
+
+def detect_runtime_access_ip(preferred_prefix='192.168.', preferred_interfaces=None):
+    """Detect current LAN IPv4 for client access (best effort)."""
+    candidates = []
+    interfaces = preferred_interfaces if isinstance(preferred_interfaces, list) else []
+
+    # Prefer Raspberry Pi AP/WiFi interfaces first when available.
+    for iface in interfaces:
+        ip = _get_ipv4_from_interface(iface)
+        if ip and ip not in candidates and not ip.startswith('127.'):
+            candidates.append(ip)
+
+    # Common trick: resolve outbound interface IP without sending packets.
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(('10.255.255.255', 1))
+            ip = sock.getsockname()[0]
+            if ip and ip not in candidates:
+                candidates.append(ip)
+    except Exception:
+        pass
+
+    try:
+        host_ips = socket.gethostbyname_ex(socket.gethostname())[2]
+        for ip in host_ips:
+            if ip and ip not in candidates:
+                candidates.append(ip)
+    except Exception:
+        pass
+
+    valid = [ip for ip in candidates if ip and not ip.startswith('127.')]
+    if not valid:
+        return None
+
+    # Prefer likely RAON/LAN subnet when available.
+    for ip in valid:
+        if str(ip).startswith(str(preferred_prefix or '')):
+            return ip
+    return valid[0]
+
+
+def configure_werkzeug_startup_log_filter():
+    """Hide localhost-only startup URLs that confuse remote clients."""
+    blocked_markers = (
+        '127.0.0.1',
+        'localhost',
+        'Running on all addresses',
+        'Press CTRL+C to quit',
+    )
+
+    class _StartupFilter(logging.Filter):
+        def filter(self, record):
+            try:
+                message = str(record.getMessage())
+            except Exception:
+                return True
+            return not any(marker in message for marker in blocked_markers)
+
+    wz_logger = logging.getLogger('werkzeug')
+    wz_logger.addFilter(_StartupFilter())
+
+
+def load_assigned_items():
+    """Load items from assigned_items.json."""
+    try:
+        path = get_absolute_path('assigned_items.json') if get_absolute_path else 'assigned_items.json'
+        with open(path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.warning(f"Could not load assigned items: {e}")
+        return {}
+
+
+def _safe_int(value, default=0):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def get_active_term_index(default=0):
+    """Return persisted active kiosk term index from config (0-based)."""
+    cfg = load_config()
+    if not isinstance(cfg, dict):
+        return max(0, int(default))
+
+    raw = cfg.get('assigned_term', default)
+    try:
+        term_idx = int(raw)
+    except Exception:
+        term_idx = int(default)
+    return max(0, term_idx)
+
+
+def resolve_term_index_from_request(default=0):
+    """Resolve term index from query string or persisted config (0-based)."""
+    raw_term = request.args.get('term')
+    if raw_term is None or str(raw_term).strip() == '':
+        return get_active_term_index(default=default)
+
+    try:
+        term_idx = int(float(raw_term))
+    except Exception:
+        term_idx = int(default)
+    return max(0, term_idx)
+
+
+def _coin_stock_status(count, threshold):
+    """Return stock status token for dashboard display."""
+    if int(count) <= 0:
+        return 'out'
+    if int(count) <= int(threshold):
+        return 'low'
+    return 'ok'
+
+
+def get_coin_change_stock_snapshot():
+    """Load coin-change stock from config for dashboard/API display."""
+    cfg = load_config()
+    coin_cfg = cfg.get('coin_change_stock', {}) if isinstance(cfg, dict) else {}
+
+    one_raw = coin_cfg.get('one_peso', {}) if isinstance(coin_cfg.get('one_peso', {}), dict) else {}
+    five_raw = coin_cfg.get('five_peso', {}) if isinstance(coin_cfg.get('five_peso', {}), dict) else {}
+
+    one_count = max(0, _safe_int(one_raw.get('count', 0), 0))
+    one_threshold = max(0, _safe_int(one_raw.get('low_threshold', 20), 20))
+    five_count = max(0, _safe_int(five_raw.get('count', 0), 0))
+    five_threshold = max(0, _safe_int(five_raw.get('low_threshold', 20), 20))
+
+    one_value = one_count
+    five_value = five_count * 5
+    total_value = one_value + five_value
+
+    return {
+        'one_peso': {
+            'count': one_count,
+            'threshold': one_threshold,
+            'value': one_value,
+            'status': _coin_stock_status(one_count, one_threshold),
+        },
+        'five_peso': {
+            'count': five_count,
+            'threshold': five_threshold,
+            'value': five_value,
+            'status': _coin_stock_status(five_count, five_threshold),
+        },
+        'total_value': total_value,
+    }
+
+
+def _extract_slots_from_assigned(assigned_data):
+    if isinstance(assigned_data, list):
+        return assigned_data
+    if not isinstance(assigned_data, dict):
+        return []
+
+    for key in ('slots', 'data', 'items', 'assigned'):
+        maybe = assigned_data.get(key)
+        if isinstance(maybe, list):
+            return maybe
+
+    if 'terms' in assigned_data:
+        return [assigned_data]
+
+    return []
+
+
+def _select_term_entry(slot_data, term_idx=0):
+    if not isinstance(slot_data, dict):
+        return None
+
+    terms = slot_data.get('terms')
+    if isinstance(terms, list):
+        if 0 <= term_idx < len(terms):
+            entry = terms[term_idx]
+            if isinstance(entry, dict) and entry.get('name'):
+                return entry
+        # fallback to first non-empty term
+        for entry in terms:
+            if isinstance(entry, dict) and entry.get('name'):
+                return entry
+
+    if isinstance(terms, dict):
+        for key in (str(term_idx + 1), str(term_idx), term_idx):
+            entry = terms.get(key)
+            if isinstance(entry, dict) and entry.get('name'):
+                return entry
+
+    if slot_data.get('name'):
+        return slot_data
+
+    return None
+
+
+def aggregate_assigned_inventory(term_idx=0, machine_id=None):
+    assigned = load_assigned_items()
+    if isinstance(assigned, dict):
+        assigned_machine = assigned.get('machine_id')
+        if machine_id and assigned_machine and assigned_machine != machine_id:
+            return []
+
+    slots = _extract_slots_from_assigned(assigned)
+    summary = {}
+
+    for slot_idx, slot in enumerate(slots):
+        term_entry = _select_term_entry(slot, term_idx)
+        if not term_entry:
+            continue
+
+        name = term_entry.get('name') or slot.get('name')
+        if not name:
+            continue
+
+        quantity = _safe_int(term_entry.get('quantity', slot.get('quantity')))
+        threshold = _safe_int(term_entry.get('low_stock_threshold', slot.get('low_stock_threshold')), 0)
+        price = _safe_float(term_entry.get('price', slot.get('price')))
+        category = term_entry.get('category') or slot.get('category') or ''
+        image_url = term_entry.get('image') or slot.get('image') or ''
+        key = name.strip()
+
+        entry = summary.setdefault(key, {
+            'name': name,
+            'quantity': 0,
+            'threshold': threshold,
+            'price': price,
+            'category': category,
+            'image_url': image_url,
+            'slots': []
+        })
+
+        entry['quantity'] += quantity
+        if threshold > entry.get('threshold', 0):
+            entry['threshold'] = threshold
+        if price:
+            entry['price'] = price
+        if category:
+            entry['category'] = category
+        if image_url:
+            entry['image_url'] = image_url
+
+        slot_number = slot_idx + 1
+        if slot_number not in entry['slots']:
+            entry['slots'].append(slot_number)
+
+    return list(summary.values())
+
+
+@app.route('/admin/init', methods=['POST'])
+def admin_init():
+    """Initialize machines and items from config (admin only)."""
+    try:
+        # Load config and assigned items
+        config = load_config()
+        assigned = load_assigned_items()
+        
+        machine_id = 'RAON-001'
+        esp32_host = config.get('esp32_host', '192.168.4.1')
+        
+        # Create or update machine
+        machine = Machine.query.filter_by(machine_id=machine_id).first()
+        if not machine:
+            machine = Machine(machine_id=machine_id, name='RAON Vending', esp32_host=esp32_host)
+            db.session.add(machine)
+        else:
+            machine.esp32_host = esp32_host
+            machine.last_seen = datetime.utcnow()
+        
+        db.session.commit()
+        
+        # Load items
+        for slot_idx, slot_data in enumerate(assigned.get('slots', []), 1):
+            if isinstance(slot_data, dict) and 'terms' in slot_data:
+                term_data = slot_data.get('terms', {}).get('1', {})  # Term 1
+                if term_data:
+                    item_name = slot_data.get('name', f'Item {slot_idx}')
+                    price = float(term_data.get('price', 1.0))
+                    qty = int(term_data.get('quantity', 0))
+                    
+                    item = Item.query.filter_by(machine_id=machine.id, name=item_name).first()
+                    if not item:
+                        item = Item(
+                            machine_id=machine.id,
+                            name=item_name,
+                            price=price,
+                            quantity=qty,
+                            slots=str(slot_idx),
+                            category=term_data.get('category', ''),
+                            image_url=term_data.get('image', '')
+                        )
+                        db.session.add(item)
+                    else:
+                        item.price = price
+                        item.quantity = qty
+        
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Initialization complete'}), 200
+    except Exception as e:
+        logger.error(f"Init error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# STARTUP
+# ============================================================================
+
+def create_app_with_db():
+    """Initialize app and database."""
+    with app.app_context():
+        db.create_all()
+        config = load_config()
+        
+        # Ensure default machine exists
+        machine_id = config.get('machine_id', 'RAON-001')
+        machine_name = config.get('machine_name', 'RAON Vending Machine')
+        esp32_host = config.get('esp32_host', '192.168.4.1')
+        
+        machine = Machine.query.filter_by(machine_id=machine_id).first()
+        if not machine:
+            machine = Machine(
+                machine_id=machine_id,
+                name=machine_name,
+                esp32_host=esp32_host,
+                is_active=True
+            )
+            db.session.add(machine)
+            db.session.commit()
+            logger.info(f"Created default machine: {machine_id}")
+        
+        if should_init_payment_handler(config):
+            init_payment_handler(config)
+        else:
+            logger.info("Skipping PaymentHandler in web_app (hard-disabled; use main.py for hardware).")
+        logger.info("Web app initialized")
+    return app
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    configure_werkzeug_startup_log_filter()
+    create_app_with_db()
+
+    config = load_config()
+    bind = resolve_web_bind_settings(config)
+    host = bind['host']
+    port = bind['port']
+    runtime_ip = detect_runtime_access_ip(
+        bind.get('raon_ip_prefix', '192.168.'),
+        bind.get('wifi_interfaces', []),
+    )
+
+    if runtime_ip:
+        logger.info(
+            f"Web UI WiFi SSID: {bind['raon_ssid']} | "
+            f"Open from another device: http://{runtime_ip}:{port}"
+        )
+        logger.info(f"Dashboard URL (use this on connected devices): http://{runtime_ip}:{port}")
+    else:
+        logger.info(
+            f"Web UI WiFi SSID: {bind['raon_ssid']} | "
+            f"Open from another device using Raspberry Pi LAN IP on port {port}"
+        )
+
+    if host != '0.0.0.0' and not can_bind_host(host):
+        logger.warning(
+            f"Host {host} is not available on this device right now. "
+            f"Using 0.0.0.0:{port} instead."
+        )
+        host = '0.0.0.0'
+
+    try:
+        app.run(host=host, port=port, debug=False)
+    except OSError as e:
+        # If direct RAON-IP bind fails (e.g., AP not yet up), fallback to all interfaces.
+        if host != '0.0.0.0':
+            logger.warning(
+                f"Failed to bind {host}:{port} ({e}). Falling back to 0.0.0.0:{port}."
+            )
+            app.run(host='0.0.0.0', port=port, debug=False)
+        else:
+            raise

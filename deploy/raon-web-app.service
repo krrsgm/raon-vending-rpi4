@@ -1,0 +1,21 @@
+[Unit]
+Description=RAON Web App (Flask) - Automatic Startup
+Wants=network-online.target
+After=network-online.target hostapd.service dnsmasq.service
+
+[Service]
+Type=simple
+User=raon
+Group=raon
+WorkingDirectory=/home/raon/raon-vending-rpi4
+Environment="PYTHONUNBUFFERED=1"
+Environment="WEB_DYNAMIC_IP=true"
+Environment="WEB_WIFI_INTERFACES=wlan0,ap0,uap0"
+ExecStart=/bin/bash /home/raon/raon-vending-rpi4/deploy/start-web-app.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

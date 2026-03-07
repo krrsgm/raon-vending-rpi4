@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# One-shot installer for boot autostart service:
+# One-shot installer for boot autostart services:
 # - raon-vending.service (main.py kiosk UI)
+# - raon-web-app.service (web_app.py background server)
 
 if [ "${EUID:-$(id -u)}" -ne 0 ]; then
   echo "Run with sudo:"
@@ -21,23 +22,25 @@ if [ -z "$TARGET_HOME" ] || [ ! -d "$TARGET_HOME" ]; then
   exit 1
 fi
 
-if [ ! -f "$REPO_DIR/main.py" ]; then
+if [ ! -f "$REPO_DIR/main.py" ] || [ ! -f "$REPO_DIR/web_app.py" ]; then
   echo "Repo path looks invalid: $REPO_DIR"
   exit 1
 fi
 
 KIOSK_START="$REPO_DIR/deploy/start-kiosk-wayland.sh"
+WEB_START="$REPO_DIR/deploy/start-web-app.sh"
 
-if [ ! -f "$KIOSK_START" ]; then
+if [ ! -f "$KIOSK_START" ] || [ ! -f "$WEB_START" ]; then
   echo "Missing startup scripts in deploy/:"
   echo "  $KIOSK_START"
+  echo "  $WEB_START"
   exit 1
 fi
 
 # Normalize CRLF to LF to avoid /bin/bash ^M failures.
-sed -i 's/\r$//' "$KIOSK_START"
-chmod +x "$KIOSK_START"
-chown "$TARGET_USER":"$TARGET_USER" "$KIOSK_START" || true
+sed -i 's/\r$//' "$KIOSK_START" "$WEB_START"
+chmod +x "$KIOSK_START" "$WEB_START"
+chown "$TARGET_USER":"$TARGET_USER" "$KIOSK_START" "$WEB_START" || true
 
 cat > /etc/systemd/system/raon-vending.service <<EOF
 [Unit]
@@ -62,20 +65,39 @@ StandardError=journal
 WantedBy=graphical.target
 EOF
 
-systemctl daemon-reload
-systemctl enable raon-vending
-systemctl restart raon-vending
+cat > /etc/systemd/system/raon-web-app.service <<EOF
+[Unit]
+Description=RAON Web App (Flask) - Automatic Startup
+Wants=network-online.target
+After=network-online.target hostapd.service dnsmasq.service
 
-# Cleanup old web app service if it exists from previous setup.
-if systemctl list-unit-files | grep -q '^raon-web-app\.service'; then
-  systemctl disable --now raon-web-app || true
-  rm -f /etc/systemd/system/raon-web-app.service
-  systemctl daemon-reload
-fi
+[Service]
+Type=simple
+User=$TARGET_USER
+Group=$TARGET_USER
+WorkingDirectory=$REPO_DIR
+Environment="PYTHONUNBUFFERED=1"
+Environment="WEB_DYNAMIC_IP=true"
+Environment="WEB_WIFI_INTERFACES=wlan0,ap0,uap0"
+ExecStart=/bin/bash $WEB_START
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable raon-vending raon-web-app
+systemctl restart raon-vending raon-web-app
 
 echo
-echo "Installed and restarted service:"
+echo "Installed and restarted services:"
 echo "  - raon-vending (main.py kiosk)"
+echo "  - raon-web-app (web_app.py)"
 echo
 echo "Check status:"
 echo "  sudo systemctl status raon-vending --no-pager -l"
+echo "  sudo systemctl status raon-web-app --no-pager -l"

@@ -170,26 +170,28 @@
         .payment-content {
             background: white;
             border-radius: 12px;
-            padding: 40px;
+            padding: 56px;
             text-align: center;
-            max-width: 500px;
+            width: min(92vw, 760px);
+            max-width: 760px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.3);
         }
         
-        .payment-content h2 { font-size: 24px; margin-bottom: 20px; color: #333; }
+        .payment-content h2 { font-size: 42px; margin-bottom: 24px; color: #333; }
+        .payment-label { font-size: 26px; margin-bottom: 12px; color: #444; font-weight: 600; }
         
         .amount-display {
-            font-size: 48px;
+            font-size: 72px;
             font-weight: bold;
             color: #667eea;
-            margin: 20px 0;
+            margin: 22px 0;
         }
         
         .progress-bar {
             background: #eee;
-            height: 20px;
-            border-radius: 10px;
-            margin: 20px 0;
+            height: 30px;
+            border-radius: 15px;
+            margin: 24px 0;
             overflow: hidden;
         }
         
@@ -201,21 +203,40 @@
         }
         
         .waiting-text {
-            font-size: 14px;
+            font-size: 30px;
+            font-weight: 700;
             color: #666;
-            margin-top: 20px;
+            margin-top: 24px;
         }
         
         .complete-message {
-            font-size: 18px;
+            font-size: 32px;
             color: #27ae60;
             margin-top: 20px;
+            font-weight: 700;
         }
         
         .error-message {
-            font-size: 16px;
+            font-size: 28px;
             color: #e74c3c;
             margin-top: 10px;
+        }
+
+        .payment-modal .checkout-btn {
+            font-size: 26px;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .payment-content { padding: 28px; width: 94vw; }
+            .payment-content h2 { font-size: 32px; }
+            .payment-label { font-size: 20px; }
+            .amount-display { font-size: 52px; }
+            .waiting-text { font-size: 24px; }
+            .complete-message { font-size: 26px; }
+            .error-message { font-size: 22px; }
+            .payment-modal .checkout-btn { font-size: 20px; padding: 16px; }
         }
     </style>
 </head>
@@ -284,9 +305,9 @@
             <h2 id="paymentTitle">Processing Payment</h2>
             
             <div id="paymentRequired" style="display: block;">
-                <div style="font-size: 14px; margin-bottom: 10px;">Amount Required:</div>
+                <div class="payment-label">Amount Required:</div>
                 <div class="amount-display" id="amountRequired">{{ currency | default('₱', true) }}0.00</div>
-                <div style="font-size: 14px; margin-bottom: 10px;">Received:</div>
+                <div class="payment-label">Received:</div>
                 <div class="amount-display" id="amountReceived">{{ currency | default('₱', true) }}0.00</div>
                 <div class="progress-bar">
                     <div class="progress-fill" id="progressFill"></div>
@@ -295,9 +316,9 @@
             </div>
             
             <div id="paymentComplete" style="display: none;">
-                <div style="font-size: 24px; margin: 20px 0;">OK</div>
+                <div style="font-size: 40px; margin: 20px 0;">OK</div>
                 <div class="complete-message">Payment confirmed!</div>
-                <div style="font-size: 14px; color: #666; margin-top: 10px;">Dispensing your items...</div>
+                <div style="font-size: 24px; color: #666; margin-top: 10px;">Dispensing your items...</div>
             </div>
             
             <div id="paymentError" style="display: none;">

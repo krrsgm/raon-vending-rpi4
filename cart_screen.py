@@ -486,6 +486,38 @@ class CartScreen(tk.Frame):
                 wraplength=payment_wraplength
             )
             self.cancel_warning_label.pack(pady=(10, 0))
+
+            # Options (placed higher for easier touch access)
+            options_frame = tk.Frame(self.payment_window, bg=self.colors["payment_bg"])
+            options_frame.pack(fill="x", padx=36, pady=(8, 12))
+
+            back_btn = tk.Button(
+                options_frame,
+                text="Back to Shopping",
+                font=section_title_font,
+                command=self.back_to_shopping_from_payment,
+                bg=self.colors["primary_btn_bg"],
+                fg="#ffffff",
+                activebackground=self.colors["primary_btn_hover"],
+                activeforeground="#ffffff",
+                relief="flat"
+            )
+            back_btn.pack(side="left", expand=True, fill="x", padx=(0, 8))
+            self._style_button(back_btn, hover_bg=self.colors["primary_btn_hover"])
+
+            cancel_btn = tk.Button(
+                options_frame,
+                text="Cancel Payment",
+                font=section_title_font,
+                command=self.confirm_cancel_payment,
+                bg=self.colors["secondary_btn_bg"],
+                fg="#ffffff",
+                activebackground=self.colors["secondary_btn_hover"],
+                activeforeground="#ffffff",
+                relief="flat"
+            )
+            cancel_btn.pack(side="left", expand=True, fill="x", padx=(8, 0))
+            self._style_button(cancel_btn, hover_bg=self.colors["secondary_btn_hover"])
             
             # Change status (initially hidden)
             self.change_label = tk.Label(
@@ -575,38 +607,6 @@ class CartScreen(tk.Frame):
                 bd=1
             )
             self.payment_items_label.pack(fill="both", expand=True)
-            
-            # Options
-            options_frame = tk.Frame(self.payment_window, bg=self.colors["payment_bg"])
-            options_frame.pack(fill="x", padx=36, pady=(8, 20))
-
-            back_btn = tk.Button(
-                options_frame,
-                text="Back to Shopping",
-                font=section_title_font,
-                command=self.back_to_shopping_from_payment,
-                bg=self.colors["primary_btn_bg"],
-                fg="#ffffff",
-                activebackground=self.colors["primary_btn_hover"],
-                activeforeground="#ffffff",
-                relief="flat"
-            )
-            back_btn.pack(side="left", expand=True, fill="x", padx=(0, 8))
-            self._style_button(back_btn, hover_bg=self.colors["primary_btn_hover"])
-
-            cancel_btn = tk.Button(
-                options_frame,
-                text="Cancel Payment",
-                font=section_title_font,
-                command=self.cancel_payment,
-                bg=self.colors["secondary_btn_bg"],
-                fg="#ffffff",
-                activebackground=self.colors["secondary_btn_hover"],
-                activeforeground="#ffffff",
-                relief="flat"
-            )
-            cancel_btn.pack(side="left", expand=True, fill="x", padx=(8, 0))
-            self._style_button(cancel_btn, hover_bg=self.colors["secondary_btn_hover"])
             
             # Start updating payment status
             self.update_payment_status(total_amount)
@@ -1117,6 +1117,18 @@ class CartScreen(tk.Frame):
     def back_to_shopping_from_payment(self):
         """Stop payment flow and return to kiosk shopping screen."""
         self._cancel_payment_and_route(route="kiosk")
+
+    def confirm_cancel_payment(self):
+        """Ask for confirmation before canceling payment."""
+        try:
+            proceed = messagebox.askyesno(
+                "Confirm Cancel",
+                "Are you sure you want to cancel payment?"
+            )
+        except Exception:
+            proceed = True
+        if proceed:
+            self.cancel_payment()
 
     def cancel_payment(self, event=None):
         """Stop payment flow and return to start order screen."""

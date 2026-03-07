@@ -18,6 +18,7 @@ import re
 import io
 import csv
 import socket
+import subprocess
 from threading import Thread, Lock
 import logging
 
@@ -1560,6 +1561,15 @@ def resolve_web_bind_settings(config):
         os.environ.get('WEB_DYNAMIC_IP', web_cfg.get('dynamic_raon_ip', True)),
         default=True
     )
+    wifi_interfaces_raw = os.environ.get(
+        'WEB_WIFI_INTERFACES',
+        web_cfg.get('wifi_interfaces', 'wlan0,ap0,uap0')
+    )
+    wifi_interfaces = []
+    for token in str(wifi_interfaces_raw or '').split(','):
+        iface = token.strip()
+        if iface and iface not in wifi_interfaces:
+            wifi_interfaces.append(iface)
 
     if dynamic_raon_ip:
         host = '0.0.0.0'
@@ -1579,6 +1589,7 @@ def resolve_web_bind_settings(config):
         'raon_ssid': raon_ssid,
         'raon_ip_prefix': raon_ip_prefix,
         'dynamic_raon_ip': dynamic_raon_ip,
+        'wifi_interfaces': wifi_interfaces,
     }
 
 
@@ -1597,9 +1608,42 @@ def can_bind_host(host):
         return False
 
 
-def detect_runtime_access_ip(preferred_prefix='192.168.'):
+def _get_ipv4_from_interface(interface_name):
+    """Return first IPv4 for a Linux network interface (best effort)."""
+    text = str(interface_name or '').strip()
+    if not text:
+        return None
+    try:
+        completed = subprocess.run(
+            ['ip', '-4', '-o', 'addr', 'show', 'dev', text],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=1.5
+        )
+    except Exception:
+        return None
+
+    if completed.returncode != 0:
+        return None
+
+    for line in completed.stdout.splitlines():
+        match = re.search(r'\sinet\s+(\d+\.\d+\.\d+\.\d+)/', line)
+        if match:
+            return match.group(1)
+    return None
+
+
+def detect_runtime_access_ip(preferred_prefix='192.168.', preferred_interfaces=None):
     """Detect current LAN IPv4 for client access (best effort)."""
     candidates = []
+    interfaces = preferred_interfaces if isinstance(preferred_interfaces, list) else []
+
+    # Prefer Raspberry Pi AP/WiFi interfaces first when available.
+    for iface in interfaces:
+        ip = _get_ipv4_from_interface(iface)
+        if ip and ip not in candidates and not ip.startswith('127.'):
+            candidates.append(ip)
 
     # Common trick: resolve outbound interface IP without sending packets.
     try:
@@ -1920,7 +1964,10 @@ if __name__ == '__main__':
     bind = resolve_web_bind_settings(config)
     host = bind['host']
     port = bind['port']
-    runtime_ip = detect_runtime_access_ip(bind.get('raon_ip_prefix', '192.168.'))
+    runtime_ip = detect_runtime_access_ip(
+        bind.get('raon_ip_prefix', '192.168.'),
+        bind.get('wifi_interfaces', []),
+    )
 
     if runtime_ip:
         logger.info(

@@ -101,7 +101,8 @@ class IRSensor:
                 readings = []
                 for _ in range(3):
                     state = GPIO.input(self.pin)
-                    readings.append(state == GPIO.HIGH)
+                    # Pull-up wiring: LOW means beam blocked (item present).
+                    readings.append(state == GPIO.LOW)
                     time.sleep(0.05)
                 
                 # Use majority vote for debouncing
@@ -396,8 +397,8 @@ class ItemDispenseMonitor:
                         print(f"[ItemDispenseMonitor] ✓ Slot {slot_id}: {item_name} detected in bin after {elapsed_time:.1f}s")
                         continue
                     
-                    # Log sensor status for debugging (True=clear, False=blocked)
-                    sensor_status = ", ".join([f"GPIO{pin}={'CLEAR' if present is True else 'BLOCKED' if present is False else 'ERROR'}" 
+                    # Log sensor status for debugging (True=blocked/present, False=clear/empty)
+                    sensor_status = ", ".join([f"GPIO{pin}={'BLOCKED' if present is True else 'CLEAR' if present is False else 'ERROR'}"
                                               for pin, present in sensor_readings])
                     
                     # Check for timeout
@@ -423,15 +424,19 @@ class ItemDispenseMonitor:
         Check if item has been detected based on detection mode.
         
         IR sensors with pull-up resistors:
-        - HIGH (True) when no obstruction (beam clear)
-        - LOW (False) when item blocks beam
-        
-        An item falling into the catch area will BLOCK the beam (LOW/False).
-        Success is marked when ANY sensor detects item presence (beam blocked).
+        - LOW means beam blocked (item present)
+        - HIGH means beam clear (no item)
+
+        This monitor normalizes states as:
+        - True = blocked/present
+        - False = clear/empty
+
+        An item falling into the catch area will BLOCK the beam.
+        Success is marked when ANY sensor reports blocked/present.
         
         Args:
             sensor_readings: List of (gpio_pin, item_present) tuples
-                where item_present=True means clear, item_present=False means blocked
+                where item_present=True means blocked/present, False means clear/empty
             
         Returns:
             bool: True if item detected (blocking any sensor), False otherwise
@@ -446,21 +451,21 @@ class ItemDispenseMonitor:
             return False  # All readings are errors
         
         if self.detection_mode == 'any':
-            # Item detected if ANY sensor shows obstruction (blocked beam / False)
+            # Item detected if ANY sensor shows obstruction (blocked beam / True)
             # In a bin catch area, item passes through and blocks at least one sensor
-            return any(present is False for pin, present in valid_readings)
+            return any(present is True for pin, present in valid_readings)
         
         elif self.detection_mode == 'all':
             # Item detected only if ALL sensors show obstruction (blocked beams)
-            return all(present is False for pin, present in valid_readings) and len(valid_readings) > 0
+            return all(present is True for pin, present in valid_readings) and len(valid_readings) > 0
         
         elif self.detection_mode == 'first':
             # Item detected as soon as FIRST sensor shows obstruction (blocked beam)
-            return any(present is False for pin, present in valid_readings)
+            return any(present is True for pin, present in valid_readings)
         
         else:
             # Default to 'any' mode
-            return any(present is False for pin, present in valid_readings)
+            return any(present is True for pin, present in valid_readings)
     
     def _trigger_callback(self, callback, *args):
         """Safely trigger a callback if registered."""

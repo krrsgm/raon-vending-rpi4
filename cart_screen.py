@@ -428,6 +428,17 @@ class CartScreen(tk.Frame):
             section_title_font = tkfont.Font(family="Helvetica", size=20, weight="bold")
             item_list_font = tkfont.Font(family="Helvetica", size=18)
 
+            header_bar = tk.Frame(self.payment_window, bg="#2222a8", height=96)
+            header_bar.pack(fill="x")
+            header_bar.pack_propagate(False)
+            tk.Label(
+                header_bar,
+                text="Insert Payment",
+                font=big_title_font,
+                bg="#2222a8",
+                fg="white"
+            ).pack(pady=18)
+
             # Amount required
             amount_frame = tk.Frame(self.payment_window, bg=self.colors["payment_bg"])
             amount_frame.pack(fill="x", pady=(30, 0))
@@ -466,7 +477,7 @@ class CartScreen(tk.Frame):
 
             self.cancel_warning_label = tk.Label(
                 status_frame,
-                text="",
+                text="Warning: Canceling will NOT return inserted coins or bills.",
                 font=tkfont.Font(family="Helvetica", size=18, weight="bold"),
                 bg=self.colors["payment_bg"],
                 fg="#c0392b",
@@ -474,7 +485,7 @@ class CartScreen(tk.Frame):
                 anchor='w',
                 wraplength=payment_wraplength
             )
-            self.cancel_warning_label.pack_forget()
+            self.cancel_warning_label.pack(pady=(10, 0))
             
             # Change status (initially hidden)
             self.change_label = tk.Label(
@@ -565,9 +576,26 @@ class CartScreen(tk.Frame):
             )
             self.payment_items_label.pack(fill="both", expand=True)
             
-            # Cancel button
+            # Options
+            options_frame = tk.Frame(self.payment_window, bg=self.colors["payment_bg"])
+            options_frame.pack(fill="x", padx=36, pady=(8, 20))
+
+            back_btn = tk.Button(
+                options_frame,
+                text="Back to Shopping",
+                font=section_title_font,
+                command=self.back_to_shopping_from_payment,
+                bg=self.colors["primary_btn_bg"],
+                fg="#ffffff",
+                activebackground=self.colors["primary_btn_hover"],
+                activeforeground="#ffffff",
+                relief="flat"
+            )
+            back_btn.pack(side="left", expand=True, fill="x", padx=(0, 8))
+            self._style_button(back_btn, hover_bg=self.colors["primary_btn_hover"])
+
             cancel_btn = tk.Button(
-                self.payment_window,
+                options_frame,
                 text="Cancel Payment",
                 font=section_title_font,
                 command=self.cancel_payment,
@@ -577,7 +605,7 @@ class CartScreen(tk.Frame):
                 activeforeground="#ffffff",
                 relief="flat"
             )
-            cancel_btn.pack(pady=(6, 20))
+            cancel_btn.pack(side="left", expand=True, fill="x", padx=(8, 0))
             self._style_button(cancel_btn, hover_bg=self.colors["secondary_btn_hover"])
             
             # Start updating payment status
@@ -630,11 +658,10 @@ class CartScreen(tk.Frame):
                 if received > 0:
                     self.cancel_warning_label.config(
                         text=(
-                            "Warning: Canceling now will NOT return inserted "
+                            "Warning: Canceling will NOT return inserted "
                             "coins or bills."
                         )
                     )
-                    self.cancel_warning_label.pack(pady=(10, 0))
                 
                 if received >= total_amount:
                     self._schedule_complete_payment()
@@ -710,11 +737,10 @@ class CartScreen(tk.Frame):
                 if amount > 0 and getattr(self, "cancel_warning_label", None):
                     self.cancel_warning_label.config(
                         text=(
-                            "Warning: Canceling now will NOT return inserted "
+                            "Warning: Canceling will NOT return inserted "
                             "coins or bills."
                         )
                     )
-                    self.cancel_warning_label.pack(pady=(10, 0))
             except Exception as e:
                 print(f"[PAYMENT] Error updating UI: {e}")
 
@@ -1088,7 +1114,15 @@ class CartScreen(tk.Frame):
             finally:
                 self.payment_window = None
 
+    def back_to_shopping_from_payment(self):
+        """Stop payment flow and return to kiosk shopping screen."""
+        self._cancel_payment_and_route(route="kiosk")
+
     def cancel_payment(self, event=None):
+        """Stop payment flow and return to start order screen."""
+        self._cancel_payment_and_route(route="start_order")
+
+    def _cancel_payment_and_route(self, route="start_order"):
         """Cancel the current payment session.
 
         This correctly handles the tuple returned by
@@ -1099,7 +1133,7 @@ class CartScreen(tk.Frame):
         """
         # Debug: log cancellation attempt
         try:
-            print(f"DEBUG: cancel_payment called, event={bool(event)}, payment_in_progress={self.payment_in_progress}")
+            print(f"DEBUG: cancel_payment called, route={route}, payment_in_progress={self.payment_in_progress}")
         except Exception:
             pass
 
@@ -1124,13 +1158,6 @@ class CartScreen(tk.Frame):
                     total_received = 0
                     change_amount = 0
                     change_status = ""
-
-                if total_received and total_received > 0:
-                    messagebox.showwarning(
-                        "Payment Cancelled",
-                        f"Payment cancelled.\n"
-                        f"Please collect your money: {self.controller.currency_symbol}{total_received:.2f}"
-                    )
         finally:
             # Always reset the flag
             self.payment_in_progress = False
@@ -1143,9 +1170,12 @@ class CartScreen(tk.Frame):
         except Exception:
             pass
 
-        # Return to start-order screen regardless of payment state
+        # Navigate based on selected option without extra prompt.
         try:
-            self.controller.show_start_order()
+            if route == "kiosk":
+                self.controller.show_kiosk()
+            else:
+                self.controller.show_start_order()
         except Exception:
             pass
                 

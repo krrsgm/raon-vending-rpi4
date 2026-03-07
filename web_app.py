@@ -531,23 +531,9 @@ def _match_duration_for_transaction(txn, tx_time_events, used_indexes):
 
 
 def _match_ir_status_for_transaction(txn, ir_sensor_events, dispense_events):
-    """Match IR status for a transaction using sensor snapshots, then dispense results."""
+    """Match IR status for a transaction using dispense results first, then sensor snapshots."""
     txn_sec = txn.get('seconds')
     txn_items = str(txn.get('items', '')).lower()
-
-    if txn_sec is not None and ir_sensor_events:
-        nearest = None
-        nearest_delta = None
-        for ev in ir_sensor_events:
-            ev_sec = ev.get('seconds')
-            if ev_sec is None:
-                continue
-            delta = abs(ev_sec - txn_sec)
-            if nearest_delta is None or delta < nearest_delta:
-                nearest = ev
-                nearest_delta = delta
-        if nearest and nearest_delta is not None and nearest_delta <= 90:
-            return nearest.get('status', 'N/A')
 
     candidates = []
     if txn_sec is not None:
@@ -568,13 +554,29 @@ def _match_ir_status_for_transaction(txn, ir_sensor_events, dispense_events):
         candidates = item_matched
 
     statuses = [str(ev.get('status', '')).upper() for ev in candidates if ev.get('status')]
-    if not statuses:
-        return "N/A"
     if any(s == 'FAILED' for s in statuses):
         return "FAILED"
     if any(s == 'SUCCESS' for s in statuses):
         return "SUCCESS"
-    return "/".join(sorted(set(statuses)))
+    if statuses:
+        return "/".join(sorted(set(statuses)))
+
+    # Fall back to nearest raw sensor snapshot only when no dispense result is available.
+    if txn_sec is not None and ir_sensor_events:
+        nearest = None
+        nearest_delta = None
+        for ev in ir_sensor_events:
+            ev_sec = ev.get('seconds')
+            if ev_sec is None:
+                continue
+            delta = abs(ev_sec - txn_sec)
+            if nearest_delta is None or delta < nearest_delta:
+                nearest = ev
+                nearest_delta = delta
+        if nearest and nearest_delta is not None and nearest_delta <= 90:
+            return nearest.get('status', 'N/A')
+
+    return "N/A"
 
 
 def _build_sales_rows_for_date(date_str, logs_dir):

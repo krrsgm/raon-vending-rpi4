@@ -791,13 +791,23 @@ class MainApp(tk.Tk):
             severity (str): 'error', 'warning', or 'info'
         """
         from tkinter import messagebox
-        
-        if severity == "error":
-            messagebox.showerror(title, message)
-        elif severity == "warning":
-            messagebox.showwarning(title, message)
-        else:
-            messagebox.showinfo(title, message)
+
+        def _show():
+            if severity == "error":
+                messagebox.showerror(title, message)
+            elif severity == "warning":
+                messagebox.showwarning(title, message)
+            else:
+                messagebox.showinfo(title, message)
+
+        # Timeout callbacks come from a worker thread; marshal dialogs to Tk main thread.
+        try:
+            if threading.current_thread() is threading.main_thread():
+                _show()
+            else:
+                self.after(0, _show)
+        except Exception as e:
+            print(f"[MainApp] Failed to show dispense alert: {e}")
 
     def _extract_items_from_slots(self, assigned_slots):
         """Extract items from assigned slots for display in admin/kiosk screens.

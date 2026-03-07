@@ -221,7 +221,8 @@ class MainApp(tk.Tk):
             frame.grid(row=0, column=0, sticky="nsew")
 
         self.active_frame_name = None
-        self.show_frame("SelectionScreen")
+        # Default boot path: open kiosk welcome UI directly.
+        self.show_start_order()
 
     def _init_tec_controller(self):
         """Initialize TEC Peltier module controller if enabled."""

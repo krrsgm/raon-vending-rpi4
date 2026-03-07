@@ -614,14 +614,18 @@ def _build_sales_rows_for_date(date_str, logs_dir):
     for tx in transaction_events:
         duration_text = _match_duration_for_transaction(tx, tx_time_events, used_duration_indexes)
         ir_status_text = _match_ir_status_for_transaction(tx, ir_sensor_events, dispense_events)
+        total_inserted = float(tx['total'] or 0.0)
+        change_dispensed = float(tx['change'] or 0.0)
+        net_collected = total_inserted - change_dispensed
         rows.append({
             'time': tx['hhmmss'],
             'transaction_time': duration_text,
             'item': tx['items'],
             'coins': tx['coins'],
             'bills': tx['bills'],
-            'total': tx['total'],
-            'change': tx['change'],
+            'total': total_inserted,
+            'change': change_dispensed,
+            'net_collected': net_collected,
             'ir_status': ir_status_text,
         })
 
@@ -670,14 +674,19 @@ def api_sales_today():
         
         summary = logger_inst.get_today_summary()
         items_sold = logger_inst.get_items_sold_summary()
+        total_inserted = float(summary.get('total_sales', 0.0) or 0.0)
+        total_change = float(summary.get('total_change', 0.0) or 0.0)
+        total_net_collected = total_inserted - total_change
         
         return jsonify({
             'date': summary['date'],
             'total_transactions': summary['total_transactions'],
-            'total_sales': summary['total_sales'],
+            'total_sales': total_inserted,
+            'total_inserted': total_inserted,
             'total_coins': summary['total_coins'],
             'total_bills': summary['total_bills'],
-            'total_change': summary['total_change'],
+            'total_change': total_change,
+            'total_net_collected': total_net_collected,
             'items_sold': items_sold
         }), 200
     except Exception as e:
@@ -696,6 +705,9 @@ def api_sales_logs():
         date_str = _normalize_date_str(request.args.get('date'))
         logs_dir = logger_inst.logs_dir
         rows = _build_sales_rows_for_date(date_str, logs_dir)
+        total_inserted = sum(float(row.get('total', 0.0) or 0.0) for row in rows)
+        total_change = sum(float(row.get('change', 0.0) or 0.0) for row in rows)
+        total_net_collected = total_inserted - total_change
 
         merged_logs = []
         for row in rows:
@@ -705,15 +717,21 @@ def api_sales_logs():
                 f"Item: {row['item']} | "
                 f"Coins: {row['coins']:.2f} | "
                 f"Bills: {row['bills']:.2f} | "
-                f"Total: {row['total']:.2f} | "
+                f"Inserted: {row['total']:.2f} | "
                 f"Change: {row['change']:.2f} | "
+                f"Net: {row['net_collected']:.2f} | "
                 f"IR Status: {row['ir_status']}"
             )
 
         return jsonify({
             'logs': merged_logs,
             'date': date_str,
-            'count': len(merged_logs)
+            'count': len(merged_logs),
+            'summary': {
+                'total_inserted': total_inserted,
+                'total_change': total_change,
+                'total_net_collected': total_net_collected
+            }
         }), 200
     except Exception as e:
         logger.error(f"Sales logs error: {e}")
@@ -937,8 +955,9 @@ def api_export_sales_csv():
             "Item",
             "Coins",
             "Bills",
-            "Total",
+            "Inserted",
             "Change",
+            "Net_Collected",
             "IR_Status",
         ])
         for row in rows:
@@ -951,6 +970,7 @@ def api_export_sales_csv():
                 f"{float(row.get('bills', 0.0) or 0.0):.2f}",
                 f"{float(row.get('total', 0.0) or 0.0):.2f}",
                 f"{float(row.get('change', 0.0) or 0.0):.2f}",
+                f"{float(row.get('net_collected', 0.0) or 0.0):.2f}",
                 row.get('ir_status', ''),
             ])
 
@@ -1462,7 +1482,9 @@ def get_today_sales():
         today = datetime.now().date()
         sales = Sale.query.filter(func.date(Sale.timestamp) == today).all()
         
-        total_sales = sum(s.coin_amount + s.bill_amount for s in sales)
+        total_inserted = sum(float((s.coin_amount or 0.0) + (s.bill_amount or 0.0)) for s in sales)
+        total_change = sum(float(s.change_dispensed or 0.0) for s in sales)
+        total_net_collected = total_inserted - total_change
         total_transactions = len(sales)
         items_sold = {}
         
@@ -1472,7 +1494,10 @@ def get_today_sales():
             items_sold[item_name] = items_sold.get(item_name, 0) + qty
         
         return jsonify({
-            "total_sales": total_sales,
+            "total_sales": total_inserted,
+            "total_inserted": total_inserted,
+            "total_change": total_change,
+            "total_net_collected": total_net_collected,
             "total_transactions": total_transactions,
             "items_sold": items_sold
         }), 200
@@ -1498,10 +1523,15 @@ def get_sales_logs():
                     item_name = item.name
             
             if item_name:
-                amount = sale.coin_amount + sale.bill_amount
+                inserted = float((sale.coin_amount or 0.0) + (sale.bill_amount or 0.0))
+                change = float(sale.change_dispensed or 0.0)
+                net_collected = inserted - change
                 qty = sale.quantity if sale.quantity > 1 else ''
                 qty_text = f" x{qty}" if qty else ''
-                logs.append(f"[{sale.timestamp.strftime('%H:%M:%S')}] {item_name}{qty_text} - ₱{amount:.2f}")
+                logs.append(
+                    f"[{sale.timestamp.strftime('%H:%M:%S')}] {item_name}{qty_text} | "
+                    f"Inserted: {inserted:.2f} | Change: {change:.2f} | Net: {net_collected:.2f}"
+                )
         
         return jsonify({"logs": logs}), 200
     except Exception as e:

@@ -364,17 +364,26 @@ class CartScreen(tk.Frame):
                 # Backwards compatibility: older PaymentHandler might not accept on_change_update
                 self.payment_handler.start_payment_session(total_amount, on_payment_update=self._on_payment_update)
             
-            # Create payment status window with fixed size and position
+            # Create payment status window at ~80% of screen, centered
             self.payment_window = tk.Toplevel(self)
             self.payment_window.title("Insert Payment")
-            self.payment_window.geometry("400x400")            # Center the payment window on screen
+            self.payment_window.geometry("400x400")
+            payment_wraplength = 480
             try:
                 self.payment_window.update_idletasks()
-                x = (self.payment_window.winfo_screenwidth() // 2) - (550 // 2)
-                y = (self.payment_window.winfo_screenheight() // 2) - (500 // 2)
-                self.payment_window.geometry(f"550x500+{x}+{y}")
+                screen_w = self.payment_window.winfo_screenwidth()
+                screen_h = self.payment_window.winfo_screenheight()
+                target_w = max(550, int(screen_w * 0.8))
+                target_h = max(500, int(screen_h * 0.8))
+                target_w = min(target_w, max(300, screen_w - 40))
+                target_h = min(target_h, max(260, screen_h - 40))
+                x = max(0, (screen_w - target_w) // 2)
+                y = max(0, (screen_h - target_h) // 2)
+                self.payment_window.geometry(f"{target_w}x{target_h}+{x}+{y}")
+                payment_wraplength = max(480, int(target_w * 0.85))
             except Exception:
-                pass            # Attach to the main toplevel window so focus and touch events work
+                pass
+            # Attach to the main toplevel window so focus and touch events work
             parent_toplevel = self.winfo_toplevel()
             try:
                 self.payment_window.transient(parent_toplevel)
@@ -442,7 +451,7 @@ class CartScreen(tk.Frame):
                 fg=self.colors["payment_fg"],
                 justify=tk.LEFT,
                 anchor='w',
-                wraplength=480
+                wraplength=payment_wraplength
             )
             self.payment_status.pack()
             
@@ -488,7 +497,7 @@ class CartScreen(tk.Frame):
                 bg=self.colors["payment_bg"],
                 fg=self.colors["text_fg"],
                 justify=tk.LEFT,
-                wraplength=480,
+                wraplength=payment_wraplength,
                 anchor='w'
             ).pack()
             

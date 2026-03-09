@@ -999,18 +999,24 @@ class AdminScreen(tk.Frame):
             padx=max(20, self.touch["section_padx"]),
             pady=(header_top_pady, header_bottom_pady),
         )
+        title_row = tk.Frame(header, bg=self.colors["background"])
+        title_row.pack(fill="x")
+
         tk.Label(
-            header,
+            title_row,
             text="Manage Items",
             font=self.fonts["header"],
             bg=self.colors["background"],
             fg=self.colors["header_fg"],
         ).pack(side="left")
 
+        actions_row = tk.Frame(header, bg=self.colors["background"])
+        actions_row.pack(fill="x", pady=(max(6, self.touch["row_pady"] - 2), 0))
+
         # "Add New Item" button removed — admin now uses Assign Slots
 
         back_btn = self._build_touch_button(
-            header,
+            actions_row,
             text="Back",
             bg="#7f8c8d",
             command=lambda: self.controller.show_frame("SelectionScreen"),
@@ -1019,7 +1025,7 @@ class AdminScreen(tk.Frame):
 
         # Kiosk configuration button (opens modal to edit header/footer)
         kiosk_cfg_btn = self._build_touch_button(
-            header,
+            actions_row,
             text="Kiosk Config",
             bg="#3498db",
             command=self.open_kiosk_config,
@@ -1028,7 +1034,7 @@ class AdminScreen(tk.Frame):
 
         # Button to open Assign Items screen (6x10 grid)
         assign_slots_btn = self._build_touch_button(
-            header,
+            actions_row,
             text="Assign Slots",
             bg="#8e44ad",
             command=lambda: getattr(self.controller, 'show_assign_items', lambda: None)(),
@@ -1037,7 +1043,7 @@ class AdminScreen(tk.Frame):
 
         # Button to view logs
         logs_btn = self._build_touch_button(
-            header,
+            actions_row,
             text="View Logs",
             bg="#27ae60",
             command=lambda: self.controller.show_frame("LogsScreen"),
@@ -1046,7 +1052,7 @@ class AdminScreen(tk.Frame):
 
         # Button to edit hopper coin counts and thresholds
         coin_edit_btn = self._build_touch_button(
-            header,
+            actions_row,
             text="Edit Coins",
             bg="#f39c12",
             command=self.open_coin_stock_editor,

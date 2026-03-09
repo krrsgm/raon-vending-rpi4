@@ -1009,6 +1009,14 @@ class AdminScreen(tk.Frame):
 
         # "Add New Item" button removed — admin now uses Assign Slots
 
+        back_btn = self._build_touch_button(
+            header,
+            text="Back",
+            bg="#7f8c8d",
+            command=lambda: self.controller.show_frame("SelectionScreen"),
+        )
+        back_btn.pack(side="right", padx=(0, 8))
+
         # Kiosk configuration button (opens modal to edit header/footer)
         kiosk_cfg_btn = self._build_touch_button(
             header,

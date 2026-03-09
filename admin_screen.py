@@ -1161,9 +1161,8 @@ class AdminScreen(tk.Frame):
         self.canvas.bind("<B1-Motion>", self.on_canvas_drag)
         self.scrollable_frame.bind("<ButtonPress-1>", self.on_canvas_press)
         self.scrollable_frame.bind("<B1-Motion>", self.on_canvas_drag)
-
-        # Bind mouse wheel to scroll (works on all frames)
-        self.bind_all("<MouseWheel>", self._on_mousewheel)
+        self._bind_wheel_recursive(self.canvas)
+        self._bind_wheel_recursive(self.scrollable_frame)
         self.refresh_coin_dashboard()
 
     def on_canvas_configure(self, event):
@@ -1171,17 +1170,97 @@ class AdminScreen(tk.Frame):
         canvas_width = event.width
         self.canvas.itemconfig(self.canvas_window, width=canvas_width)
 
+    def _is_descendant_widget(self, widget, ancestor):
+        """Return True when widget is ancestor itself or one of its descendants."""
+        w = widget
+        while w is not None:
+            if w == ancestor:
+                return True
+            try:
+                parent_name = w.winfo_parent()
+                if not parent_name:
+                    break
+                w = w.nametowidget(parent_name)
+            except Exception:
+                break
+        return False
+
+    def _pointer_over_canvas(self):
+        try:
+            hovered = self.winfo_containing(self.winfo_pointerx(), self.winfo_pointery())
+            return self._is_descendant_widget(hovered, self.canvas)
+        except Exception:
+            return False
+
+    def _event_from_item_area(self, event):
+        try:
+            widget = getattr(event, "widget", None)
+            if self._is_descendant_widget(widget, self.canvas):
+                return True
+            if self._is_descendant_widget(widget, self.scrollable_frame):
+                return True
+            return self._pointer_over_canvas()
+        except Exception:
+            return False
+
     def on_canvas_press(self, event):
         """Records the starting y-position and fixed x-position of a mouse drag."""
-        self.canvas.scan_mark(event.x, event.y)
-        self.scan_start_x = event.x
+        try:
+            canvas_x = self.winfo_pointerx() - self.canvas.winfo_rootx()
+            canvas_y = self.winfo_pointery() - self.canvas.winfo_rooty()
+        except Exception:
+            canvas_x, canvas_y = event.x, event.y
+        self.canvas.scan_mark(canvas_x, canvas_y)
+        self.scan_start_x = canvas_x
 
     def on_canvas_drag(self, event):
         """Moves the canvas view vertically based on mouse drag."""
-        self.canvas.scan_dragto(self.scan_start_x, event.y, gain=1)
+        try:
+            canvas_y = self.winfo_pointery() - self.canvas.winfo_rooty()
+        except Exception:
+            canvas_y = event.y
+        self.canvas.scan_dragto(self.scan_start_x, canvas_y, gain=1)
 
     def _on_mousewheel(self, event):
-        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        """Cross-platform wheel handler for the admin item list only."""
+        try:
+            if not self._event_from_item_area(event):
+                return
+
+            step = 0
+            if getattr(event, "num", None) == 4:
+                step = -3
+            elif getattr(event, "num", None) == 5:
+                step = 3
+            else:
+                delta = int(getattr(event, "delta", 0) or 0)
+                if delta != 0:
+                    if abs(delta) >= 120:
+                        step = -int(delta / 120)
+                    else:
+                        step = -1 if delta > 0 else 1
+
+            if step != 0:
+                self.canvas.yview_scroll(step, "units")
+                return "break"
+        except Exception:
+            pass
+
+    def _bind_wheel_recursive(self, widget):
+        """Bind wheel events to a widget and all descendants for consistent scrolling."""
+        if widget is None:
+            return
+        try:
+            widget.bind("<MouseWheel>", self._on_mousewheel, add="+")
+            widget.bind("<Button-4>", self._on_mousewheel, add="+")
+            widget.bind("<Button-5>", self._on_mousewheel, add="+")
+        except Exception:
+            pass
+        try:
+            for child in widget.winfo_children():
+                self._bind_wheel_recursive(child)
+        except Exception:
+            pass
 
     def populate_items(self):
         self.refresh_coin_dashboard()
@@ -1193,6 +1272,7 @@ class AdminScreen(tk.Frame):
         for item in self.controller.items:
             card = self.create_item_card(self.scrollable_frame, item)
             card.pack(fill="x", padx=10, pady=max(6, self.touch["row_pady"] - 2))
+            self._bind_wheel_recursive(card)
 
     def create_item_card(self, parent, item_data):
         card = tk.Frame(

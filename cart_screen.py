@@ -285,12 +285,12 @@ class CartScreen(tk.Frame):
 
             # --- Right side: Controls and Total ---
             controls_frame = tk.Frame(item_frame, bg="white")
-            # Keep action controls a bit lower for easier touch access in cart view.
-            controls_frame.grid(row=0, column=1, padx=15, pady=(16, 10), sticky="se")
+            # Keep action controls lower for easier touch access in cart view.
+            controls_frame.grid(row=0, column=1, padx=15, pady=(24, 10), sticky="se")
 
             # Quantity adjustment
             qty_frame = tk.Frame(controls_frame, bg="white")
-            qty_frame.pack(side="left", padx=20, pady=(4, 0))
+            qty_frame.pack(side="left", padx=20, pady=(10, 0))
 
             decrease_btn = tk.Button(
                 qty_frame,
@@ -338,7 +338,7 @@ class CartScreen(tk.Frame):
                 width=12,
                 anchor="e",
             )
-            price_label.pack(side="left", padx=(12, 20), pady=(4, 0))
+            price_label.pack(side="left", padx=(12, 20), pady=(10, 0))
 
             # Delete button
             delete_btn = tk.Button(
@@ -350,7 +350,7 @@ class CartScreen(tk.Frame):
                 relief="flat",
                 command=lambda i=item: self.controller.remove_from_cart(i),
             )
-            delete_btn.pack(side="left", pady=(4, 0))
+            delete_btn.pack(side="left", pady=(10, 0))
             self._style_button(delete_btn, hover_bg="#ffe7ea")
 
         self.total_label.config(

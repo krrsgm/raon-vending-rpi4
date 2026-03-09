@@ -10,6 +10,31 @@ if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
   export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 fi
 
+wait_for_graphical_session() {
+  local max_attempts=60
+  local attempt=0
+
+  while [ "$attempt" -lt "$max_attempts" ]; do
+    if [ -d "$XDG_RUNTIME_DIR" ]; then
+      if [ -S "$XDG_RUNTIME_DIR/wayland-0" ] || [ -S "$XDG_RUNTIME_DIR/wayland-1" ]; then
+        return 0
+      fi
+    fi
+
+    if [ -S /tmp/.X11-unix/X0 ] || [ -f "${XAUTHORITY:-}" ]; then
+      return 0
+    fi
+
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+
+  echo "Graphical session was not ready after ${max_attempts}s" >&2
+  return 1
+}
+
+wait_for_graphical_session
+
 if [ -z "${WAYLAND_DISPLAY:-}" ]; then
   for socket in wayland-1 wayland-0; do
     if [ -S "$XDG_RUNTIME_DIR/$socket" ]; then

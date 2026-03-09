@@ -45,9 +45,47 @@ if [ -z "${WAYLAND_DISPLAY:-}" ]; then
 fi
 
 # Try rotating display before launching the kiosk app.
+apply_wayland_rotation() {
+  if ! command -v wlr-randr >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local outputs=()
+  local preferred
+  for preferred in HDMI-A-1 HDMI-A-2 HDMI-1 HDMI-2 DSI-1; do
+    outputs+=("$preferred")
+  done
+
+  while IFS= read -r output_name; do
+    [ -z "$output_name" ] && continue
+    outputs+=("$output_name")
+  done < <(
+    wlr-randr 2>/dev/null | awk '
+      /^[A-Za-z0-9._-]+/ {
+        name=$1
+        getline
+        if ($0 ~ /current/ || $0 ~ /Transform/ || $0 ~ /[0-9]+x[0-9]+/) {
+          print name
+        }
+      }
+    ' | awk '!seen[$0]++'
+  )
+
+  local output
+  for output in "${outputs[@]}"; do
+    [ -z "$output" ] && continue
+    if wlr-randr --output "$output" --transform 270 >/dev/null 2>&1; then
+      echo "Applied portrait rotation to output: $output"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 if command -v wlr-randr >/dev/null 2>&1; then
-  for _ in $(seq 1 15); do
-    if [ -n "${WAYLAND_DISPLAY:-}" ] && wlr-randr --output HDMI-A-1 --transform 270; then
+  for _ in $(seq 1 20); do
+    if [ -n "${WAYLAND_DISPLAY:-}" ] && apply_wayland_rotation; then
       break
     fi
     sleep 1

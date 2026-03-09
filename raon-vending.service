@@ -1,5 +1,6 @@
 [Unit]
 Description=RAON Vending Machine Kiosk Application
+Wants=graphical.target
 After=network.target display-manager.service graphical.target
 
 [Service]
@@ -9,8 +10,9 @@ Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/raon/.Xauthority"
 WorkingDirectory=/home/raon/raon-vending-rpi4
 ExecStart=/bin/bash /home/raon/raon-vending-rpi4/deploy/start-kiosk-wayland.sh
-Restart=on-failure
+Restart=always
 RestartSec=10
+KillMode=process
 StandardOutput=journal
 StandardError=journal
 

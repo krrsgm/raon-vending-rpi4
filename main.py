@@ -574,7 +574,7 @@ class MainApp(tk.Tk):
                 ir_config.get('sensor_2', {}).get('gpio_pin', 5)
             ]
             
-            timeout = ir_config.get('dispense_timeout', 10.0)
+            timeout = ir_config.get('dispense_timeout', 30.0)
             detection_mode = ir_config.get('detection_mode', 'any')  # 'any', 'all', or 'first'
             simulate_detection = ir_config.get('simulate_detection', False)  # For testing
             use_esp32_ir = ir_config.get('use_esp32_serial', True)
@@ -1686,7 +1686,7 @@ class MainApp(tk.Tk):
             pulse_timeout_ms = 15000
         
         # Get dispense timeout from config
-        dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 15.0) if isinstance(self.config, dict) else 15.0
+        dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 30.0) if isinstance(self.config, dict) else 30.0
         try:
             same_slot_pause_ms = int(self.config.get('hardware', {}).get('vend_same_slot_pause_ms', 300))
         except Exception:
@@ -1943,7 +1943,7 @@ class MainApp(tk.Tk):
             pulse_timeout_ms = 15000
         
         # Get dispense timeout from config
-        dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 15.0) if isinstance(self.config, dict) else 15.0
+        dispense_timeout = self.config.get('hardware', {}).get('ir_sensors', {}).get('dispense_timeout', 30.0) if isinstance(self.config, dict) else 30.0
         try:
             same_slot_pause_ms = int(self.config.get('hardware', {}).get('vend_same_slot_pause_ms', 300))
         except Exception:

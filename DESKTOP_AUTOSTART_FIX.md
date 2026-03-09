@@ -14,11 +14,14 @@ Install desktop-session autostart instead:
 cd /home/raon/raon-vending-rpi4
 bash deploy/install-desktop-autostart.sh
 sudo systemctl disable --now raon-vending
+sudo systemctl disable --now raon-web-app
 ```
 
 What it does:
 - Creates `~/.config/autostart/raon-vending.desktop`
+- Creates `~/.config/autostart/raon-web-app.desktop`
 - Launches `deploy/start-kiosk-wayland.sh` after desktop login
+- Launches `deploy/start-web-app.sh` in a terminal after desktop login
 - Avoids early-boot Wayland timing issues
 
 After installing:

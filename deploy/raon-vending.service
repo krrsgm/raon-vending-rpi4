@@ -10,7 +10,7 @@ Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/raon/.Xauthority"
 WorkingDirectory=/home/raon/raon-vending-rpi4
 ExecStart=/bin/bash /home/raon/raon-vending-rpi4/deploy/start-kiosk-wayland.sh
-Restart=always
+Restart=on-failure
 RestartSec=10
 KillMode=process
 StandardOutput=journal

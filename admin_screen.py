@@ -13,6 +13,69 @@ def pil_to_photoimage(pil_image):
     return tk.PhotoImage(data=data)
 
 
+def _get_touch_metrics(controller):
+    """Build touch sizing based on current screen density."""
+    diagonal_inches = 13.3
+    try:
+        diagonal_inches = float(getattr(controller, "config", {}).get("display_diagonal_inches", diagonal_inches))
+    except Exception:
+        diagonal_inches = 13.3
+
+    try:
+        screen_w = max(1, int(controller.winfo_screenwidth()))
+        screen_h = max(1, int(controller.winfo_screenheight()))
+        diagonal_pixels = (screen_w ** 2 + screen_h ** 2) ** 0.5
+        ppi = diagonal_pixels / diagonal_inches if diagonal_inches > 0 else 165.0
+    except Exception:
+        ppi = 165.0
+
+    touch_px = max(44, int(ppi * 0.30))
+    button_font_size = max(12, int(touch_px * 0.30))
+    field_font_size = max(12, int(touch_px * 0.29))
+
+    return {
+        "touch_px": touch_px,
+        "button_font_size": button_font_size,
+        "field_font_size": field_font_size,
+        "label_font_size": max(12, field_font_size),
+        "button_padx": max(14, int(touch_px * 0.45)),
+        "button_pady": max(8, int(touch_px * 0.20)),
+        "row_pady": max(8, int(touch_px * 0.18)),
+        "entry_ipady": max(4, int(touch_px * 0.10)),
+        "section_padx": max(16, int(touch_px * 0.40)),
+        "section_pady": max(12, int(touch_px * 0.30)),
+        "combo_style": "AdminTouch.TCombobox",
+    }
+
+
+def _ensure_admin_touch_ttk_styles(widget, metrics):
+    """Define ttk styles with larger touch targets for admin forms."""
+    try:
+        style = ttk.Style(widget)
+        style.configure(
+            metrics["combo_style"],
+            font=("Helvetica", metrics["field_font_size"]),
+            padding=(8, max(6, metrics["entry_ipady"] + 1), 8, max(6, metrics["entry_ipady"] + 1)),
+            arrowsize=max(14, metrics["field_font_size"] + 4),
+        )
+    except Exception:
+        pass
+
+
+def _fit_window_to_screen(controller, desired_width, desired_height):
+    """Clamp modal size so it always stays visible on the current display."""
+    try:
+        screen_w = max(320, int(controller.winfo_screenwidth()) - 40)
+        screen_h = max(240, int(controller.winfo_screenheight()) - 40)
+    except Exception:
+        screen_w = desired_width
+        screen_h = desired_height
+
+    width = max(320, min(int(desired_width), screen_w))
+    height = max(240, min(int(desired_height), screen_h))
+    return width, height
+
+
 class ItemEditWindow(tk.Toplevel):
     """A Toplevel window for adding or editing an item."""
 
@@ -21,6 +84,8 @@ class ItemEditWindow(tk.Toplevel):
         self.controller = controller
         self.item_data = item_data
         self.is_edit_mode = item_data is not None
+        self.touch = _get_touch_metrics(controller)
+        _ensure_admin_touch_ttk_styles(self, self.touch)
 
         self.title("Edit Item" if item_data else "Add New Item")
         self._center_window()
@@ -44,8 +109,9 @@ class ItemEditWindow(tk.Toplevel):
 
     def _center_window(self):
         """Centers this Toplevel window on the main application window."""
-        width = 500
-        height = 350
+        desired_width = max(560, int(self.controller.winfo_screenwidth() * 0.52))
+        desired_height = max(440, int(self.controller.winfo_screenheight() * 0.62))
+        width, height = _fit_window_to_screen(self.controller, desired_width, desired_height)
 
         # Get the main application window (the controller)
         parent_window = self.controller
@@ -66,31 +132,43 @@ class ItemEditWindow(tk.Toplevel):
         return "break"
 
     def create_widgets(self):
-        main_frame = tk.Frame(self, bg="#f0f4f8", padx=20, pady=20)
+        main_frame = tk.Frame(
+            self,
+            bg="#f0f4f8",
+            padx=self.touch["section_padx"],
+            pady=self.touch["section_pady"],
+        )
         main_frame.pack(fill="both", expand=True)
 
-        field_font = tkfont.Font(family="Helvetica", size=12)
-        label_font = tkfont.Font(family="Helvetica", size=12, weight="bold")
+        field_font = tkfont.Font(family="Helvetica", size=self.touch["field_font_size"])
+        label_font = tkfont.Font(family="Helvetica", size=self.touch["label_font_size"], weight="bold")
+        row_pady = self.touch["row_pady"]
 
         # --- Form Fields ---
         # Name field
         tk.Label(main_frame, text="Name", font=label_font, bg="#f0f4f8").grid(
-            row=0, column=0, sticky="w", pady=(10, 2)
+            row=0, column=0, sticky="w", pady=(row_pady, 4)
         )
         name_entry = tk.Entry(main_frame, font=field_font, width=40)
-        name_entry.grid(row=0, column=1, sticky="ew", pady=(10, 2))
+        name_entry.grid(row=0, column=1, sticky="ew", pady=(row_pady, 4), ipady=self.touch["entry_ipady"])
         self.fields["name"] = name_entry
 
         # Category field with combobox
         tk.Label(main_frame, text="Category", font=label_font, bg="#f0f4f8").grid(
-            row=1, column=0, sticky="w", pady=(10, 2)
+            row=1, column=0, sticky="w", pady=(row_pady, 4)
         )
         # Get existing categories from config
         categories = self.controller.config.get('categories', [])
         if not categories:
             categories = ["Uncategorized"]  # Default category if none exist
-        category_combo = ttk.Combobox(main_frame, values=categories, font=field_font, width=38)
-        category_combo.grid(row=1, column=1, sticky="ew", pady=(10, 2))
+        category_combo = ttk.Combobox(
+            main_frame,
+            values=categories,
+            font=field_font,
+            width=38,
+            style=self.touch["combo_style"],
+        )
+        category_combo.grid(row=1, column=1, sticky="ew", pady=(row_pady, 4), ipady=self.touch["entry_ipady"])
         category_combo.set(categories[0])  # Set default value
         self.fields["category"] = category_combo
 
@@ -104,13 +182,20 @@ class ItemEditWindow(tk.Toplevel):
 
         for i, (label_text, key, is_textarea) in enumerate(remaining_fields, start=2):
             tk.Label(main_frame, text=label_text, font=label_font, bg="#f0f4f8").grid(
-                row=i, column=0, sticky="w", pady=(10, 2)
+                row=i, column=0, sticky="w", pady=(row_pady, 4)
             )
             if is_textarea:
-                widget = tk.Text(main_frame, height=4, width=40, font=field_font)
+                widget = tk.Text(main_frame, height=5, width=40, font=field_font)
+                widget.config(padx=8, pady=6)
             else:
                 widget = tk.Entry(main_frame, font=field_font, width=40)
-            widget.grid(row=i, column=1, sticky="ew", pady=(10, 2))
+            widget.grid(
+                row=i,
+                column=1,
+                sticky="ew",
+                pady=(row_pady, 4),
+                ipady=0 if is_textarea else self.touch["entry_ipady"],
+            )
             self.fields[key] = widget
 
         if self.is_edit_mode:
@@ -121,12 +206,12 @@ class ItemEditWindow(tk.Toplevel):
                 bg="#f0f4f8",
                 fg="#2c3e50",
                 anchor="w",
-            ).grid(row=6, column=0, columnspan=2, sticky="w", pady=(6, 0))
+            ).grid(row=6, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
         main_frame.grid_columnconfigure(1, weight=1)
 
         # --- Action Buttons ---
-        button_frame = tk.Frame(main_frame, bg="#f0f4f8", pady=20)
+        button_frame = tk.Frame(main_frame, bg="#f0f4f8", pady=max(16, row_pady))
         button_frame.grid(
             row=7 if self.is_edit_mode else 6, column=0, columnspan=2, sticky="ew"  # After the form fields
         )
@@ -139,8 +224,8 @@ class ItemEditWindow(tk.Toplevel):
             fg="white",
             font=label_font,
             relief="flat",
-            padx=15,
-            pady=5,
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
         )
         save_button.pack(side="right")
 
@@ -152,10 +237,10 @@ class ItemEditWindow(tk.Toplevel):
             fg="white",
             font=label_font,
             relief="flat",
-            padx=15,
-            pady=5,
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
         )
-        cancel_button.pack(side="right", padx=10)
+        cancel_button.pack(side="right", padx=12)
 
     def populate_fields(self):
         """Fills the form fields with existing item data."""
@@ -278,6 +363,8 @@ class KioskConfigWindow(tk.Toplevel):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
+        self.touch = _get_touch_metrics(controller)
+        _ensure_admin_touch_ttk_styles(self, self.touch)
         self.title("Kiosk Configuration")
         self.configure(bg="#f0f4f8")
         self._center_window()
@@ -287,8 +374,9 @@ class KioskConfigWindow(tk.Toplevel):
         self.bind("<Escape>", lambda e: self.destroy())
 
     def _center_window(self):
-        width = 700
-        height = 680
+        desired_width = max(760, int(self.controller.winfo_screenwidth() * 0.72))
+        desired_height = max(700, int(self.controller.winfo_screenheight() * 0.82))
+        width, height = _fit_window_to_screen(self.controller, desired_width, desired_height)
         parent = self.controller
         x = parent.winfo_x() + (parent.winfo_width() // 2) - (width // 2)
         y = parent.winfo_y() + (parent.winfo_height() // 2) - (height // 2)
@@ -296,56 +384,83 @@ class KioskConfigWindow(tk.Toplevel):
 
     def create_widgets(self):
         cfg = getattr(self.controller, 'config', {})
-        frame = tk.Frame(self, bg="#f0f4f8", padx=16, pady=12)
+        frame = tk.Frame(
+            self,
+            bg="#f0f4f8",
+            padx=self.touch["section_padx"],
+            pady=self.touch["section_pady"],
+        )
         frame.pack(fill='both', expand=True)
 
-        label_font = tkfont.Font(family="Helvetica", size=12, weight="bold")
-        field_font = tkfont.Font(family="Helvetica", size=12)
+        label_font = tkfont.Font(family="Helvetica", size=self.touch["label_font_size"], weight="bold")
+        field_font = tkfont.Font(family="Helvetica", size=self.touch["field_font_size"])
+        row_pady = self.touch["row_pady"]
 
         # Machine name
-        tk.Label(frame, text="Machine Name", font=label_font, bg="#f0f4f8").grid(row=0, column=0, sticky='w')
+        tk.Label(frame, text="Machine Name", font=label_font, bg="#f0f4f8").grid(row=0, column=0, sticky='w', pady=(row_pady, 0))
         self.machine_name_entry = tk.Entry(frame, font=field_font, width=50)
-        self.machine_name_entry.grid(row=0, column=1, sticky='ew', pady=6)
+        self.machine_name_entry.grid(row=0, column=1, sticky='ew', pady=(row_pady, 0), ipady=self.touch["entry_ipady"])
         self.machine_name_entry.insert(0, cfg.get('machine_name', 'RAON'))
 
         # Machine subtitle
-        tk.Label(frame, text="Machine Subtitle", font=label_font, bg="#f0f4f8").grid(row=1, column=0, sticky='w')
+        tk.Label(frame, text="Machine Subtitle", font=label_font, bg="#f0f4f8").grid(row=1, column=0, sticky='w', pady=(row_pady, 0))
         self.machine_sub_entry = tk.Entry(frame, font=field_font, width=50)
-        self.machine_sub_entry.grid(row=1, column=1, sticky='ew', pady=6)
+        self.machine_sub_entry.grid(row=1, column=1, sticky='ew', pady=(row_pady, 0), ipady=self.touch["entry_ipady"])
         self.machine_sub_entry.insert(0, cfg.get('machine_subtitle', 'RApid Access Outlet for Electronic Necessities'))
 
         # Header logo path + browse + preview
-        tk.Label(frame, text="Header Logo Path", font=label_font, bg="#f0f4f8").grid(row=2, column=0, sticky='nw', pady=6)
+        tk.Label(frame, text="Header Logo Path", font=label_font, bg="#f0f4f8").grid(row=2, column=0, sticky='nw', pady=(row_pady, 0))
         logo_frame = tk.Frame(frame, bg="#f0f4f8")
-        logo_frame.grid(row=2, column=1, sticky='ew', pady=6)
+        logo_frame.grid(row=2, column=1, sticky='ew', pady=(row_pady, 0))
         self.logo_entry = tk.Entry(logo_frame, font=field_font, width=38)
-        self.logo_entry.pack(side='left', fill='x', expand=True)
+        self.logo_entry.pack(side='left', fill='x', expand=True, ipady=self.touch["entry_ipady"])
         self.logo_entry.insert(0, cfg.get('header_logo_path', ''))
         self.logo_entry.bind('<KeyRelease>', self.update_logo_preview)
-        browse_btn = tk.Button(logo_frame, text="Browse", command=self.browse_logo)
-        browse_btn.pack(side='left', padx=4)
-        preview_btn = tk.Button(logo_frame, text="Preview", command=self.preview_logo)
-        preview_btn.pack(side='left', padx=4)
+        browse_btn = tk.Button(
+            logo_frame,
+            text="Browse",
+            command=self.browse_logo,
+            font=label_font,
+            relief="flat",
+            bg="#3498db",
+            fg="white",
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
+        )
+        browse_btn.pack(side='left', padx=6)
+        preview_btn = tk.Button(
+            logo_frame,
+            text="Preview",
+            command=self.preview_logo,
+            font=label_font,
+            relief="flat",
+            bg="#8e44ad",
+            fg="white",
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
+        )
+        preview_btn.pack(side='left', padx=6)
         
         # Logo preview placeholder
-        tk.Label(frame, text="Logo Preview:", font=label_font, bg="#f0f4f8").grid(row=3, column=0, sticky='nw')
-        self.logo_preview_frame = tk.Frame(frame, bg="#ffffff", relief='sunken', borderwidth=2, width=400, height=100)
-        self.logo_preview_frame.grid(row=3, column=1, sticky='ew', pady=6)
+        tk.Label(frame, text="Logo Preview:", font=label_font, bg="#f0f4f8").grid(row=3, column=0, sticky='nw', pady=(row_pady, 0))
+        self.logo_preview_frame = tk.Frame(frame, bg="#ffffff", relief='sunken', borderwidth=2, width=400, height=120)
+        self.logo_preview_frame.grid(row=3, column=1, sticky='ew', pady=(row_pady, 0))
         self.logo_preview_frame.grid_propagate(False)
         self.logo_preview_label = tk.Label(self.logo_preview_frame, text="[No logo selected]", bg="#ffffff", fg="#7f8c8d")
         self.logo_preview_label.pack(expand=True)
         self.logo_preview_image = None
 
         # Display diagonal
-        tk.Label(frame, text="Display diagonal (in)", font=label_font, bg="#f0f4f8").grid(row=4, column=0, sticky='w')
+        tk.Label(frame, text="Display diagonal (in)", font=label_font, bg="#f0f4f8").grid(row=4, column=0, sticky='w', pady=(row_pady, 0))
         self.diagonal_entry = tk.Entry(frame, font=field_font, width=20)
-        self.diagonal_entry.grid(row=4, column=1, sticky='w', pady=6)
+        self.diagonal_entry.grid(row=4, column=1, sticky='w', pady=(row_pady, 0), ipady=self.touch["entry_ipady"])
         self.diagonal_entry.insert(0, str(cfg.get('display_diagonal_inches', 13.3)))
 
         # Categories Management
-        tk.Label(frame, text="Categories (one per line)", font=label_font, bg="#f0f4f8").grid(row=5, column=0, sticky='nw')
+        tk.Label(frame, text="Categories (one per line)", font=label_font, bg="#f0f4f8").grid(row=5, column=0, sticky='nw', pady=(row_pady, 0))
         self.categories_text = tk.Text(frame, height=4, font=field_font, width=50)
-        self.categories_text.grid(row=5, column=1, sticky='ew', pady=6)
+        self.categories_text.config(padx=8, pady=6)
+        self.categories_text.grid(row=5, column=1, sticky='ew', pady=(row_pady, 0))
         categories = cfg.get('categories', [])
         if isinstance(categories, list):
             self.categories_text.insert('1.0', '\n'.join(categories))
@@ -353,9 +468,10 @@ class KioskConfigWindow(tk.Toplevel):
             self.categories_text.insert('1.0', str(categories))
 
         # Group members (multiline)
-        tk.Label(frame, text="Group Members (one per line)", font=label_font, bg="#f0f4f8").grid(row=6, column=0, sticky='nw')
+        tk.Label(frame, text="Group Members (one per line)", font=label_font, bg="#f0f4f8").grid(row=6, column=0, sticky='nw', pady=(row_pady, 0))
         self.members_text = tk.Text(frame, height=6, font=field_font, width=50)
-        self.members_text.grid(row=6, column=1, sticky='ew', pady=6)
+        self.members_text.config(padx=8, pady=6)
+        self.members_text.grid(row=6, column=1, sticky='ew', pady=(row_pady, 0))
         members = cfg.get('group_members', [])
         if isinstance(members, list):
             self.members_text.insert('1.0', '\n'.join(members))
@@ -365,11 +481,31 @@ class KioskConfigWindow(tk.Toplevel):
         frame.grid_columnconfigure(1, weight=1)
 
         btn_frame = tk.Frame(frame, bg="#f0f4f8")
-        btn_frame.grid(row=7, column=0, columnspan=2, sticky='e', pady=(12,0))
-        save_btn = tk.Button(btn_frame, text="Save", bg="#27ae60", fg='white', command=self.save_config)
+        btn_frame.grid(row=7, column=0, columnspan=2, sticky='e', pady=(max(12, row_pady + 4), 0))
+        save_btn = tk.Button(
+            btn_frame,
+            text="Save",
+            bg="#27ae60",
+            fg='white',
+            font=label_font,
+            relief="flat",
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
+            command=self.save_config,
+        )
         save_btn.pack(side='right')
-        cancel_btn = tk.Button(btn_frame, text="Cancel", bg="#7f8c8d", fg='white', command=self.destroy)
-        cancel_btn.pack(side='right', padx=8)
+        cancel_btn = tk.Button(
+            btn_frame,
+            text="Cancel",
+            bg="#7f8c8d",
+            fg='white',
+            font=label_font,
+            relief="flat",
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
+            command=self.destroy,
+        )
+        cancel_btn.pack(side='right', padx=10)
 
     def browse_logo(self):
         path = filedialog.askopenfilename(title='Select header logo', filetypes=[('Image files', '*.png;*.jpg;*.jpeg;*.gif;*.bmp')])
@@ -470,12 +606,23 @@ class CoinStockEditWindow(tk.Toplevel):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
+        self.touch = _get_touch_metrics(controller)
         self.title("Edit Coin Stock")
         self.configure(bg="#f0f4f8")
         self.resizable(False, False)
         self.transient(parent)
         self.grab_set()
+        self._center_window()
         self._build()
+
+    def _center_window(self):
+        desired_width = max(560, int(self.controller.winfo_screenwidth() * 0.52))
+        desired_height = max(360, int(self.controller.winfo_screenheight() * 0.50))
+        width, height = _fit_window_to_screen(self.controller, desired_width, desired_height)
+        parent = self.controller
+        x = parent.winfo_x() + (parent.winfo_width() // 2) - (width // 2)
+        y = parent.winfo_y() + (parent.winfo_height() // 2) - (height // 2)
+        self.geometry(f"{width}x{height}+{x}+{y}")
 
     def _build(self):
         stock = {}
@@ -487,36 +634,83 @@ class CoinStockEditWindow(tk.Toplevel):
                 "five_peso": {"count": 0, "low_threshold": 20},
             }
 
-        frame = tk.Frame(self, bg="#f0f4f8", padx=16, pady=16)
+        frame = tk.Frame(
+            self,
+            bg="#f0f4f8",
+            padx=self.touch["section_padx"],
+            pady=self.touch["section_pady"],
+        )
         frame.pack(fill="both", expand=True)
+
+        title_font = ("Helvetica", max(14, self.touch["button_font_size"] + 2), "bold")
+        label_font = ("Helvetica", max(11, self.touch["field_font_size"] - 1))
+        label_bold_font = ("Helvetica", max(11, self.touch["field_font_size"] - 1), "bold")
 
         tk.Label(
             frame,
             text="Coin Hopper Setup",
             bg="#f0f4f8",
             fg="#2c3e50",
-            font=("Helvetica", 14, "bold"),
+            font=title_font,
             anchor="w",
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
 
-        tk.Label(frame, text="Denomination", bg="#f0f4f8", font=("Helvetica", 11, "bold")).grid(row=1, column=0, sticky="w")
-        tk.Label(frame, text="Current Count", bg="#f0f4f8", font=("Helvetica", 11, "bold")).grid(row=1, column=1, sticky="w")
-        tk.Label(frame, text="Low Threshold", bg="#f0f4f8", font=("Helvetica", 11, "bold")).grid(row=1, column=2, sticky="w")
+        tk.Label(frame, text="Denomination", bg="#f0f4f8", font=label_bold_font).grid(row=1, column=0, sticky="w")
+        tk.Label(frame, text="Current Count", bg="#f0f4f8", font=label_bold_font).grid(row=1, column=1, sticky="w")
+        tk.Label(frame, text="Low Threshold", bg="#f0f4f8", font=label_bold_font).grid(row=1, column=2, sticky="w")
 
-        tk.Label(frame, text="₱1 coins", bg="#f0f4f8", font=("Helvetica", 11)).grid(row=2, column=0, sticky="w", pady=6)
-        self.one_count_entry = tk.Entry(frame, width=12)
-        self.one_count_entry.grid(row=2, column=1, sticky="w", pady=6, padx=(8, 0))
+        tk.Label(frame, text="₱1 coins", bg="#f0f4f8", font=label_font).grid(
+            row=2,
+            column=0,
+            sticky="w",
+            pady=(self.touch["row_pady"], 0),
+        )
+        self.one_count_entry = tk.Entry(frame, width=12, font=label_font)
+        self.one_count_entry.grid(
+            row=2,
+            column=1,
+            sticky="w",
+            pady=(self.touch["row_pady"], 0),
+            padx=(8, 0),
+            ipady=self.touch["entry_ipady"],
+        )
         self.one_count_entry.insert(0, str(stock.get("one_peso", {}).get("count", 0)))
-        self.one_threshold_entry = tk.Entry(frame, width=12)
-        self.one_threshold_entry.grid(row=2, column=2, sticky="w", pady=6, padx=(8, 0))
+        self.one_threshold_entry = tk.Entry(frame, width=12, font=label_font)
+        self.one_threshold_entry.grid(
+            row=2,
+            column=2,
+            sticky="w",
+            pady=(self.touch["row_pady"], 0),
+            padx=(8, 0),
+            ipady=self.touch["entry_ipady"],
+        )
         self.one_threshold_entry.insert(0, str(stock.get("one_peso", {}).get("low_threshold", 20)))
 
-        tk.Label(frame, text="₱5 coins", bg="#f0f4f8", font=("Helvetica", 11)).grid(row=3, column=0, sticky="w", pady=6)
-        self.five_count_entry = tk.Entry(frame, width=12)
-        self.five_count_entry.grid(row=3, column=1, sticky="w", pady=6, padx=(8, 0))
+        tk.Label(frame, text="₱5 coins", bg="#f0f4f8", font=label_font).grid(
+            row=3,
+            column=0,
+            sticky="w",
+            pady=(self.touch["row_pady"], 0),
+        )
+        self.five_count_entry = tk.Entry(frame, width=12, font=label_font)
+        self.five_count_entry.grid(
+            row=3,
+            column=1,
+            sticky="w",
+            pady=(self.touch["row_pady"], 0),
+            padx=(8, 0),
+            ipady=self.touch["entry_ipady"],
+        )
         self.five_count_entry.insert(0, str(stock.get("five_peso", {}).get("count", 0)))
-        self.five_threshold_entry = tk.Entry(frame, width=12)
-        self.five_threshold_entry.grid(row=3, column=2, sticky="w", pady=6, padx=(8, 0))
+        self.five_threshold_entry = tk.Entry(frame, width=12, font=label_font)
+        self.five_threshold_entry.grid(
+            row=3,
+            column=2,
+            sticky="w",
+            pady=(self.touch["row_pady"], 0),
+            padx=(8, 0),
+            ipady=self.touch["entry_ipady"],
+        )
         self.five_threshold_entry.insert(0, str(stock.get("five_peso", {}).get("low_threshold", 20)))
 
         btns = tk.Frame(frame, bg="#f0f4f8")
@@ -528,7 +722,9 @@ class CoinStockEditWindow(tk.Toplevel):
             bg="#27ae60",
             fg="white",
             relief="flat",
-            padx=14,
+            font=label_bold_font,
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
             command=self._save,
         ).pack(side="right", padx=(8, 0))
 
@@ -538,7 +734,9 @@ class CoinStockEditWindow(tk.Toplevel):
             bg="#7f8c8d",
             fg="white",
             relief="flat",
-            padx=14,
+            font=label_bold_font,
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
             command=self.destroy,
         ).pack(side="right")
 
@@ -569,17 +767,18 @@ class AdminScreen(tk.Frame):
         tk.Frame.__init__(self, parent, bg="#f0f4f8")  # Light background
         self.controller = controller
         self.scan_start_x = 0  # For drag-to-scroll
+        self.touch = _get_touch_metrics(controller)
         screen_height = controller.winfo_screenheight()
         self.touch_dead_zone_top_px = 100
         self.touch_dead_zone_bottom_start_px = 1700
         self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
 
         self.fonts = {
-            "header": tkfont.Font(family="Helvetica", size=24, weight="bold"),
-            "item_name": tkfont.Font(family="Helvetica", size=14, weight="bold"),
-            "item_details": tkfont.Font(family="Helvetica", size=12),
-            "item_description": tkfont.Font(family="Helvetica", size=11),
-            "button": tkfont.Font(family="Helvetica", size=12, weight="bold"),
+            "header": tkfont.Font(family="Helvetica", size=max(22, self.touch["button_font_size"] + 10), weight="bold"),
+            "item_name": tkfont.Font(family="Helvetica", size=max(14, self.touch["field_font_size"] + 1), weight="bold"),
+            "item_details": tkfont.Font(family="Helvetica", size=max(12, self.touch["field_font_size"])),
+            "item_description": tkfont.Font(family="Helvetica", size=max(11, self.touch["field_font_size"] - 1)),
+            "button": tkfont.Font(family="Helvetica", size=max(12, self.touch["button_font_size"]), weight="bold"),
         }
         self.colors = {
             "background": "#f0f4f8",
@@ -612,18 +811,35 @@ class AdminScreen(tk.Frame):
         exit_label = tk.Label(
             self.touch_container,
             text="Press 'Esc' to return to Selection Screen",
-            font=("Helvetica", 12),
+            font=("Helvetica", max(12, self.touch["field_font_size"])),
             fg="#7f8c8d",  # Gray text
             bg="#f0f4f8",
         )
-        exit_label.pack(side="bottom", pady=20)
+        exit_label.pack(side="bottom", pady=max(20, self.touch["row_pady"] + 8))
+
+    def _build_touch_button(self, parent, text, bg, command):
+        return tk.Button(
+            parent,
+            text=text,
+            font=self.fonts["button"],
+            bg=bg,
+            fg=self.colors["btn_fg"],
+            relief="flat",
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
+            command=command,
+        )
 
     def create_widgets(self):
         root = self.touch_container
 
         # --- Header ---
         header = tk.Frame(root, bg=self.colors["background"])
-        header.pack(fill="x", padx=20, pady=20)
+        header.pack(
+            fill="x",
+            padx=max(20, self.touch["section_padx"]),
+            pady=max(20, self.touch["section_pady"]),
+        )
         tk.Label(
             header,
             text="Manage Items",
@@ -635,57 +851,37 @@ class AdminScreen(tk.Frame):
         # "Add New Item" button removed — admin now uses Assign Slots
 
         # Kiosk configuration button (opens modal to edit header/footer)
-        kiosk_cfg_btn = tk.Button(
+        kiosk_cfg_btn = self._build_touch_button(
             header,
             text="Kiosk Config",
-            font=self.fonts["button"],
             bg="#3498db",
-            fg=self.colors["btn_fg"],
-            relief="flat",
-            padx=12,
-            pady=5,
             command=self.open_kiosk_config,
         )
         kiosk_cfg_btn.pack(side="right", padx=(0, 8))
 
         # Button to open Assign Items screen (6x10 grid)
-        assign_slots_btn = tk.Button(
+        assign_slots_btn = self._build_touch_button(
             header,
             text="Assign Slots",
-            font=self.fonts["button"],
             bg="#8e44ad",
-            fg=self.colors["btn_fg"],
-            relief="flat",
-            padx=12,
-            pady=5,
             command=lambda: getattr(self.controller, 'show_assign_items', lambda: None)(),
         )
         assign_slots_btn.pack(side="right", padx=(0, 8))
 
         # Button to view logs
-        logs_btn = tk.Button(
+        logs_btn = self._build_touch_button(
             header,
             text="View Logs",
-            font=self.fonts["button"],
             bg="#27ae60",
-            fg=self.colors["btn_fg"],
-            relief="flat",
-            padx=12,
-            pady=5,
             command=lambda: self.controller.show_frame("LogsScreen"),
         )
         logs_btn.pack(side="right", padx=(0, 8))
 
         # Button to edit hopper coin counts and thresholds
-        coin_edit_btn = tk.Button(
+        coin_edit_btn = self._build_touch_button(
             header,
             text="Edit Coins",
-            font=self.fonts["button"],
             bg="#f39c12",
-            fg=self.colors["btn_fg"],
-            relief="flat",
-            padx=12,
-            pady=5,
             command=self.open_coin_stock_editor,
         )
         coin_edit_btn.pack(side="right", padx=(0, 8))
@@ -696,17 +892,17 @@ class AdminScreen(tk.Frame):
             bg="#ffffff",
             highlightbackground=self.colors["border"],
             highlightthickness=1,
-            padx=14,
-            pady=10,
+            padx=max(14, self.touch["section_padx"] - 4),
+            pady=max(10, self.touch["section_pady"] - 4),
         )
-        coin_dash.pack(fill="x", padx=20, pady=(0, 10))
+        coin_dash.pack(fill="x", padx=max(20, self.touch["section_padx"]), pady=(0, 10))
 
         tk.Label(
             coin_dash,
             text="Change Coin Stock",
             bg="#ffffff",
             fg="#2c3e50",
-            font=("Helvetica", 12, "bold"),
+            font=("Helvetica", max(12, self.touch["field_font_size"] + 1), "bold"),
             anchor="w",
         ).grid(row=0, column=0, sticky="w")
 
@@ -715,7 +911,7 @@ class AdminScreen(tk.Frame):
             text="Total change value: ₱0",
             bg="#ffffff",
             fg="#2c3e50",
-            font=("Helvetica", 11, "bold"),
+            font=("Helvetica", max(11, self.touch["field_font_size"]), "bold"),
             anchor="w",
         )
         self.coin_total_value_label.grid(row=0, column=1, sticky="e")
@@ -725,7 +921,7 @@ class AdminScreen(tk.Frame):
             text="₱1 Coins: 0 pcs | Threshold: 0 | Value: ₱0",
             bg="#ffffff",
             fg="#2c3e50",
-            font=("Helvetica", 11),
+            font=("Helvetica", max(11, self.touch["field_font_size"])),
             anchor="w",
         )
         self.coin_one_info_label.grid(row=1, column=0, sticky="w", pady=(8, 2))
@@ -734,7 +930,7 @@ class AdminScreen(tk.Frame):
             text="Status: OK",
             bg="#ffffff",
             fg="#27ae60",
-            font=("Helvetica", 11, "bold"),
+            font=("Helvetica", max(11, self.touch["field_font_size"]), "bold"),
             anchor="e",
         )
         self.coin_one_status_label.grid(row=1, column=1, sticky="e", pady=(8, 2))
@@ -744,7 +940,7 @@ class AdminScreen(tk.Frame):
             text="₱5 Coins: 0 pcs | Threshold: 0 | Value: ₱0",
             bg="#ffffff",
             fg="#2c3e50",
-            font=("Helvetica", 11),
+            font=("Helvetica", max(11, self.touch["field_font_size"])),
             anchor="w",
         )
         self.coin_five_info_label.grid(row=2, column=0, sticky="w", pady=2)
@@ -753,7 +949,7 @@ class AdminScreen(tk.Frame):
             text="Status: OK",
             bg="#ffffff",
             fg="#27ae60",
-            font=("Helvetica", 11, "bold"),
+            font=("Helvetica", max(11, self.touch["field_font_size"]), "bold"),
             anchor="e",
         )
         self.coin_five_status_label.grid(row=2, column=1, sticky="e", pady=2)
@@ -763,7 +959,12 @@ class AdminScreen(tk.Frame):
 
         # --- Scrollable Item List ---
         canvas_container = tk.Frame(root, bg=self.colors["background"])
-        canvas_container.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        canvas_container.pack(
+            fill="both",
+            expand=True,
+            padx=max(20, self.touch["section_padx"]),
+            pady=(0, 20),
+        )
 
         self.canvas = tk.Canvas(
             canvas_container, bg=self.colors["background"], highlightthickness=0
@@ -818,7 +1019,7 @@ class AdminScreen(tk.Frame):
         # Repopulate with current items
         for item in self.controller.items:
             card = self.create_item_card(self.scrollable_frame, item)
-            card.pack(fill="x", padx=10, pady=5)
+            card.pack(fill="x", padx=10, pady=max(6, self.touch["row_pady"] - 2))
 
     def create_item_card(self, parent, item_data):
         card = tk.Frame(
@@ -830,7 +1031,7 @@ class AdminScreen(tk.Frame):
         card.grid_columnconfigure(0, weight=1)
 
         info_frame = tk.Frame(card, bg=card["bg"])
-        info_frame.grid(row=0, column=0, padx=15, pady=10, sticky="ew")
+        info_frame.grid(row=0, column=0, padx=15, pady=(self.touch["row_pady"], 10), sticky="ew")
 
         tk.Label(
             info_frame,
@@ -869,7 +1070,7 @@ class AdminScreen(tk.Frame):
         ).pack(fill="x")
 
         button_frame = tk.Frame(card, bg=card["bg"])
-        button_frame.grid(row=0, column=1, padx=15, pady=10, sticky="e")
+        button_frame.grid(row=0, column=1, padx=15, pady=(self.touch["row_pady"], 10), sticky="se")
 
         edit_button = tk.Button(
             button_frame,
@@ -878,9 +1079,11 @@ class AdminScreen(tk.Frame):
             bg=self.colors["edit_btn_bg"],
             fg=self.colors["btn_fg"],
             relief="flat",
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
             command=lambda i=item_data: self.edit_item(i),
         )
-        edit_button.pack(side="left", padx=(0, 5))
+        edit_button.pack(side="left", padx=(0, 8))
 
         remove_button = tk.Button(
             button_frame,
@@ -889,6 +1092,8 @@ class AdminScreen(tk.Frame):
             bg=self.colors["remove_btn_bg"],
             fg=self.colors["btn_fg"],
             relief="flat",
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
             command=lambda i=item_data: self.remove_item(i),
         )
         remove_button.pack(side="left")

@@ -21,6 +21,88 @@ def pil_to_photoimage(pil_image):
     return tk.PhotoImage(data=data)
 
 
+def _get_touch_metrics(anchor):
+    """Compute touch-friendly sizing from screen size and configured diagonal."""
+    controller = getattr(anchor, "controller", None)
+    cfg = getattr(controller, "config", {}) if controller is not None else {}
+
+    diagonal_inches = 13.3
+    try:
+        diagonal_inches = float((cfg or {}).get("display_diagonal_inches", diagonal_inches))
+    except Exception:
+        diagonal_inches = 13.3
+
+    try:
+        screen_w = max(1, int(anchor.winfo_screenwidth()))
+        screen_h = max(1, int(anchor.winfo_screenheight()))
+        diagonal_pixels = (screen_w ** 2 + screen_h ** 2) ** 0.5
+        ppi = diagonal_pixels / diagonal_inches if diagonal_inches > 0 else 165.0
+    except Exception:
+        ppi = 165.0
+
+    touch_px = max(44, int(ppi * 0.30))
+    base_font = max(10, int(touch_px * 0.28))
+    button_font = max(11, int(touch_px * 0.30))
+    small_font = max(9, base_font - 1)
+
+    return {
+        "touch_px": touch_px,
+        "base_font": base_font,
+        "button_font": button_font,
+        "small_font": small_font,
+        "title_font": max(14, button_font + 5),
+        "row_pady": max(6, int(touch_px * 0.16)),
+        "section_pad": max(10, int(touch_px * 0.24)),
+        "button_padx": max(10, int(touch_px * 0.35)),
+        "button_pady": max(6, int(touch_px * 0.16)),
+        "entry_padding": max(4, int(touch_px * 0.10)),
+        "slot_spacing": max(4, int(touch_px * 0.10)),
+        "card_padding": max(4, int(touch_px * 0.12)),
+    }
+
+
+def _ensure_assign_touch_styles(widget, touch):
+    """Define ttk styles used by assign screen/dialogs for larger touch targets."""
+    try:
+        style = ttk.Style(widget)
+        style.configure("AssignTouch.TLabel", font=("Helvetica", touch["base_font"]))
+        style.configure("AssignTouch.Title.TLabel", font=("Helvetica", touch["title_font"], "bold"))
+        style.configure("AssignTouch.Small.TLabel", font=("Helvetica", touch["small_font"]))
+        style.configure(
+            "AssignTouch.TButton",
+            font=("Helvetica", touch["button_font"], "bold"),
+            padding=(touch["button_padx"], touch["button_pady"]),
+        )
+        style.configure(
+            "AssignTouch.Small.TButton",
+            font=("Helvetica", max(9, touch["small_font"]), "bold"),
+            padding=(max(6, touch["button_padx"] - 4), max(4, touch["button_pady"] - 2)),
+        )
+        style.configure(
+            "AssignTouch.TEntry",
+            font=("Helvetica", touch["base_font"]),
+            padding=(8, touch["entry_padding"], 8, touch["entry_padding"]),
+        )
+        style.configure(
+            "AssignTouch.TCombobox",
+            font=("Helvetica", touch["base_font"]),
+            padding=(8, touch["entry_padding"], 8, touch["entry_padding"]),
+            arrowsize=max(14, touch["base_font"] + 4),
+        )
+        style.configure("AssignTouch.TLabelframe.Label", font=("Helvetica", touch["base_font"], "bold"))
+    except Exception:
+        pass
+
+
+def _fit_window_to_screen(anchor, desired_width, desired_height):
+    try:
+        max_w = max(320, int(anchor.winfo_screenwidth()) - 40)
+        max_h = max(240, int(anchor.winfo_screenheight()) - 40)
+    except Exception:
+        max_w, max_h = desired_width, desired_height
+    return max(320, min(int(desired_width), max_w)), max(240, min(int(desired_height), max_h))
+
+
 class PriceStockDialog(tk.Toplevel):
     """Modal dialog to edit price, stock, image, and other item fields.
 
@@ -36,84 +118,96 @@ class PriceStockDialog(tk.Toplevel):
         self.item_data = item_data or {}
         self.result = None
         self.read_only = bool(read_only)
+        self.touch = _get_touch_metrics(parent)
+        _ensure_assign_touch_styles(self, self.touch)
         
         self.title("Edit Item Details")
         self.transient(parent)
         self.grab_set()
         self.category_options = category_options or []
+        desired_w = int(self.winfo_screenwidth() * 0.70)
+        desired_h = int(self.winfo_screenheight() * 0.78)
+        width, height = _fit_window_to_screen(self, desired_w, desired_h)
+        self.geometry(f"{width}x{height}")
         self._create_widgets()
     
     def _create_widgets(self):
-        frame = ttk.Frame(self, padding=12)
+        frame = ttk.Frame(self, padding=self.touch["section_pad"])
         frame.pack(fill="both", expand=True)
         
         # Title
-        ttk.Label(frame, text="Edit Item Details", font=("Helvetica", 12, "bold")).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0,12))
+        ttk.Label(frame, text="Edit Item Details", style="AssignTouch.Title.TLabel").grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, self.touch["row_pady"] + 4))
         
         # Item name (display only)
         item_name = self.item_data.get('name', 'Unknown')
-        ttk.Label(frame, text=f"Item: {item_name}", font=("Helvetica", 10)).grid(row=1, column=0, columnspan=3, sticky="w", pady=(0,8))
+        ttk.Label(frame, text=f"Item: {item_name}", style="AssignTouch.Small.TLabel").grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, self.touch["row_pady"]))
         
         # Price
-        ttk.Label(frame, text="Price (\u20b1):").grid(row=2, column=0, sticky="w", pady=4)
-        self.price_entry = ttk.Entry(frame, width=20)
-        self.price_entry.grid(row=2, column=1, columnspan=2, sticky="ew", pady=4)
+        ttk.Label(frame, text="Price (\u20b1):", style="AssignTouch.TLabel").grid(row=2, column=0, sticky="w", pady=self.touch["row_pady"])
+        self.price_entry = ttk.Entry(frame, width=20, style="AssignTouch.TEntry")
+        self.price_entry.grid(row=2, column=1, columnspan=2, sticky="ew", pady=self.touch["row_pady"])
         self.price_entry.insert(0, str(self.item_data.get('price', 0.0)))
         
         # Quantity/Stock
-        ttk.Label(frame, text="Stock Quantity:").grid(row=3, column=0, sticky="w", pady=4)
-        self.qty_entry = ttk.Entry(frame, width=20)
-        self.qty_entry.grid(row=3, column=1, columnspan=2, sticky="ew", pady=4)
+        ttk.Label(frame, text="Stock Quantity:", style="AssignTouch.TLabel").grid(row=3, column=0, sticky="w", pady=self.touch["row_pady"])
+        self.qty_entry = ttk.Entry(frame, width=20, style="AssignTouch.TEntry")
+        self.qty_entry.grid(row=3, column=1, columnspan=2, sticky="ew", pady=self.touch["row_pady"])
         self.qty_entry.insert(0, str(self.item_data.get('quantity', 0)))
         
         # Low stock threshold
-        ttk.Label(frame, text="Low Stock Threshold:").grid(row=4, column=0, sticky="w", pady=4)
-        self.threshold_entry = ttk.Entry(frame, width=20)
-        self.threshold_entry.grid(row=4, column=1, columnspan=2, sticky="ew", pady=4)
+        ttk.Label(frame, text="Low Stock Threshold:", style="AssignTouch.TLabel").grid(row=4, column=0, sticky="w", pady=self.touch["row_pady"])
+        self.threshold_entry = ttk.Entry(frame, width=20, style="AssignTouch.TEntry")
+        self.threshold_entry.grid(row=4, column=1, columnspan=2, sticky="ew", pady=self.touch["row_pady"])
         self.threshold_entry.insert(0, str(self.item_data.get('low_stock_threshold', 3)))
         
         # Category (select from available or type new)
-        ttk.Label(frame, text="Category:").grid(row=5, column=0, sticky="w", pady=4)
+        ttk.Label(frame, text="Category:", style="AssignTouch.TLabel").grid(row=5, column=0, sticky="w", pady=self.touch["row_pady"])
         try:
             self.category_var = tk.StringVar(value=self.item_data.get('category', ''))
-            self.category_combo = ttk.Combobox(frame, textvariable=self.category_var, values=self.category_options, width=18)
-            self.category_combo.grid(row=5, column=1, columnspan=2, sticky="ew", pady=4)
+            self.category_combo = ttk.Combobox(
+                frame,
+                textvariable=self.category_var,
+                values=self.category_options,
+                width=18,
+                style="AssignTouch.TCombobox",
+            )
+            self.category_combo.grid(row=5, column=1, columnspan=2, sticky="ew", pady=self.touch["row_pady"])
             # allow typing new categories
             self.category_combo.configure(state='normal')
         except Exception:
-            self.category_entry = ttk.Entry(frame, width=20)
-            self.category_entry.grid(row=5, column=1, columnspan=2, sticky="ew", pady=4)
+            self.category_entry = ttk.Entry(frame, width=20, style="AssignTouch.TEntry")
+            self.category_entry.grid(row=5, column=1, columnspan=2, sticky="ew", pady=self.touch["row_pady"])
             self.category_entry.insert(0, self.item_data.get('category', ''))
         
         # Description
-        ttk.Label(frame, text="Description:").grid(row=6, column=0, sticky="nw", pady=4)
-        self.desc_text = tk.Text(frame, width=40, height=3)
-        self.desc_text.grid(row=6, column=1, columnspan=2, sticky="ew", pady=4)
+        ttk.Label(frame, text="Description:", style="AssignTouch.TLabel").grid(row=6, column=0, sticky="nw", pady=self.touch["row_pady"])
+        self.desc_text = tk.Text(frame, width=40, height=4, font=("Helvetica", self.touch["base_font"]))
+        self.desc_text.grid(row=6, column=1, columnspan=2, sticky="ew", pady=self.touch["row_pady"])
         self.desc_text.insert('1.0', self.item_data.get('description', ''))
         
         # Image path
-        ttk.Label(frame, text="Image:").grid(row=7, column=0, sticky="w", pady=4)
-        self.image_entry = ttk.Entry(frame, width=25)
-        self.image_entry.grid(row=7, column=1, sticky="ew", pady=4)
+        ttk.Label(frame, text="Image:", style="AssignTouch.TLabel").grid(row=7, column=0, sticky="w", pady=self.touch["row_pady"])
+        self.image_entry = ttk.Entry(frame, width=25, style="AssignTouch.TEntry")
+        self.image_entry.grid(row=7, column=1, sticky="ew", pady=self.touch["row_pady"])
         self.image_entry.insert(0, self.item_data.get('image', ''))
         
-        browse_btn = ttk.Button(frame, text="Browse", command=self._browse_image)
-        browse_btn.grid(row=7, column=2, padx=(4, 0), pady=4)
+        browse_btn = ttk.Button(frame, text="Browse", style="AssignTouch.TButton", command=self._browse_image)
+        browse_btn.grid(row=7, column=2, padx=(8, 0), pady=self.touch["row_pady"])
         # Keep a reference so we can disable it when showing the dialog in restricted modes
         self.browse_btn = browse_btn
         
         # Buttons
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=8, column=0, columnspan=3, sticky="e", pady=(12,0))
+        btn_frame.grid(row=8, column=0, columnspan=3, sticky="e", pady=(self.touch["row_pady"] + 4, 0))
         
         if self.read_only:
-            close_btn = ttk.Button(btn_frame, text="Close", command=self._on_cancel)
+            close_btn = ttk.Button(btn_frame, text="Close", style="AssignTouch.TButton", command=self._on_cancel)
             close_btn.pack(side="right")
         else:
-            save_btn = ttk.Button(btn_frame, text="Save", command=self._on_save)
-            save_btn.pack(side="right", padx=4)
+            save_btn = ttk.Button(btn_frame, text="Save", style="AssignTouch.TButton", command=self._on_save)
+            save_btn.pack(side="right", padx=6)
             
-            cancel_btn = ttk.Button(btn_frame, text="Cancel", command=self._on_cancel)
+            cancel_btn = ttk.Button(btn_frame, text="Cancel", style="AssignTouch.TButton", command=self._on_cancel)
             cancel_btn.pack(side="right")
         
         frame.columnconfigure(1, weight=1)
@@ -268,19 +362,25 @@ class EditSlotDialog(tk.Toplevel):
         self.result = None
         self.customize_mode = False
         self.category_options = category_options or []
+        self.touch = _get_touch_metrics(parent)
+        _ensure_assign_touch_styles(self, self.touch)
         
         self.title(f"Assign Item to Slot {slot_idx+1}")
         self.transient(parent)
         self.grab_set()
+        desired_w = int(self.winfo_screenwidth() * 0.66)
+        desired_h = int(self.winfo_screenheight() * 0.70)
+        width, height = _fit_window_to_screen(self, desired_w, desired_h)
+        self.geometry(f"{width}x{height}")
         self._create_widgets()
 
     def _create_widgets(self):
-        frame = ttk.Frame(self, padding=12)
+        frame = ttk.Frame(self, padding=self.touch["section_pad"])
         frame.pack(fill="both", expand=True)
 
         # Title
         ttk.Label(frame, text=f"Slot {self.slot_idx+1} - Choose an item:", 
-                  font=("Helvetica", 12, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0,12))
+                  style="AssignTouch.Title.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, self.touch["row_pady"] + 4))
 
         # Build options list: 3 terms + customize
         options_list = []
@@ -306,18 +406,25 @@ class EditSlotDialog(tk.Toplevel):
         self.option_data.append(None)  # placeholder for customize
         
         # Combobox to select option
-        ttk.Label(frame, text="Select:").grid(row=1, column=0, sticky="w", pady=4)
+        ttk.Label(frame, text="Select:", style="AssignTouch.TLabel").grid(row=1, column=0, sticky="w", pady=self.touch["row_pady"])
         # Guard default selection index
         default_value = options_list[self.current_term_idx] if 0 <= self.current_term_idx < len(options_list) else options_list[0]
         self.select_var = tk.StringVar(value=default_value)
-        self.select_combo = ttk.Combobox(frame, values=options_list, width=50, textvariable=self.select_var, state='readonly')
-        self.select_combo.grid(row=1, column=1, sticky="ew", pady=4)
+        self.select_combo = ttk.Combobox(
+            frame,
+            values=options_list,
+            width=50,
+            textvariable=self.select_var,
+            state='readonly',
+            style="AssignTouch.TCombobox",
+        )
+        self.select_combo.grid(row=1, column=1, sticky="ew", pady=self.touch["row_pady"])
         
         # Preview frame (shows item details when term selected)
-        preview_frame = ttk.LabelFrame(frame, text="Preview", padding=8)
-        preview_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=8)
+        preview_frame = ttk.LabelFrame(frame, text="Preview", style="AssignTouch.TLabelframe", padding=self.touch["section_pad"] - 2)
+        preview_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=self.touch["row_pady"])
         
-        self.preview_text = tk.Text(preview_frame, width=60, height=6, state='disabled')
+        self.preview_text = tk.Text(preview_frame, width=60, height=8, state='disabled', font=("Helvetica", self.touch["base_font"]))
         self.preview_text.pack(fill='both', expand=True)
         
         # Update preview when selection changes
@@ -326,12 +433,12 @@ class EditSlotDialog(tk.Toplevel):
         
         # Buttons
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=3, column=0, columnspan=2, sticky="e", pady=(8,0))
+        btn_frame.grid(row=3, column=0, columnspan=2, sticky="e", pady=(self.touch["row_pady"], 0))
         
-        select_btn = ttk.Button(btn_frame, text="Select", command=self._on_select)
-        select_btn.pack(side="right", padx=4)
+        select_btn = ttk.Button(btn_frame, text="Select", style="AssignTouch.TButton", command=self._on_select)
+        select_btn.pack(side="right", padx=6)
         
-        cancel_btn = ttk.Button(btn_frame, text="Cancel", command=self._on_cancel)
+        cancel_btn = ttk.Button(btn_frame, text="Cancel", style="AssignTouch.TButton", command=self._on_cancel)
         cancel_btn.pack(side="right")
         
         frame.columnconfigure(1, weight=1)
@@ -436,69 +543,79 @@ class CustomizeDialog(tk.Toplevel):
         self.title("Customize Item")
         self.transient(parent)
         self.grab_set()
+        self.touch = _get_touch_metrics(parent)
+        _ensure_assign_touch_styles(self, self.touch)
         self.result = None
         self.parent_result_callback = parent_result_callback
         self.category_options = category_options or []
         self.initial_data = dict(initial_data or {})
+        desired_w = int(self.winfo_screenwidth() * 0.70)
+        desired_h = int(self.winfo_screenheight() * 0.78)
+        width, height = _fit_window_to_screen(self, desired_w, desired_h)
+        self.geometry(f"{width}x{height}")
         self._create_widgets()
 
     def _create_widgets(self):
-        frame = ttk.Frame(self, padding=12)
+        frame = ttk.Frame(self, padding=self.touch["section_pad"])
         frame.pack(fill="both", expand=True)
 
-        lbl_font = ("Helvetica", 10)
-
-        ttk.Label(frame, text="Name:").grid(row=0, column=0, sticky="w", pady=4)
-        self.name_entry = ttk.Entry(frame, width=40)
-        self.name_entry.grid(row=0, column=1, sticky="ew", pady=4)
+        ttk.Label(frame, text="Name:", style="AssignTouch.TLabel").grid(row=0, column=0, sticky="w", pady=self.touch["row_pady"])
+        self.name_entry = ttk.Entry(frame, width=40, style="AssignTouch.TEntry")
+        self.name_entry.grid(row=0, column=1, sticky="ew", pady=self.touch["row_pady"])
         self.name_entry.insert(0, str(self.initial_data.get('name', '') or ''))
 
-        ttk.Label(frame, text="Category:").grid(row=1, column=0, sticky="w", pady=4)
+        ttk.Label(frame, text="Category:", style="AssignTouch.TLabel").grid(row=1, column=0, sticky="w", pady=self.touch["row_pady"])
         # Provide combobox so admin can pick existing categories or type new
         try:
             self.category_var = tk.StringVar(value=str(self.initial_data.get('category', '') or ''))
-            self.category_entry = ttk.Combobox(frame, textvariable=self.category_var, values=self.category_options or [], width=40)
-            self.category_entry.grid(row=1, column=1, sticky="ew", pady=4)
+            self.category_entry = ttk.Combobox(
+                frame,
+                textvariable=self.category_var,
+                values=self.category_options or [],
+                width=40,
+                style="AssignTouch.TCombobox",
+            )
+            self.category_entry.grid(row=1, column=1, sticky="ew", pady=self.touch["row_pady"])
             self.category_entry.configure(state='normal')
         except Exception:
-            self.category_entry = ttk.Entry(frame, width=40)
-            self.category_entry.grid(row=1, column=1, sticky="ew", pady=4)
+            self.category_entry = ttk.Entry(frame, width=40, style="AssignTouch.TEntry")
+            self.category_entry.grid(row=1, column=1, sticky="ew", pady=self.touch["row_pady"])
             self.category_entry.insert(0, str(self.initial_data.get('category', '') or ''))
 
-        ttk.Label(frame, text="Price:").grid(row=2, column=0, sticky="w", pady=4)
-        self.price_entry = ttk.Entry(frame, width=20)
-        self.price_entry.grid(row=2, column=1, sticky="w", pady=4)
+        ttk.Label(frame, text="Price:", style="AssignTouch.TLabel").grid(row=2, column=0, sticky="w", pady=self.touch["row_pady"])
+        self.price_entry = ttk.Entry(frame, width=20, style="AssignTouch.TEntry")
+        self.price_entry.grid(row=2, column=1, sticky="w", pady=self.touch["row_pady"])
         self.price_entry.insert(0, str(self.initial_data.get('price', 0.0)))
 
-        ttk.Label(frame, text="Quantity:").grid(row=3, column=0, sticky="w", pady=4)
-        self.qty_entry = ttk.Entry(frame, width=20)
-        self.qty_entry.grid(row=3, column=1, sticky="w", pady=4)
+        ttk.Label(frame, text="Quantity:", style="AssignTouch.TLabel").grid(row=3, column=0, sticky="w", pady=self.touch["row_pady"])
+        self.qty_entry = ttk.Entry(frame, width=20, style="AssignTouch.TEntry")
+        self.qty_entry.grid(row=3, column=1, sticky="w", pady=self.touch["row_pady"])
         self.qty_entry.insert(0, str(self.initial_data.get('quantity', 0)))
 
-        ttk.Label(frame, text="Low Stock Threshold:").grid(row=4, column=0, sticky="w", pady=4)
-        self.threshold_entry = ttk.Entry(frame, width=20)
-        self.threshold_entry.grid(row=4, column=1, sticky="w", pady=4)
+        ttk.Label(frame, text="Low Stock Threshold:", style="AssignTouch.TLabel").grid(row=4, column=0, sticky="w", pady=self.touch["row_pady"])
+        self.threshold_entry = ttk.Entry(frame, width=20, style="AssignTouch.TEntry")
+        self.threshold_entry.grid(row=4, column=1, sticky="w", pady=self.touch["row_pady"])
         self.threshold_entry.insert(0, str(self.initial_data.get('low_stock_threshold', 3)))
 
-        ttk.Label(frame, text="Image Path:").grid(row=5, column=0, sticky="w", pady=4)
+        ttk.Label(frame, text="Image Path:", style="AssignTouch.TLabel").grid(row=5, column=0, sticky="w", pady=self.touch["row_pady"])
         img_frame = ttk.Frame(frame)
-        img_frame.grid(row=5, column=1, sticky="ew", pady=4)
-        self.image_entry = ttk.Entry(img_frame, width=34)
+        img_frame.grid(row=5, column=1, sticky="ew", pady=self.touch["row_pady"])
+        self.image_entry = ttk.Entry(img_frame, width=34, style="AssignTouch.TEntry")
         self.image_entry.pack(side="left", fill="x", expand=True)
         self.image_entry.insert(0, str(self.initial_data.get('image', '') or ''))
-        browse = ttk.Button(img_frame, text="Browse", command=self._browse_image)
+        browse = ttk.Button(img_frame, text="Browse", style="AssignTouch.TButton", command=self._browse_image)
         browse.pack(side="left", padx=6)
 
-        ttk.Label(frame, text="Description:").grid(row=6, column=0, sticky="nw", pady=4)
-        self.desc_text = tk.Text(frame, width=40, height=4)
-        self.desc_text.grid(row=6, column=1, sticky="ew", pady=4)
+        ttk.Label(frame, text="Description:", style="AssignTouch.TLabel").grid(row=6, column=0, sticky="nw", pady=self.touch["row_pady"])
+        self.desc_text = tk.Text(frame, width=40, height=5, font=("Helvetica", self.touch["base_font"]))
+        self.desc_text.grid(row=6, column=1, sticky="ew", pady=self.touch["row_pady"])
         self.desc_text.insert('1.0', str(self.initial_data.get('description', '') or ''))
 
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=7, column=0, columnspan=2, sticky="e", pady=(8,0))
-        save_btn = ttk.Button(btn_frame, text="Save", command=self._on_save)
-        save_btn.pack(side="right", padx=4)
-        cancel_btn = ttk.Button(btn_frame, text="Cancel", command=self._on_cancel)
+        btn_frame.grid(row=7, column=0, columnspan=2, sticky="e", pady=(self.touch["row_pady"], 0))
+        save_btn = ttk.Button(btn_frame, text="Save", style="AssignTouch.TButton", command=self._on_save)
+        save_btn.pack(side="right", padx=6)
+        cancel_btn = ttk.Button(btn_frame, text="Cancel", style="AssignTouch.TButton", command=self._on_cancel)
         cancel_btn.pack(side="right")
 
         frame.columnconfigure(1, weight=1)
@@ -571,6 +688,8 @@ class AssignItemsScreen(tk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent, bg="#f0f4f8")
         self.controller = controller
+        self.touch = _get_touch_metrics(controller)
+        _ensure_assign_touch_styles(self, self.touch)
         # Each slot contains a dict with key 'terms' -> list of term-specific assignments
         # e.g. {'terms': [term1_dict_or_none, term2_dict_or_none, term3_dict_or_none]}
         self.slots = [{'terms': [None] * self.TERM_COUNT} for _ in range(self.MAX_SLOTS)]
@@ -609,7 +728,7 @@ class AssignItemsScreen(tk.Frame):
         self.load_slots()
 
     def _create_widgets(self):
-        header = ttk.Frame(self, padding=12)
+        header = ttk.Frame(self, padding=self.touch["section_pad"])
         header.pack(fill='x')
 
         # Keep controls visible on larger font scales by splitting header into rows.
@@ -618,35 +737,48 @@ class AssignItemsScreen(tk.Frame):
 
         left_section = ttk.Frame(top_row)
         left_section.pack(side='left', fill='x', expand=True)
-        ttk.Label(left_section, text="Assign Items to Slots", font=("Helvetica", 18, 'bold')).pack(side='left')
+        ttk.Label(left_section, text="Assign Items to Slots", style="AssignTouch.Title.TLabel").pack(side='left')
         
         # Term selector dropdown
-        ttk.Label(left_section, text="Term:", font=("Helvetica", 11)).pack(side='left', padx=(20, 4))
+        ttk.Label(left_section, text="Term:", style="AssignTouch.TLabel").pack(side='left', padx=(20, 6))
         self.term_var = tk.StringVar(value=f'Term {self.current_term + 1}')
-        term_combo = ttk.Combobox(left_section, textvariable=self.term_var, values=[f'Term {i+1}' for i in range(self.TERM_COUNT)], state='readonly', width=10)
+        term_combo = ttk.Combobox(
+            left_section,
+            textvariable=self.term_var,
+            values=[f'Term {i+1}' for i in range(self.TERM_COUNT)],
+            state='readonly',
+            width=10,
+            style="AssignTouch.TCombobox",
+        )
         term_combo.pack(side='left', padx=(0, 12))
         term_combo.bind('<<ComboboxSelected>>', lambda e: self._on_term_change())
         
         # Mode indicator and Custom toggle
-        ttk.Label(left_section, text="Mode:", font=("Helvetica", 11)).pack(side='left', padx=(20, 4))
+        ttk.Label(left_section, text="Mode:", style="AssignTouch.TLabel").pack(side='left', padx=(20, 6))
         self.mode_var = tk.StringVar(value='Preset')
-        self.mode_label = ttk.Label(left_section, text='Preset', font=("Helvetica", 11, 'bold'), foreground='green')
+        self.mode_label = ttk.Label(left_section, text='Preset', style="AssignTouch.TLabel", foreground='green')
         self.mode_label.pack(side='left', padx=(0, 8))
         
-        custom_btn = ttk.Button(left_section, text='Switch to Custom', command=self._toggle_custom_mode, width=18)
+        custom_btn = ttk.Button(
+            left_section,
+            text='Switch to Custom',
+            style="AssignTouch.TButton",
+            command=self._toggle_custom_mode,
+            width=18,
+        )
         custom_btn.pack(side='left', padx=(0, 12))
 
         actions_row = ttk.Frame(header)
-        actions_row.pack(fill='x', pady=(8, 0))
+        actions_row.pack(fill='x', pady=(self.touch["row_pady"], 0))
         btn_frame = ttk.Frame(actions_row)
         btn_frame.pack(side='right')
-        ttk.Button(btn_frame, text="Load", command=self.load_slots).pack(side='left', padx=4)
-        ttk.Button(btn_frame, text="Save", command=self.save_slots).pack(side='left', padx=4)
-        ttk.Button(btn_frame, text="Clear All", command=self.clear_all).pack(side='left', padx=4)
+        ttk.Button(btn_frame, text="Load", style="AssignTouch.TButton", command=self.load_slots).pack(side='left', padx=6)
+        ttk.Button(btn_frame, text="Save", style="AssignTouch.TButton", command=self.save_slots).pack(side='left', padx=6)
+        ttk.Button(btn_frame, text="Clear All", style="AssignTouch.TButton", command=self.clear_all).pack(side='left', padx=6)
 
         # Scrollable area for grid (vertical only)
         canvas_container = ttk.Frame(self)
-        canvas_container.pack(fill='both', expand=True, padx=10, pady=8)
+        canvas_container.pack(fill='both', expand=True, padx=self.touch["section_pad"], pady=self.touch["row_pady"])
 
         self.canvas = tk.Canvas(canvas_container, bg="#f0f4f8", highlightthickness=0)
         vsb = ttk.Scrollbar(canvas_container, orient='vertical', command=self.canvas.yview)
@@ -696,13 +828,19 @@ class AssignItemsScreen(tk.Frame):
             row_frames = []
             for c in range(self.GRID_COLS):
                 idx = r * self.GRID_COLS + c
-                frm = ttk.Frame(self.grid_frame, relief='ridge', padding=4)
-                frm.grid(row=r, column=c, padx=4, pady=4, sticky='nsew')
+                frm = ttk.Frame(self.grid_frame, relief='ridge', padding=self.touch["card_padding"])
+                frm.grid(
+                    row=r,
+                    column=c,
+                    padx=self.touch["slot_spacing"],
+                    pady=self.touch["slot_spacing"],
+                    sticky='nsew',
+                )
                 
                 # Slot header with selection marker
                 slot_hdr = ttk.Frame(frm)
                 slot_hdr.pack(fill='x', pady=(0,2))
-                slot_lbl = ttk.Label(slot_hdr, text=f"Slot {idx+1}", font=("Helvetica", 9, 'bold'))
+                slot_lbl = ttk.Label(slot_hdr, text=f"Slot {idx+1}", style="AssignTouch.Small.TLabel")
                 slot_lbl.pack(side='left', fill='x', expand=True)
                 sel_marker = ttk.Label(slot_hdr, text=" ", width=2, anchor='center')
                 sel_marker.pack(side='right')
@@ -712,25 +850,61 @@ class AssignItemsScreen(tk.Frame):
                 content.pack(fill='both', expand=True, pady=(2,2))
 
                 # Thumbnail (small)
-                thumb_lbl = tk.Label(content, text='', width=1, height=4, anchor='center', background='#e8e8e8', relief='sunken', font=("Helvetica", 8))
+                thumb_lbl = tk.Label(
+                    content,
+                    text='',
+                    width=1,
+                    height=4,
+                    anchor='center',
+                    background='#e8e8e8',
+                    relief='sunken',
+                    font=("Helvetica", max(8, self.touch["small_font"])),
+                )
                 thumb_lbl.pack(fill='both', expand=False, pady=(0,2))
 
                 # Item info (name and details)
                 info = ttk.Frame(content)
                 info.pack(fill='both', expand=True, pady=(0,2))
-                name_lbl = ttk.Label(info, text="Empty", font=("Helvetica", 8, 'bold'), wraplength=96, justify='left')
+                name_lbl = ttk.Label(
+                    info,
+                    text="Empty",
+                    style="AssignTouch.Small.TLabel",
+                    wraplength=120,
+                    justify='left',
+                )
                 name_lbl.pack(anchor='nw', fill='x')
-                details_lbl = ttk.Label(info, text="", font=("Helvetica", 7), wraplength=92, justify='left')
+                details_lbl = ttk.Label(
+                    info,
+                    text="",
+                    style="AssignTouch.Small.TLabel",
+                    wraplength=116,
+                    justify='left',
+                )
                 details_lbl.pack(anchor='nw', fill='both', expand=True)
 
                 # Buttons (top/mid/bot vertical layout so all options remain visible)
                 btns = ttk.Frame(frm)
                 btns.pack(fill='x', pady=(2,0))
-                edit_btn = ttk.Button(btns, text="Edit", command=lambda i=idx: self.edit_slot(i))
+                edit_btn = ttk.Button(
+                    btns,
+                    text="Edit",
+                    style="AssignTouch.Small.TButton",
+                    command=lambda i=idx: self.edit_slot(i),
+                )
                 edit_btn.pack(fill='x')
-                test_btn = ttk.Button(btns, text="Test", command=lambda i=idx: self.test_motor(i))
+                test_btn = ttk.Button(
+                    btns,
+                    text="Test",
+                    style="AssignTouch.Small.TButton",
+                    command=lambda i=idx: self.test_motor(i),
+                )
                 test_btn.pack(fill='x', pady=1)
-                clear_btn = ttk.Button(btns, text="Clear", command=lambda i=idx: self.clear_slot(i))
+                clear_btn = ttk.Button(
+                    btns,
+                    text="Clear",
+                    style="AssignTouch.Small.TButton",
+                    command=lambda i=idx: self.clear_slot(i),
+                )
                 clear_btn.pack(fill='x')
 
                 # selection toggle binding

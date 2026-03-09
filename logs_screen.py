@@ -12,6 +12,42 @@ from datetime import datetime, timedelta
 import os
 
 
+def _get_touch_metrics(anchor):
+    controller = getattr(anchor, "controller", None)
+    cfg = getattr(controller, "config", {}) if controller is not None else {}
+
+    diagonal_inches = 13.3
+    try:
+        diagonal_inches = float((cfg or {}).get("display_diagonal_inches", diagonal_inches))
+    except Exception:
+        diagonal_inches = 13.3
+
+    try:
+        screen_w = max(1, int(anchor.winfo_screenwidth()))
+        screen_h = max(1, int(anchor.winfo_screenheight()))
+        diagonal_pixels = (screen_w ** 2 + screen_h ** 2) ** 0.5
+        ppi = diagonal_pixels / diagonal_inches if diagonal_inches > 0 else 165.0
+    except Exception:
+        ppi = 165.0
+
+    touch_px = max(44, int(ppi * 0.30))
+    base_font = max(10, int(touch_px * 0.28))
+    button_font = max(11, int(touch_px * 0.30))
+
+    return {
+        "touch_px": touch_px,
+        "base_font": base_font,
+        "button_font": button_font,
+        "title_font": max(18, button_font + 10),
+        "section_pad": max(10, int(touch_px * 0.22)),
+        "row_pad": max(8, int(touch_px * 0.18)),
+        "button_padx": max(12, int(touch_px * 0.38)),
+        "button_pady": max(8, int(touch_px * 0.18)),
+        "entry_width_chars": max(14, int(touch_px * 0.35)),
+        "list_height": max(12, int(touch_px * 0.28)),
+    }
+
+
 class LogsScreen(tk.Frame):
     """Screen for viewing sales and temperature logs."""
     
@@ -19,6 +55,8 @@ class LogsScreen(tk.Frame):
         tk.Frame.__init__(self, parent, bg="#f0f4f8")
         self.controller = controller
         self.logger = get_logger()
+        self.touch = _get_touch_metrics(controller)
+        self._configure_styles()
         
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -31,7 +69,7 @@ class LogsScreen(tk.Frame):
         title_label = tk.Label(
             title_frame, 
             text="📊 Sales & Temperature Logs",
-            font=("Arial", 24, "bold"),
+            font=("Arial", self.touch["title_font"], "bold"),
             bg="#2c3e50",
             fg="white"
         )
@@ -39,7 +77,14 @@ class LogsScreen(tk.Frame):
         
         # Main content frame with tabs
         self.notebook = ttk.Notebook(self)
-        self.notebook.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+        self.notebook.configure(style="LogsTouch.TNotebook")
+        self.notebook.grid(
+            row=1,
+            column=0,
+            sticky="nsew",
+            padx=self.touch["section_pad"],
+            pady=self.touch["row_pad"],
+        )
         
         # Tab 1: Today's Summary
         self.summary_frame = tk.Frame(self.notebook, bg="#f0f4f8")
@@ -58,16 +103,22 @@ class LogsScreen(tk.Frame):
         
         # Bottom button bar
         button_frame = tk.Frame(self, bg="#f0f4f8")
-        button_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=10)
+        button_frame.grid(
+            row=2,
+            column=0,
+            sticky="ew",
+            padx=self.touch["section_pad"],
+            pady=self.touch["row_pad"],
+        )
         
         export_btn = tk.Button(
             button_frame,
             text="📥 Export Today's Log",
-            font=("Arial", 11, "bold"),
+            font=("Arial", self.touch["button_font"], "bold"),
             bg="#27ae60",
             fg="white",
-            padx=15,
-            pady=8,
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
             command=self.export_todays_log
         )
         export_btn.pack(side="left", padx=5)
@@ -75,41 +126,65 @@ class LogsScreen(tk.Frame):
         back_btn = tk.Button(
             button_frame,
             text="← Back",
-            font=("Arial", 11, "bold"),
+            font=("Arial", self.touch["button_font"], "bold"),
             bg="#95a5a6",
             fg="white",
-            padx=15,
-            pady=8,
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
             command=lambda: controller.show_frame("AdminScreen")
         )
         back_btn.pack(side="right", padx=5)
+
+    def _configure_styles(self):
+        try:
+            style = ttk.Style(self)
+            style.configure(
+                "LogsTouch.TNotebook.Tab",
+                font=("Arial", max(10, self.touch["base_font"]), "bold"),
+                padding=(max(8, self.touch["button_padx"] - 4), max(6, self.touch["button_pady"] - 2)),
+            )
+            style.configure("LogsTouch.TNotebook", tabmargins=(2, 4, 2, 0))
+        except Exception:
+            pass
     
     def _setup_summary_tab(self):
         """Setup today's sales summary display."""
         # Summary box
         summary_box = tk.Frame(self.summary_frame, bg="white", relief="sunken", bd=2)
-        summary_box.pack(fill="both", expand=True, padx=10, pady=10)
+        summary_box.pack(
+            fill="both",
+            expand=True,
+            padx=self.touch["section_pad"],
+            pady=self.touch["row_pad"],
+        )
         
         self.summary_text = tk.Text(
             summary_box,
             height=20,
-            font=("Courier", 11),
+            font=("Courier", max(11, self.touch["base_font"])),
             bg="white",
             fg="#2c3e50",
             wrap="word"
         )
-        self.summary_text.pack(fill="both", expand=True, padx=10, pady=10)
+        self.summary_text.pack(
+            fill="both",
+            expand=True,
+            padx=self.touch["section_pad"],
+            pady=self.touch["row_pad"],
+        )
         
         # Refresh button
         refresh_btn = tk.Button(
             self.summary_frame,
             text="🔄 Refresh",
-            font=("Arial", 10, "bold"),
+            font=("Arial", max(10, self.touch["button_font"]), "bold"),
             bg="#3498db",
             fg="white",
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
             command=self.refresh_summary
         )
-        refresh_btn.pack(pady=10)
+        refresh_btn.pack(pady=self.touch["row_pad"])
         
         # Initial load
         self.refresh_summary()
@@ -171,27 +246,39 @@ Last Updated: {datetime.now().strftime('%H:%M:%S')}
         """Setup log viewer tab."""
         # Date selector
         date_frame = tk.Frame(self.logs_frame, bg="#f0f4f8")
-        date_frame.pack(fill="x", padx=10, pady=10)
+        date_frame.pack(fill="x", padx=self.touch["section_pad"], pady=self.touch["row_pad"])
         
-        tk.Label(date_frame, text="Select Date:", font=("Arial", 11, "bold"), bg="#f0f4f8").pack(side="left", padx=5)
+        tk.Label(
+            date_frame,
+            text="Select Date:",
+            font=("Arial", self.touch["button_font"], "bold"),
+            bg="#f0f4f8",
+        ).pack(side="left", padx=6)
         
         self.date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
-        date_entry = tk.Entry(date_frame, textvariable=self.date_var, font=("Arial", 10), width=15)
-        date_entry.pack(side="left", padx=5)
+        date_entry = tk.Entry(
+            date_frame,
+            textvariable=self.date_var,
+            font=("Arial", max(10, self.touch["base_font"])),
+            width=self.touch["entry_width_chars"],
+        )
+        date_entry.pack(side="left", padx=6, ipady=max(3, int(self.touch["touch_px"] * 0.08)))
         
         load_btn = tk.Button(
             date_frame,
             text="Load",
-            font=("Arial", 10, "bold"),
+            font=("Arial", max(10, self.touch["button_font"]), "bold"),
             bg="#3498db",
             fg="white",
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
             command=self.load_log_file
         )
-        load_btn.pack(side="left", padx=5)
+        load_btn.pack(side="left", padx=6)
         
         # Log text display
         log_box = tk.Frame(self.logs_frame, bg="white", relief="sunken", bd=2)
-        log_box.pack(fill="both", expand=True, padx=10, pady=10)
+        log_box.pack(fill="both", expand=True, padx=self.touch["section_pad"], pady=self.touch["row_pad"])
         
         scrollbar = tk.Scrollbar(log_box)
         scrollbar.pack(side="right", fill="y")
@@ -199,12 +286,12 @@ Last Updated: {datetime.now().strftime('%H:%M:%S')}
         self.log_text = tk.Text(
             log_box,
             height=20,
-            font=("Courier", 10),
+            font=("Courier", max(10, self.touch["base_font"])),
             bg="white",
             fg="#2c3e50",
             yscrollcommand=scrollbar.set
         )
-        self.log_text.pack(fill="both", expand=True, padx=10, pady=10)
+        self.log_text.pack(fill="both", expand=True, padx=self.touch["section_pad"], pady=self.touch["row_pad"])
         scrollbar.config(command=self.log_text.yview)
         
         # Initial load
@@ -235,9 +322,14 @@ Last Updated: {datetime.now().strftime('%H:%M:%S')}
         """Setup history/available logs tab."""
         # Available logs list
         list_frame = tk.Frame(self.history_frame, bg="#f0f4f8")
-        list_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        list_frame.pack(fill="both", expand=True, padx=self.touch["section_pad"], pady=self.touch["row_pad"])
         
-        tk.Label(list_frame, text="Available Log Files:", font=("Arial", 12, "bold"), bg="#f0f4f8").pack(anchor="w", pady=5)
+        tk.Label(
+            list_frame,
+            text="Available Log Files:",
+            font=("Arial", max(12, self.touch["button_font"]), "bold"),
+            bg="#f0f4f8",
+        ).pack(anchor="w", pady=6)
         
         # Scrollable list
         scrollbar = tk.Scrollbar(list_frame)
@@ -245,12 +337,12 @@ Last Updated: {datetime.now().strftime('%H:%M:%S')}
         
         self.log_list = tk.Listbox(
             list_frame,
-            font=("Courier", 10),
+            font=("Courier", max(10, self.touch["base_font"])),
             bg="white",
             yscrollcommand=scrollbar.set,
-            height=15
+            height=self.touch["list_height"]
         )
-        self.log_list.pack(fill="both", expand=True, pady=5)
+        self.log_list.pack(fill="both", expand=True, pady=6)
         self.log_list.bind("<<ListboxSelect>>", self.on_log_selected)
         scrollbar.config(command=self.log_list.yview)
         

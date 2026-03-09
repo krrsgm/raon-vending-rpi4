@@ -153,24 +153,16 @@ class PriceStockDialog(tk.Toplevel):
         # Item name (display only)
         item_name = self.item_data.get('name', 'Unknown')
         ttk.Label(frame, text=f"Item: {item_name}", style="AssignTouch.Small.TLabel").grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, self.touch["row_pady"]))
-        
-        # Price
+
+        # Price / stock / threshold with touch steppers
         ttk.Label(frame, text="Price (\u20b1):", style="AssignTouch.TLabel").grid(row=2, column=0, sticky="w", pady=self.touch["row_pady"])
-        self.price_entry = ttk.Entry(frame, width=20, style="AssignTouch.TEntry")
-        self.price_entry.grid(row=2, column=1, columnspan=2, sticky="ew", pady=self.touch["row_pady"])
-        self.price_entry.insert(0, str(self.item_data.get('price', 0.0)))
-        
-        # Quantity/Stock
+        self.price_entry = self._build_stepper_entry(frame, 2, initial_value=self.item_data.get('price', 0.0), integer=False, step=1.0)
+
         ttk.Label(frame, text="Stock Quantity:", style="AssignTouch.TLabel").grid(row=3, column=0, sticky="w", pady=self.touch["row_pady"])
-        self.qty_entry = ttk.Entry(frame, width=20, style="AssignTouch.TEntry")
-        self.qty_entry.grid(row=3, column=1, columnspan=2, sticky="ew", pady=self.touch["row_pady"])
-        self.qty_entry.insert(0, str(self.item_data.get('quantity', 0)))
-        
-        # Low stock threshold
+        self.qty_entry = self._build_stepper_entry(frame, 3, initial_value=self.item_data.get('quantity', 0), integer=True, step=1)
+
         ttk.Label(frame, text="Low Stock Threshold:", style="AssignTouch.TLabel").grid(row=4, column=0, sticky="w", pady=self.touch["row_pady"])
-        self.threshold_entry = ttk.Entry(frame, width=20, style="AssignTouch.TEntry")
-        self.threshold_entry.grid(row=4, column=1, columnspan=2, sticky="ew", pady=self.touch["row_pady"])
-        self.threshold_entry.insert(0, str(self.item_data.get('low_stock_threshold', 3)))
+        self.threshold_entry = self._build_stepper_entry(frame, 4, initial_value=self.item_data.get('low_stock_threshold', 3), integer=True, step=1)
         
         # Category (select from available or type new)
         ttk.Label(frame, text="Category:", style="AssignTouch.TLabel").grid(row=5, column=0, sticky="w", pady=self.touch["row_pady"])
@@ -223,6 +215,51 @@ class PriceStockDialog(tk.Toplevel):
             cancel_btn.pack(side="right")
         
         frame.columnconfigure(1, weight=1)
+
+    def _adjust_numeric_entry(self, entry, delta, integer=False):
+        try:
+            raw = entry.get().strip()
+            value = int(raw) if integer else float(raw)
+        except Exception:
+            value = 0 if integer else 0.0
+
+        value = max(0, value + delta)
+        entry.delete(0, tk.END)
+        if integer:
+            entry.insert(0, str(int(value)))
+        else:
+            entry.insert(0, f"{float(value):.2f}")
+
+    def _build_stepper_entry(self, parent, row, initial_value, integer=False, step=1):
+        value_frame = ttk.Frame(parent)
+        value_frame.grid(row=row, column=1, columnspan=2, sticky="w", pady=self.touch["row_pady"])
+
+        minus_btn = ttk.Button(
+            value_frame,
+            text="-",
+            style="AssignTouch.TButton",
+            command=lambda: self._adjust_numeric_entry(entry, -step, integer=integer),
+            width=3,
+        )
+        minus_btn.pack(side="left")
+
+        entry = ttk.Entry(value_frame, width=14, style="AssignTouch.TEntry", justify="center")
+        entry.pack(side="left", padx=8)
+        if integer:
+            entry.insert(0, str(int(initial_value or 0)))
+        else:
+            entry.insert(0, f"{float(initial_value or 0):.2f}")
+
+        plus_btn = ttk.Button(
+            value_frame,
+            text="+",
+            style="AssignTouch.TButton",
+            command=lambda: self._adjust_numeric_entry(entry, step, integer=integer),
+            width=3,
+        )
+        plus_btn.pack(side="left")
+
+        return entry
     
     def _browse_image(self):
         """Open file dialog to select an image."""

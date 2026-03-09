@@ -133,6 +133,64 @@ class ItemEditWindow(tk.Toplevel):
         # Return "break" to prevent the event from reaching the main window's binding
         return "break"
 
+    def _adjust_numeric_entry(self, entry, delta, integer=False, minimum=0):
+        """Adjust a numeric entry value using touch buttons."""
+        try:
+            raw = entry.get().strip()
+            value = int(raw) if integer else float(raw)
+        except Exception:
+            value = 0 if integer else 0.0
+
+        value += delta
+        if value < minimum:
+            value = minimum
+
+        entry.delete(0, tk.END)
+        if integer:
+            entry.insert(0, str(int(value)))
+        else:
+            entry.insert(0, f"{float(value):.2f}")
+
+    def _create_stepper_field(self, parent, row, key, field_font, integer=False, step=1):
+        """Create a touch-friendly numeric field with minus/plus buttons."""
+        value_frame = tk.Frame(parent, bg="#f0f4f8")
+        value_frame.grid(row=row, column=1, sticky="w", pady=(self.touch["row_pady"], 4))
+
+        button_font = tkfont.Font(family="Helvetica", size=max(12, self.touch["button_font_size"]), weight="bold")
+        minus_btn = tk.Button(
+            value_frame,
+            text="-",
+            font=button_font,
+            bg="#7f8c8d",
+            fg="white",
+            relief="flat",
+            width=3,
+            padx=max(8, self.touch["button_padx"] - 8),
+            pady=max(4, self.touch["button_pady"] - 2),
+            command=lambda: self._adjust_numeric_entry(self.fields[key], -step, integer=integer),
+        )
+        minus_btn.pack(side="left")
+
+        entry = tk.Entry(value_frame, font=field_font, width=12, justify="center")
+        entry.pack(side="left", padx=8, ipady=self.touch["entry_ipady"])
+
+        plus_btn = tk.Button(
+            value_frame,
+            text="+",
+            font=button_font,
+            bg="#27ae60",
+            fg="white",
+            relief="flat",
+            width=3,
+            padx=max(8, self.touch["button_padx"] - 8),
+            pady=max(4, self.touch["button_pady"] - 2),
+            command=lambda: self._adjust_numeric_entry(self.fields[key], step, integer=integer),
+        )
+        plus_btn.pack(side="left")
+
+        self.fields[key] = entry
+        return entry
+
     def create_widgets(self):
         main_frame = tk.Frame(
             self,
@@ -189,16 +247,21 @@ class ItemEditWindow(tk.Toplevel):
             if is_textarea:
                 widget = tk.Text(main_frame, height=5, width=40, font=field_font)
                 widget.config(padx=8, pady=6)
+            elif key == "price":
+                widget = self._create_stepper_field(main_frame, i, key, field_font, integer=False, step=1)
+            elif key == "quantity":
+                widget = self._create_stepper_field(main_frame, i, key, field_font, integer=True, step=1)
             else:
                 widget = tk.Entry(main_frame, font=field_font, width=40)
-            widget.grid(
-                row=i,
-                column=1,
-                sticky="ew",
-                pady=(row_pady, 4),
-                ipady=0 if is_textarea else self.touch["entry_ipady"],
-            )
-            self.fields[key] = widget
+            if key not in {"price", "quantity"}:
+                widget.grid(
+                    row=i,
+                    column=1,
+                    sticky="ew",
+                    pady=(row_pady, 4),
+                    ipady=0 if is_textarea else self.touch["entry_ipady"],
+                )
+                self.fields[key] = widget
 
         if self.is_edit_mode:
             tk.Label(
@@ -626,6 +689,60 @@ class CoinStockEditWindow(tk.Toplevel):
         y = parent.winfo_y() + (parent.winfo_height() // 2) - (height // 2)
         self.geometry(f"{width}x{height}+{x}+{y}")
 
+    def _adjust_numeric_entry(self, entry, delta):
+        try:
+            value = int(entry.get().strip() or 0)
+        except Exception:
+            value = 0
+        value = max(0, value + int(delta))
+        entry.delete(0, tk.END)
+        entry.insert(0, str(value))
+
+    def _build_stepper_entry(self, parent, row, column, font, initial_value):
+        value_frame = tk.Frame(parent, bg="#f0f4f8")
+        value_frame.grid(
+            row=row,
+            column=column,
+            sticky="w",
+            pady=(self.touch["row_pady"], 0),
+            padx=(8, 0),
+        )
+
+        button_font = ("Helvetica", max(11, self.touch["button_font_size"]), "bold")
+        minus_btn = tk.Button(
+            value_frame,
+            text="-",
+            bg="#7f8c8d",
+            fg="white",
+            relief="flat",
+            font=button_font,
+            width=3,
+            padx=max(6, self.touch["button_padx"] - 10),
+            pady=max(4, self.touch["button_pady"] - 2),
+        )
+        minus_btn.pack(side="left")
+
+        entry = tk.Entry(value_frame, width=10, font=font, justify="center")
+        entry.pack(side="left", padx=8, ipady=self.touch["entry_ipady"])
+        entry.insert(0, str(initial_value))
+
+        plus_btn = tk.Button(
+            value_frame,
+            text="+",
+            bg="#27ae60",
+            fg="white",
+            relief="flat",
+            font=button_font,
+            width=3,
+            padx=max(6, self.touch["button_padx"] - 10),
+            pady=max(4, self.touch["button_pady"] - 2),
+        )
+        plus_btn.pack(side="left")
+
+        minus_btn.config(command=lambda: self._adjust_numeric_entry(entry, -1))
+        plus_btn.config(command=lambda: self._adjust_numeric_entry(entry, 1))
+        return entry
+
     def _build(self):
         stock = {}
         try:
@@ -667,26 +784,12 @@ class CoinStockEditWindow(tk.Toplevel):
             sticky="w",
             pady=(self.touch["row_pady"], 0),
         )
-        self.one_count_entry = tk.Entry(frame, width=12, font=label_font)
-        self.one_count_entry.grid(
-            row=2,
-            column=1,
-            sticky="w",
-            pady=(self.touch["row_pady"], 0),
-            padx=(8, 0),
-            ipady=self.touch["entry_ipady"],
+        self.one_count_entry = self._build_stepper_entry(
+            frame, 2, 1, label_font, stock.get("one_peso", {}).get("count", 0)
         )
-        self.one_count_entry.insert(0, str(stock.get("one_peso", {}).get("count", 0)))
-        self.one_threshold_entry = tk.Entry(frame, width=12, font=label_font)
-        self.one_threshold_entry.grid(
-            row=2,
-            column=2,
-            sticky="w",
-            pady=(self.touch["row_pady"], 0),
-            padx=(8, 0),
-            ipady=self.touch["entry_ipady"],
+        self.one_threshold_entry = self._build_stepper_entry(
+            frame, 2, 2, label_font, stock.get("one_peso", {}).get("low_threshold", 20)
         )
-        self.one_threshold_entry.insert(0, str(stock.get("one_peso", {}).get("low_threshold", 20)))
 
         tk.Label(frame, text="₱5 coins", bg="#f0f4f8", font=label_font).grid(
             row=3,
@@ -694,26 +797,12 @@ class CoinStockEditWindow(tk.Toplevel):
             sticky="w",
             pady=(self.touch["row_pady"], 0),
         )
-        self.five_count_entry = tk.Entry(frame, width=12, font=label_font)
-        self.five_count_entry.grid(
-            row=3,
-            column=1,
-            sticky="w",
-            pady=(self.touch["row_pady"], 0),
-            padx=(8, 0),
-            ipady=self.touch["entry_ipady"],
+        self.five_count_entry = self._build_stepper_entry(
+            frame, 3, 1, label_font, stock.get("five_peso", {}).get("count", 0)
         )
-        self.five_count_entry.insert(0, str(stock.get("five_peso", {}).get("count", 0)))
-        self.five_threshold_entry = tk.Entry(frame, width=12, font=label_font)
-        self.five_threshold_entry.grid(
-            row=3,
-            column=2,
-            sticky="w",
-            pady=(self.touch["row_pady"], 0),
-            padx=(8, 0),
-            ipady=self.touch["entry_ipady"],
+        self.five_threshold_entry = self._build_stepper_entry(
+            frame, 3, 2, label_font, stock.get("five_peso", {}).get("low_threshold", 20)
         )
-        self.five_threshold_entry.insert(0, str(stock.get("five_peso", {}).get("low_threshold", 20)))
 
         btns = tk.Frame(frame, bg="#f0f4f8")
         btns.grid(row=4, column=0, columnspan=3, sticky="e", pady=(14, 0))

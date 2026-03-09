@@ -91,6 +91,16 @@ def _ensure_assign_touch_styles(widget, touch):
             padding=(8, touch["entry_padding"], 8, touch["entry_padding"]),
             arrowsize=max(14, touch["base_font"] + 4),
         )
+        style.configure(
+            "AssignTouch.Term.TCombobox",
+            font=("Helvetica", max(touch["button_font"], touch["base_font"] + 2), "bold"),
+            padding=(10, max(touch["entry_padding"], 6), 10, max(touch["entry_padding"], 6)),
+            arrowsize=max(16, touch["button_font"] + 6),
+        )
+        style.configure(
+            "AssignTouch.Term.TLabel",
+            font=("Helvetica", max(touch["button_font"], touch["base_font"] + 1), "bold"),
+        )
         style.configure("AssignTouch.TLabelframe.Label", font=("Helvetica", touch["base_font"], "bold"))
     except Exception:
         pass
@@ -867,23 +877,23 @@ class AssignItemsScreen(tk.Frame):
         ttk.Label(left_section, text="Assign Items to Slots", style="AssignTouch.Title.TLabel").pack(side='left')
         
         # Term selector dropdown
-        ttk.Label(left_section, text="Term:", style="AssignTouch.TLabel").pack(side='left', padx=(20, 6))
+        ttk.Label(left_section, text="Term:", style="AssignTouch.Term.TLabel").pack(side='left', padx=(20, 8))
         self.term_var = tk.StringVar(value=f'Term {self.current_term + 1}')
         term_combo = ttk.Combobox(
             left_section,
             textvariable=self.term_var,
             values=[f'Term {i+1}' for i in range(self.TERM_COUNT)],
             state='readonly',
-            width=10,
-            style="AssignTouch.TCombobox",
+            width=14,
+            style="AssignTouch.Term.TCombobox",
         )
         term_combo.pack(side='left', padx=(0, 12))
         term_combo.bind('<<ComboboxSelected>>', lambda e: self._on_term_change())
         
         # Mode indicator and Custom toggle
-        ttk.Label(left_section, text="Mode:", style="AssignTouch.TLabel").pack(side='left', padx=(20, 6))
+        ttk.Label(left_section, text="Mode:", style="AssignTouch.Term.TLabel").pack(side='left', padx=(20, 6))
         self.mode_var = tk.StringVar(value='Preset')
-        self.mode_label = ttk.Label(left_section, text='Preset', style="AssignTouch.TLabel", foreground='green')
+        self.mode_label = ttk.Label(left_section, text='Preset', style="AssignTouch.Term.TLabel", foreground='green')
         self.mode_label.pack(side='left', padx=(0, 8))
         
         custom_btn = ttk.Button(
@@ -897,6 +907,14 @@ class AssignItemsScreen(tk.Frame):
 
         actions_row = ttk.Frame(header)
         actions_row.pack(fill='x', pady=(self.touch["row_pady"], 0))
+        nav_frame = ttk.Frame(actions_row)
+        nav_frame.pack(side='left')
+        ttk.Button(
+            nav_frame,
+            text="Back",
+            style="AssignTouch.TButton",
+            command=lambda: self.controller.show_frame("AdminScreen"),
+        ).pack(side='left', padx=6)
         btn_frame = ttk.Frame(actions_row)
         btn_frame.pack(side='right')
         ttk.Button(btn_frame, text="Load", style="AssignTouch.TButton", command=self.load_slots).pack(side='left', padx=6)

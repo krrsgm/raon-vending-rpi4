@@ -181,12 +181,14 @@ class LogsScreen(tk.Frame):
         
         # Bottom button bar
         button_frame = tk.Frame(self, bg="#f0f4f8")
+        button_top_pady = max(2, self.touch["row_pad"] - 6)
+        button_bottom_pady = max(4, self.touch["row_pad"] - 2)
         button_frame.grid(
             row=3,
             column=0,
             sticky="ew",
             padx=self.touch["section_pad"],
-            pady=self.touch["row_pad"],
+            pady=(button_top_pady, button_bottom_pady),
         )
         
         export_btn = tk.Button(

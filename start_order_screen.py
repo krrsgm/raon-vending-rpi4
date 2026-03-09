@@ -49,7 +49,7 @@ class StartOrderScreen(tk.Frame):
 
         instructions_text = (
             "INSTRUCTIONS:\n\n"
-            "1. Click anywhere to start order.\n\n"
+            "1. Click or Tap anywhere to start order.\n\n"
             "2. Choose desired items, its quantity, then add to cart.\n\n"
             "3. Go to cart, and pay.\n\n"
             "4. Insert closest amount of payment. (Note: wait for the display to show that it has counted the bill you inserted before inserting another. This is to avoid errors when computing.)\n\n"

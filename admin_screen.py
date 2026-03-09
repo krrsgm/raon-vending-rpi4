@@ -5,6 +5,7 @@ import os
 from PIL import Image
 import io
 from system_status_panel import SystemStatusPanel
+from fix_paths import get_absolute_path
 
 def pil_to_photoimage(pil_image):
     """Convert PIL Image to Tkinter PhotoImage using PPM format (no ImageTk needed)"""
@@ -779,6 +780,7 @@ class AdminScreen(tk.Frame):
         self.machine_subtitle = cfg.get("machine_subtitle", "Rapid Access Outlet for Electronic Necessities")
         self.header_logo_path = cfg.get("header_logo_path", "")
         self.logo_image = None
+        self.logo_cache = {}
 
         self.fonts = {
             "header": tkfont.Font(family="Helvetica", size=max(22, self.touch["button_font_size"] + 10), weight="bold"),
@@ -790,6 +792,8 @@ class AdminScreen(tk.Frame):
             "machine_subtitle": tkfont.Font(family="Helvetica", size=max(10, int(self.header_px * 0.16))),
             "logo_placeholder": tkfont.Font(family="Helvetica", size=max(14, int(self.header_px * 0.28)), weight="bold"),
         }
+        self._machine_title_base_size = int(self.fonts["machine_title"].cget("size"))
+        self._machine_subtitle_base_size = int(self.fonts["machine_subtitle"].cget("size"))
         self.colors = {
             "background": "#f0f4f8",
             "header_fg": "#2c3e50",
@@ -823,6 +827,7 @@ class AdminScreen(tk.Frame):
 
         logo_text_frame = tk.Frame(brand_left, bg=self.colors["brand_bg"])
         logo_text_frame.pack(anchor="w")
+        self.logo_text_frame = logo_text_frame
 
         self.brand_title_label = tk.Label(
             logo_text_frame,
@@ -845,7 +850,9 @@ class AdminScreen(tk.Frame):
             justify="left",
         )
         self.brand_subtitle_label.pack(anchor="w")
+        self.brand_header.bind("<Configure>", self._on_brand_resize)
         self.load_header_logo()
+        self._fit_brand_text()
 
         # Bottom system status area (replace black strip with live status panel).
         status_height = self.touch_dead_zone_bottom_px if self.touch_dead_zone_bottom_px > 0 else max(70, int(screen_height * 0.08))
@@ -886,18 +893,72 @@ class AdminScreen(tk.Frame):
         except Exception:
             pass
         self.load_header_logo()
+        self._fit_brand_text()
+
+    def _on_brand_resize(self, event=None):
+        self._fit_brand_text()
+
+    def _fit_brand_text(self):
+        """Ensure header title/subtitle stay visible on one screen width."""
+        try:
+            header_w = self.brand_header.winfo_width()
+            if header_w <= 1:
+                header_w = int(self.controller.winfo_screenwidth())
+            available = max(220, header_w - 260)  # reserve logo + paddings
+
+            title_font = self.fonts["machine_title"]
+            title_size = self._machine_title_base_size
+            title_font.configure(size=title_size)
+            while title_size > 14 and title_font.measure(self.machine_name or "") > available:
+                title_size -= 1
+                title_font.configure(size=title_size)
+
+            subtitle_font = self.fonts["machine_subtitle"]
+            subtitle_size = self._machine_subtitle_base_size
+            subtitle_font.configure(size=subtitle_size)
+            while subtitle_size > 9 and subtitle_font.measure(self.machine_subtitle or "") > available:
+                subtitle_size -= 1
+                subtitle_font.configure(size=subtitle_size)
+
+            self.brand_title_label.config(wraplength=available)
+            self.brand_subtitle_label.config(wraplength=available)
+        except Exception:
+            pass
 
     def load_header_logo(self):
-        """Load header logo from config path; fallback to machine initials."""
+        """Load header logo from config path; fallback to common logo files/initials."""
         self.logo_image = None
         logo_path = str(self.header_logo_path or "").strip()
-        if logo_path and os.path.exists(logo_path):
+        resolved_logo = None
+
+        if logo_path:
+            resolved_logo = get_absolute_path(logo_path)
+            if not os.path.exists(resolved_logo):
+                resolved_logo = logo_path if os.path.exists(logo_path) else None
+
+        if not resolved_logo:
+            common_names = ["LOGO.png", "logo.png", "Logo.png", "LOGO.jpg", "logo.jpg"]
+            for fname in common_names:
+                test_path = get_absolute_path(fname)
+                if os.path.exists(test_path):
+                    resolved_logo = test_path
+                    break
+
+        if resolved_logo and resolved_logo in self.logo_cache:
+            self.logo_image = self.logo_cache[resolved_logo]
+            self.logo_image_label.config(image=self.logo_image, text="")
+            self.logo_image_label.image = self.logo_image
+            return
+
+        if resolved_logo:
             try:
-                img = Image.open(logo_path)
+                img = Image.open(resolved_logo)
                 max_h = int(self.header_px * 0.80)
                 max_w = 180
-                img.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
+                resample = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.LANCZOS
+                img.thumbnail((max_w, max_h), resample)
                 self.logo_image = pil_to_photoimage(img)
+                self.logo_cache[resolved_logo] = self.logo_image
                 self.logo_image_label.config(image=self.logo_image, text="")
                 self.logo_image_label.image = self.logo_image
                 return
@@ -931,10 +992,12 @@ class AdminScreen(tk.Frame):
 
         # --- Header ---
         header = tk.Frame(root, bg=self.colors["background"])
+        header_top_pady = max(8, self.touch["section_pady"] - 8)
+        header_bottom_pady = max(12, self.touch["section_pady"] - 2)
         header.pack(
             fill="x",
             padx=max(20, self.touch["section_padx"]),
-            pady=max(20, self.touch["section_pady"]),
+            pady=(header_top_pady, header_bottom_pady),
         )
         tk.Label(
             header,

@@ -674,20 +674,20 @@ class CoinStockEditWindow(tk.Toplevel):
         self.touch = _get_touch_metrics(controller)
         self.title("Edit Coin Stock")
         self.configure(bg="#f0f4f8")
-        self.resizable(False, False)
+        self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
         self._center_window()
         self._build()
+        self.bind("<Escape>", lambda e: self.destroy())
 
     def _center_window(self):
-        desired_width = max(560, int(self.controller.winfo_screenwidth() * 0.52))
-        desired_height = max(360, int(self.controller.winfo_screenheight() * 0.50))
-        width, height = _fit_window_to_screen(self.controller, desired_width, desired_height)
-        parent = self.controller
-        x = parent.winfo_x() + (parent.winfo_width() // 2) - (width // 2)
-        y = parent.winfo_y() + (parent.winfo_height() // 2) - (height // 2)
-        self.geometry(f"{width}x{height}+{x}+{y}")
+        width = max(320, int(self.controller.winfo_screenwidth()))
+        height = max(240, int(self.controller.winfo_screenheight()))
+        try:
+            self.attributes("-fullscreen", True)
+        except Exception:
+            self.geometry(f"{width}x{height}+0+0")
 
     def _adjust_numeric_entry(self, entry, delta):
         try:
@@ -821,7 +821,7 @@ class CoinStockEditWindow(tk.Toplevel):
 
         tk.Button(
             btns,
-            text="Cancel",
+            text="Back",
             bg="#7f8c8d",
             fg="white",
             relief="flat",

@@ -14,6 +14,7 @@ from esp32_client import pulse_slot, send_command
 from fix_paths import get_absolute_path
 import copy
 from system_status_panel import SystemStatusPanel
+from display_profile import get_display_profile
 
 def pil_to_photoimage(pil_image):
     """Convert PIL Image to Tkinter PhotoImage using PPM format (no ImageTk needed)"""
@@ -25,22 +26,8 @@ def pil_to_photoimage(pil_image):
 
 def _get_touch_metrics(anchor):
     """Compute touch-friendly sizing from screen size and configured diagonal."""
-    controller = getattr(anchor, "controller", None)
-    cfg = getattr(controller, "config", {}) if controller is not None else {}
-
-    diagonal_inches = 13.3
-    try:
-        diagonal_inches = float((cfg or {}).get("display_diagonal_inches", diagonal_inches))
-    except Exception:
-        diagonal_inches = 13.3
-
-    try:
-        screen_w = max(1, int(anchor.winfo_screenwidth()))
-        screen_h = max(1, int(anchor.winfo_screenheight()))
-        diagonal_pixels = (screen_w ** 2 + screen_h ** 2) ** 0.5
-        ppi = diagonal_pixels / diagonal_inches if diagonal_inches > 0 else 165.0
-    except Exception:
-        ppi = 165.0
+    profile = get_display_profile(anchor)
+    ppi = profile["ppi"]
 
     touch_px = max(44, int(ppi * 0.30))
     base_font = max(10, int(touch_px * 0.28))
@@ -737,17 +724,19 @@ class AssignItemsScreen(tk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent, bg="#f0f4f8")
         self.controller = controller
+        self.display_profile = get_display_profile(controller)
         self.touch = _get_touch_metrics(controller)
         _ensure_assign_touch_styles(self, self.touch)
-        screen_height = controller.winfo_screenheight()
+        screen_height = self.display_profile["layout_height"]
         self.header_px = max(96, int(screen_height * 0.14))
-        self.touch_dead_zone_bottom_start_px = 1700
-        self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
+        self.touch_dead_zone_bottom_start_px = self.display_profile["touch_dead_zone_bottom_start_px"]
+        self.touch_dead_zone_bottom_px = self.display_profile["touch_dead_zone_bottom_px"]
         cfg = getattr(self.controller, "config", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
         self.machine_name = cfg.get("machine_name", "RAON")
         self.machine_subtitle = cfg.get("machine_subtitle", "Rapid Access Outlet for Electronic Necessities")
         self.header_logo_path = cfg.get("header_logo_path", "")
         self.logo_image = None
+        self.logo_cache = {}
         self.brand_bg = "#2222a8"
         self.header_fonts = {
             "machine_title": tkfont.Font(family="Helvetica", size=max(18, int(self.header_px * 0.30)), weight="bold"),
@@ -833,7 +822,7 @@ class AssignItemsScreen(tk.Frame):
         self.brand_subtitle_label.pack(anchor="w")
         self.load_header_logo()
 
-        status_height = self.touch_dead_zone_bottom_px if self.touch_dead_zone_bottom_px > 0 else max(70, int(screen_height * 0.08))
+        status_height = self.touch_dead_zone_bottom_px if self.touch_dead_zone_bottom_px > 0 else self.display_profile["status_panel_height_px"]
         self.status_zone = tk.Frame(self, bg="#111111", height=status_height)
         self.status_zone.pack(side="bottom", fill="x")
         self.status_zone.pack_propagate(False)
@@ -867,7 +856,7 @@ class AssignItemsScreen(tk.Frame):
         self.load_header_logo()
 
     def load_header_logo(self):
-        """Load header logo from config path; fallback to machine initials."""
+        """Load header logo from config path; fallback to common logo files/initials."""
         self.logo_image = None
         logo_path = str(self.header_logo_path or "").strip()
         resolved_logo = None
@@ -877,6 +866,20 @@ class AssignItemsScreen(tk.Frame):
             if not os.path.exists(resolved_logo):
                 resolved_logo = logo_path if os.path.exists(logo_path) else None
 
+        if not resolved_logo:
+            common_names = ["LOGO.png", "logo.png", "Logo.png", "LOGO.jpg", "logo.jpg"]
+            for fname in common_names:
+                test_path = get_absolute_path(fname)
+                if os.path.exists(test_path):
+                    resolved_logo = test_path
+                    break
+
+        if resolved_logo and resolved_logo in self.logo_cache:
+            self.logo_image = self.logo_cache[resolved_logo]
+            self.logo_image_label.config(image=self.logo_image, text="")
+            self.logo_image_label.image = self.logo_image
+            return
+
         if resolved_logo and PIL_AVAILABLE:
             try:
                 img = Image.open(resolved_logo)
@@ -885,6 +888,7 @@ class AssignItemsScreen(tk.Frame):
                 resample = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.LANCZOS
                 img.thumbnail((max_w, max_h), resample)
                 self.logo_image = pil_to_photoimage(img)
+                self.logo_cache[resolved_logo] = self.logo_image
                 self.logo_image_label.config(image=self.logo_image, text="")
                 self.logo_image_label.image = self.logo_image
                 return

@@ -6,6 +6,7 @@ from PIL import Image
 import io
 from system_status_panel import SystemStatusPanel
 from fix_paths import get_absolute_path
+from display_profile import get_display_profile
 
 def pil_to_photoimage(pil_image):
     """Convert PIL Image to Tkinter PhotoImage using PPM format (no ImageTk needed)"""
@@ -17,19 +18,8 @@ def pil_to_photoimage(pil_image):
 
 def _get_touch_metrics(controller):
     """Build touch sizing based on current screen density."""
-    diagonal_inches = 13.3
-    try:
-        diagonal_inches = float(getattr(controller, "config", {}).get("display_diagonal_inches", diagonal_inches))
-    except Exception:
-        diagonal_inches = 13.3
-
-    try:
-        screen_w = max(1, int(controller.winfo_screenwidth()))
-        screen_h = max(1, int(controller.winfo_screenheight()))
-        diagonal_pixels = (screen_w ** 2 + screen_h ** 2) ** 0.5
-        ppi = diagonal_pixels / diagonal_inches if diagonal_inches > 0 else 165.0
-    except Exception:
-        ppi = 165.0
+    profile = get_display_profile(controller)
+    ppi = profile["ppi"]
 
     touch_px = max(44, int(ppi * 0.30))
     button_font_size = max(12, int(touch_px * 0.30))
@@ -439,13 +429,12 @@ class KioskConfigWindow(tk.Toplevel):
         self.bind("<Escape>", lambda e: self.destroy())
 
     def _center_window(self):
-        desired_width = max(760, int(self.controller.winfo_screenwidth() * 0.72))
-        desired_height = max(700, int(self.controller.winfo_screenheight() * 0.82))
-        width, height = _fit_window_to_screen(self.controller, desired_width, desired_height)
-        parent = self.controller
-        x = parent.winfo_x() + (parent.winfo_width() // 2) - (width // 2)
-        y = parent.winfo_y() + (parent.winfo_height() // 2) - (height // 2)
-        self.geometry(f"{width}x{height}+{x}+{y}")
+        width = max(320, int(self.controller.winfo_screenwidth()))
+        height = max(240, int(self.controller.winfo_screenheight()))
+        try:
+            self.attributes("-fullscreen", True)
+        except Exception:
+            self.geometry(f"{width}x{height}+0+0")
 
     def create_widgets(self):
         cfg = getattr(self.controller, 'config', {})
@@ -858,12 +847,13 @@ class AdminScreen(tk.Frame):
         tk.Frame.__init__(self, parent, bg="#f0f4f8")  # Light background
         self.controller = controller
         self.scan_start_x = 0  # For drag-to-scroll
+        self.display_profile = get_display_profile(controller)
         self.touch = _get_touch_metrics(controller)
-        screen_height = controller.winfo_screenheight()
+        screen_height = self.display_profile["layout_height"]
         self.header_px = max(96, int(screen_height * 0.14))
-        self.touch_dead_zone_top_px = 100
-        self.touch_dead_zone_bottom_start_px = 1700
-        self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
+        self.touch_dead_zone_top_px = self.display_profile["touch_dead_zone_top_px"]
+        self.touch_dead_zone_bottom_start_px = self.display_profile["touch_dead_zone_bottom_start_px"]
+        self.touch_dead_zone_bottom_px = self.display_profile["touch_dead_zone_bottom_px"]
         cfg = getattr(self.controller, "config", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
         self.machine_name = cfg.get("machine_name", "RAON")
         self.machine_subtitle = cfg.get("machine_subtitle", "Rapid Access Outlet for Electronic Necessities")
@@ -944,7 +934,7 @@ class AdminScreen(tk.Frame):
         self._fit_brand_text()
 
         # Bottom system status area (replace black strip with live status panel).
-        status_height = self.touch_dead_zone_bottom_px if self.touch_dead_zone_bottom_px > 0 else max(70, int(screen_height * 0.08))
+        status_height = self.touch_dead_zone_bottom_px if self.touch_dead_zone_bottom_px > 0 else self.display_profile["status_panel_height_px"]
         self.status_zone = tk.Frame(self, bg="#111111", height=status_height)
         self.status_zone.pack(side="bottom", fill="x")
         self.status_zone.pack_propagate(False)
@@ -1111,15 +1101,6 @@ class AdminScreen(tk.Frame):
             command=lambda: self.controller.show_frame("SelectionScreen"),
         )
         back_btn.pack(side="right", padx=(0, 8))
-
-        # Kiosk configuration button (opens modal to edit header/footer)
-        kiosk_cfg_btn = self._build_touch_button(
-            actions_row,
-            text="Kiosk Config",
-            bg="#3498db",
-            command=self.open_kiosk_config,
-        )
-        kiosk_cfg_btn.pack(side="right", padx=(0, 8))
 
         # Button to open Assign Items screen (6x10 grid)
         assign_slots_btn = self._build_touch_button(

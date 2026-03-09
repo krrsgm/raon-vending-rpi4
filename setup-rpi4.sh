@@ -15,6 +15,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Check if running on Raspberry Pi
 if [[ ! -f /proc/device-tree/model ]]; then
     echo -e "${YELLOW}Warning: Not running on Raspberry Pi${NC}"
@@ -53,12 +55,18 @@ sudo raspi-config nonint do_spi 0
 sudo raspi-config nonint do_serial_hw 0
 
 echo -e "${GREEN}Step 4: Create application directory${NC}"
-APP_DIR="/home/$(whoami)/raon-vending"
-if [ ! -d "$APP_DIR" ]; then
-    mkdir -p "$APP_DIR"
-    echo "Created directory: $APP_DIR"
+TARGET_USER="${SUDO_USER:-$(whoami)}"
+if [ -f "$SCRIPT_DIR/main.py" ] && [ -f "$SCRIPT_DIR/requirements-rpi4.txt" ]; then
+    APP_DIR="$SCRIPT_DIR"
+    echo "Using repository directory: $APP_DIR"
 else
-    echo "Directory already exists: $APP_DIR"
+    APP_DIR="/home/${TARGET_USER}/raon-vending-rpi4"
+    if [ ! -d "$APP_DIR" ]; then
+        mkdir -p "$APP_DIR"
+        echo "Created directory: $APP_DIR"
+    else
+        echo "Directory already exists: $APP_DIR"
+    fi
 fi
 
 echo -e "${GREEN}Step 5: Clone or update repository${NC}"
@@ -78,25 +86,39 @@ pip3 install --upgrade pip
 pip3 install -r requirements-rpi4.txt
 
 echo -e "${GREEN}Step 7: Fix GPIO permissions${NC}"
-sudo usermod -a -G gpio $(whoami)
+sudo usermod -a -G gpio "$TARGET_USER"
 echo "GPIO permissions updated (may require logout/login)"
 
 echo -e "${GREEN}Step 8: Create systemd service (optional)${NC}"
-sudo tee /etc/systemd/system/raon-vending.service > /dev/null << 'EOF'
+KIOSK_START="${APP_DIR}/deploy/start-kiosk-wayland.sh"
+if [ ! -f "$KIOSK_START" ]; then
+    echo -e "${RED}Missing kiosk startup script:${NC} $KIOSK_START"
+    exit 1
+fi
+sudo sed -i 's/\r$//' "$KIOSK_START"
+sudo chmod +x "$KIOSK_START"
+
+sudo tee /etc/systemd/system/raon-vending.service > /dev/null << EOF
 [Unit]
 Description=RAON Vending Machine Kiosk
-After=network.target
+After=network.target display-manager.service graphical.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/raon-vending
-ExecStart=/usr/bin/python3 main.py
+User=${TARGET_USER}
+Group=${TARGET_USER}
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/${TARGET_USER}/.Xauthority"
+WorkingDirectory=${APP_DIR}
+ExecStart=/bin/bash ${KIOSK_START}
 Restart=on-failure
-RestartSec=10
+RestartSec=5
+KillMode=process
+StandardOutput=journal
+StandardError=journal
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=graphical.target
 EOF
 
 echo "Service file created. To enable:"

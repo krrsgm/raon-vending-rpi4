@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+from tkinter import font as tkfont
 try:
     from PIL import Image
     PIL_AVAILABLE = True
@@ -12,6 +13,7 @@ import time
 from esp32_client import pulse_slot, send_command
 from fix_paths import get_absolute_path
 import copy
+from system_status_panel import SystemStatusPanel
 
 def pil_to_photoimage(pil_image):
     """Convert PIL Image to Tkinter PhotoImage using PPM format (no ImageTk needed)"""
@@ -690,6 +692,21 @@ class AssignItemsScreen(tk.Frame):
         self.controller = controller
         self.touch = _get_touch_metrics(controller)
         _ensure_assign_touch_styles(self, self.touch)
+        screen_height = controller.winfo_screenheight()
+        self.header_px = max(96, int(screen_height * 0.14))
+        self.touch_dead_zone_bottom_start_px = 1700
+        self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
+        cfg = getattr(self.controller, "config", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
+        self.machine_name = cfg.get("machine_name", "RAON")
+        self.machine_subtitle = cfg.get("machine_subtitle", "Rapid Access Outlet for Electronic Necessities")
+        self.header_logo_path = cfg.get("header_logo_path", "")
+        self.logo_image = None
+        self.brand_bg = "#2222a8"
+        self.header_fonts = {
+            "machine_title": tkfont.Font(family="Helvetica", size=max(18, int(self.header_px * 0.30)), weight="bold"),
+            "machine_subtitle": tkfont.Font(family="Helvetica", size=max(10, int(self.header_px * 0.16))),
+            "logo_placeholder": tkfont.Font(family="Helvetica", size=max(14, int(self.header_px * 0.28)), weight="bold"),
+        }
         # Each slot contains a dict with key 'terms' -> list of term-specific assignments
         # e.g. {'terms': [term1_dict_or_none, term2_dict_or_none, term3_dict_or_none]}
         self.slots = [{'terms': [None] * self.TERM_COUNT} for _ in range(self.MAX_SLOTS)]
@@ -724,11 +741,121 @@ class AssignItemsScreen(tk.Frame):
         self._save_path = os.path.join(self._data_path, self.SAVE_FILENAME)
         self._custom_save_path = os.path.join(self._data_path, self.CUSTOM_SAVE_FILENAME)
 
+        self.brand_header = tk.Frame(self, bg=self.brand_bg, height=self.header_px)
+        self.brand_header.pack(side="top", fill="x")
+        self.brand_header.pack_propagate(False)
+
+        brand_left = tk.Frame(self.brand_header, bg=self.brand_bg)
+        brand_left.pack(side="left", padx=12, pady=8)
+
+        logo_frame = tk.Frame(
+            brand_left,
+            bg=self.brand_bg,
+            width=160,
+            height=int(self.header_px * 0.82),
+        )
+        logo_frame.pack(side="left", padx=(0, 12))
+        logo_frame.pack_propagate(False)
+
+        self.logo_image_label = tk.Label(logo_frame, bg=self.brand_bg, fg="white")
+        self.logo_image_label.pack(expand=True)
+
+        logo_text_frame = tk.Frame(brand_left, bg=self.brand_bg)
+        logo_text_frame.pack(anchor="w")
+
+        self.brand_title_label = tk.Label(
+            logo_text_frame,
+            text=self.machine_name,
+            bg=self.brand_bg,
+            fg="white",
+            font=self.header_fonts["machine_title"],
+            anchor="w",
+            justify="left",
+        )
+        self.brand_title_label.pack(anchor="w")
+
+        self.brand_subtitle_label = tk.Label(
+            logo_text_frame,
+            text=self.machine_subtitle,
+            bg=self.brand_bg,
+            fg="white",
+            font=self.header_fonts["machine_subtitle"],
+            anchor="w",
+            justify="left",
+        )
+        self.brand_subtitle_label.pack(anchor="w")
+        self.load_header_logo()
+
+        status_height = self.touch_dead_zone_bottom_px if self.touch_dead_zone_bottom_px > 0 else max(70, int(screen_height * 0.08))
+        self.status_zone = tk.Frame(self, bg="#111111", height=status_height)
+        self.status_zone.pack(side="bottom", fill="x")
+        self.status_zone.pack_propagate(False)
+        self.status_panel = SystemStatusPanel(self.status_zone, controller=self.controller)
+        self.status_panel.pack(fill="both", expand=True)
+
+        self.touch_container = tk.Frame(self, bg="#f0f4f8")
+        self.touch_container.pack(fill="both", expand=True)
+
         self._create_widgets()
         self.load_slots()
+        self.bind("<<ShowFrame>>", self._on_show_frame)
+
+    def _on_show_frame(self, event=None):
+        self._refresh_brand_header()
+        try:
+            self.status_panel.refresh_display()
+        except Exception:
+            pass
+
+    def _refresh_brand_header(self):
+        cfg = getattr(self.controller, "config", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
+        self.machine_name = cfg.get("machine_name", self.machine_name)
+        self.machine_subtitle = cfg.get("machine_subtitle", self.machine_subtitle)
+        self.header_logo_path = cfg.get("header_logo_path", self.header_logo_path)
+        try:
+            self.brand_title_label.config(text=self.machine_name)
+            self.brand_subtitle_label.config(text=self.machine_subtitle)
+        except Exception:
+            pass
+        self.load_header_logo()
+
+    def load_header_logo(self):
+        """Load header logo from config path; fallback to machine initials."""
+        self.logo_image = None
+        logo_path = str(self.header_logo_path or "").strip()
+        resolved_logo = None
+
+        if logo_path:
+            resolved_logo = get_absolute_path(logo_path)
+            if not os.path.exists(resolved_logo):
+                resolved_logo = logo_path if os.path.exists(logo_path) else None
+
+        if resolved_logo and PIL_AVAILABLE:
+            try:
+                img = Image.open(resolved_logo)
+                max_h = int(self.header_px * 0.80)
+                max_w = 180
+                resample = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.LANCZOS
+                img.thumbnail((max_w, max_h), resample)
+                self.logo_image = pil_to_photoimage(img)
+                self.logo_image_label.config(image=self.logo_image, text="")
+                self.logo_image_label.image = self.logo_image
+                return
+            except Exception:
+                pass
+
+        fallback = (self.machine_name[:1] if self.machine_name else "R").upper()
+        self.logo_image_label.config(
+            image="",
+            text=fallback,
+            font=self.header_fonts["logo_placeholder"],
+            fg="white",
+            bg=self.brand_bg,
+        )
 
     def _create_widgets(self):
-        header = ttk.Frame(self, padding=self.touch["section_pad"])
+        root = self.touch_container
+        header = ttk.Frame(root, padding=self.touch["section_pad"])
         header.pack(fill='x')
 
         # Keep controls visible on larger font scales by splitting header into rows.
@@ -777,7 +904,7 @@ class AssignItemsScreen(tk.Frame):
         ttk.Button(btn_frame, text="Clear All", style="AssignTouch.TButton", command=self.clear_all).pack(side='left', padx=6)
 
         # Scrollable area for grid (vertical only)
-        canvas_container = ttk.Frame(self)
+        canvas_container = ttk.Frame(root)
         canvas_container.pack(fill='both', expand=True, padx=self.touch["section_pad"], pady=self.touch["row_pady"])
 
         self.canvas = tk.Canvas(canvas_container, bg="#f0f4f8", highlightthickness=0)

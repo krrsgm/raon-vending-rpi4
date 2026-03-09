@@ -4,6 +4,7 @@ import json
 import os
 from PIL import Image
 import io
+from system_status_panel import SystemStatusPanel
 
 def pil_to_photoimage(pil_image):
     """Convert PIL Image to Tkinter PhotoImage using PPM format (no ImageTk needed)"""
@@ -769,9 +770,15 @@ class AdminScreen(tk.Frame):
         self.scan_start_x = 0  # For drag-to-scroll
         self.touch = _get_touch_metrics(controller)
         screen_height = controller.winfo_screenheight()
+        self.header_px = max(96, int(screen_height * 0.14))
         self.touch_dead_zone_top_px = 100
         self.touch_dead_zone_bottom_start_px = 1700
         self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
+        cfg = getattr(self.controller, "config", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
+        self.machine_name = cfg.get("machine_name", "RAON")
+        self.machine_subtitle = cfg.get("machine_subtitle", "Rapid Access Outlet for Electronic Necessities")
+        self.header_logo_path = cfg.get("header_logo_path", "")
+        self.logo_image = None
 
         self.fonts = {
             "header": tkfont.Font(family="Helvetica", size=max(22, self.touch["button_font_size"] + 10), weight="bold"),
@@ -779,6 +786,9 @@ class AdminScreen(tk.Frame):
             "item_details": tkfont.Font(family="Helvetica", size=max(12, self.touch["field_font_size"])),
             "item_description": tkfont.Font(family="Helvetica", size=max(11, self.touch["field_font_size"] - 1)),
             "button": tkfont.Font(family="Helvetica", size=max(12, self.touch["button_font_size"]), weight="bold"),
+            "machine_title": tkfont.Font(family="Helvetica", size=max(18, int(self.header_px * 0.30)), weight="bold"),
+            "machine_subtitle": tkfont.Font(family="Helvetica", size=max(10, int(self.header_px * 0.16))),
+            "logo_placeholder": tkfont.Font(family="Helvetica", size=max(14, int(self.header_px * 0.28)), weight="bold"),
         }
         self.colors = {
             "background": "#f0f4f8",
@@ -788,25 +798,69 @@ class AdminScreen(tk.Frame):
             "edit_btn_bg": "#3498db",
             "remove_btn_bg": "#e74c3c",
             "btn_fg": "#ffffff",
+            "brand_bg": "#2222a8",
         }
 
-        # Non-touch top area.
-        self.top_dead_zone = tk.Frame(self, bg="#000000", height=self.touch_dead_zone_top_px)
-        self.top_dead_zone.pack(side="top", fill="x")
-        self.top_dead_zone.pack_propagate(False)
+        # Kiosk-like branding header (logo + machine text).
+        self.brand_header = tk.Frame(self, bg=self.colors["brand_bg"], height=self.header_px)
+        self.brand_header.pack(side="top", fill="x")
+        self.brand_header.pack_propagate(False)
+
+        brand_left = tk.Frame(self.brand_header, bg=self.colors["brand_bg"])
+        brand_left.pack(side="left", padx=12, pady=8)
+
+        logo_frame = tk.Frame(
+            brand_left,
+            bg=self.colors["brand_bg"],
+            width=160,
+            height=int(self.header_px * 0.82),
+        )
+        logo_frame.pack(side="left", padx=(0, 12))
+        logo_frame.pack_propagate(False)
+
+        self.logo_image_label = tk.Label(logo_frame, bg=self.colors["brand_bg"], fg="white")
+        self.logo_image_label.pack(expand=True)
+
+        logo_text_frame = tk.Frame(brand_left, bg=self.colors["brand_bg"])
+        logo_text_frame.pack(anchor="w")
+
+        self.brand_title_label = tk.Label(
+            logo_text_frame,
+            text=self.machine_name,
+            bg=self.colors["brand_bg"],
+            fg="white",
+            font=self.fonts["machine_title"],
+            anchor="w",
+            justify="left",
+        )
+        self.brand_title_label.pack(anchor="w")
+
+        self.brand_subtitle_label = tk.Label(
+            logo_text_frame,
+            text=self.machine_subtitle,
+            bg=self.colors["brand_bg"],
+            fg="white",
+            font=self.fonts["machine_subtitle"],
+            anchor="w",
+            justify="left",
+        )
+        self.brand_subtitle_label.pack(anchor="w")
+        self.load_header_logo()
+
+        # Bottom system status area (replace black strip with live status panel).
+        status_height = self.touch_dead_zone_bottom_px if self.touch_dead_zone_bottom_px > 0 else max(70, int(screen_height * 0.08))
+        self.status_zone = tk.Frame(self, bg="#111111", height=status_height)
+        self.status_zone.pack(side="bottom", fill="x")
+        self.status_zone.pack_propagate(False)
+        self.status_panel = SystemStatusPanel(self.status_zone, controller=self.controller)
+        self.status_panel.pack(fill="both", expand=True)
 
         # Touch-active area for all admin controls/content.
         self.touch_container = tk.Frame(self, bg=self.colors["background"])
         self.touch_container.pack(fill="both", expand=True)
 
-        # Non-touch bottom area.
-        if self.touch_dead_zone_bottom_px > 0:
-            self.bottom_dead_zone = tk.Frame(self, bg="#000000", height=self.touch_dead_zone_bottom_px)
-            self.bottom_dead_zone.pack(side="bottom", fill="x")
-            self.bottom_dead_zone.pack_propagate(False)
-
         self.create_widgets()
-        self.bind("<<ShowFrame>>", lambda e: self.populate_items())
+        self.bind("<<ShowFrame>>", self._on_show_frame)
 
         exit_label = tk.Label(
             self.touch_container,
@@ -816,6 +870,48 @@ class AdminScreen(tk.Frame):
             bg="#f0f4f8",
         )
         exit_label.pack(side="bottom", pady=max(20, self.touch["row_pady"] + 8))
+
+    def _on_show_frame(self, event=None):
+        self._refresh_brand_header()
+        self.populate_items()
+
+    def _refresh_brand_header(self):
+        cfg = getattr(self.controller, "config", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
+        self.machine_name = cfg.get("machine_name", self.machine_name)
+        self.machine_subtitle = cfg.get("machine_subtitle", self.machine_subtitle)
+        self.header_logo_path = cfg.get("header_logo_path", self.header_logo_path)
+        try:
+            self.brand_title_label.config(text=self.machine_name)
+            self.brand_subtitle_label.config(text=self.machine_subtitle)
+        except Exception:
+            pass
+        self.load_header_logo()
+
+    def load_header_logo(self):
+        """Load header logo from config path; fallback to machine initials."""
+        self.logo_image = None
+        logo_path = str(self.header_logo_path or "").strip()
+        if logo_path and os.path.exists(logo_path):
+            try:
+                img = Image.open(logo_path)
+                max_h = int(self.header_px * 0.80)
+                max_w = 180
+                img.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
+                self.logo_image = pil_to_photoimage(img)
+                self.logo_image_label.config(image=self.logo_image, text="")
+                self.logo_image_label.image = self.logo_image
+                return
+            except Exception as e:
+                print(f"[AdminScreen] Failed to load header logo: {e}")
+
+        fallback = (self.machine_name[:1] if self.machine_name else "R").upper()
+        self.logo_image_label.config(
+            image="",
+            text=fallback,
+            font=self.fonts["logo_placeholder"],
+            fg="white",
+            bg=self.colors["brand_bg"],
+        )
 
     def _build_touch_button(self, parent, text, bg, command):
         return tk.Button(

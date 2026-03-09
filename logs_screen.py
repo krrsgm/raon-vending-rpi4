@@ -6,10 +6,28 @@ Allows viewing/exporting log files for analysis.
 """
 
 import tkinter as tk
+from tkinter import font as tkfont
 from tkinter import ttk, messagebox, filedialog
 from daily_sales_logger import get_logger
 from datetime import datetime, timedelta
 import os
+import io
+from fix_paths import get_absolute_path
+from system_status_panel import SystemStatusPanel
+
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except Exception:
+    PIL_AVAILABLE = False
+
+
+def pil_to_photoimage(pil_image):
+    """Convert PIL Image to Tkinter PhotoImage using PPM format (no ImageTk needed)."""
+    with io.BytesIO() as output:
+        pil_image.save(output, format="PPM")
+        data = output.getvalue()
+    return tk.PhotoImage(data=data)
 
 
 def _get_touch_metrics(anchor):
@@ -57,13 +75,73 @@ class LogsScreen(tk.Frame):
         self.logger = get_logger()
         self.touch = _get_touch_metrics(controller)
         self._configure_styles()
-        
-        self.grid_rowconfigure(1, weight=1)
+        screen_height = controller.winfo_screenheight()
+        self.header_px = max(96, int(screen_height * 0.14))
+        self.touch_dead_zone_bottom_start_px = 1700
+        self.touch_dead_zone_bottom_px = max(0, int(screen_height - self.touch_dead_zone_bottom_start_px))
+        cfg = getattr(self.controller, "config", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
+        self.machine_name = cfg.get("machine_name", "RAON")
+        self.machine_subtitle = cfg.get("machine_subtitle", "Rapid Access Outlet for Electronic Necessities")
+        self.header_logo_path = cfg.get("header_logo_path", "")
+        self.logo_image = None
+        self.brand_bg = "#2222a8"
+        self.header_fonts = {
+            "machine_title": tkfont.Font(family="Helvetica", size=max(18, int(self.header_px * 0.30)), weight="bold"),
+            "machine_subtitle": tkfont.Font(family="Helvetica", size=max(10, int(self.header_px * 0.16))),
+            "logo_placeholder": tkfont.Font(family="Helvetica", size=max(14, int(self.header_px * 0.28)), weight="bold"),
+        }
+
+        self.grid_rowconfigure(2, weight=1)
         self.grid_columnconfigure(0, weight=1)
+
+        self.brand_header = tk.Frame(self, bg=self.brand_bg, height=self.header_px)
+        self.brand_header.grid(row=0, column=0, sticky="ew")
+        self.brand_header.grid_propagate(False)
+
+        brand_left = tk.Frame(self.brand_header, bg=self.brand_bg)
+        brand_left.pack(side="left", padx=12, pady=8)
+
+        logo_frame = tk.Frame(
+            brand_left,
+            bg=self.brand_bg,
+            width=160,
+            height=int(self.header_px * 0.82),
+        )
+        logo_frame.pack(side="left", padx=(0, 12))
+        logo_frame.pack_propagate(False)
+
+        self.logo_image_label = tk.Label(logo_frame, bg=self.brand_bg, fg="white")
+        self.logo_image_label.pack(expand=True)
+
+        logo_text_frame = tk.Frame(brand_left, bg=self.brand_bg)
+        logo_text_frame.pack(anchor="w")
+
+        self.brand_title_label = tk.Label(
+            logo_text_frame,
+            text=self.machine_name,
+            bg=self.brand_bg,
+            fg="white",
+            font=self.header_fonts["machine_title"],
+            anchor="w",
+            justify="left",
+        )
+        self.brand_title_label.pack(anchor="w")
+
+        self.brand_subtitle_label = tk.Label(
+            logo_text_frame,
+            text=self.machine_subtitle,
+            bg=self.brand_bg,
+            fg="white",
+            font=self.header_fonts["machine_subtitle"],
+            anchor="w",
+            justify="left",
+        )
+        self.brand_subtitle_label.pack(anchor="w")
+        self.load_header_logo()
         
         # Title bar
         title_frame = tk.Frame(self, bg="#2c3e50", height=60)
-        title_frame.grid(row=0, column=0, sticky="ew")
+        title_frame.grid(row=1, column=0, sticky="ew")
         title_frame.grid_propagate(False)
         
         title_label = tk.Label(
@@ -79,7 +157,7 @@ class LogsScreen(tk.Frame):
         self.notebook = ttk.Notebook(self)
         self.notebook.configure(style="LogsTouch.TNotebook")
         self.notebook.grid(
-            row=1,
+            row=2,
             column=0,
             sticky="nsew",
             padx=self.touch["section_pad"],
@@ -104,7 +182,7 @@ class LogsScreen(tk.Frame):
         # Bottom button bar
         button_frame = tk.Frame(self, bg="#f0f4f8")
         button_frame.grid(
-            row=2,
+            row=3,
             column=0,
             sticky="ew",
             padx=self.touch["section_pad"],
@@ -134,6 +212,74 @@ class LogsScreen(tk.Frame):
             command=lambda: controller.show_frame("AdminScreen")
         )
         back_btn.pack(side="right", padx=5)
+        status_height = self.touch_dead_zone_bottom_px if self.touch_dead_zone_bottom_px > 0 else max(70, int(screen_height * 0.08))
+        self.status_zone = tk.Frame(self, bg="#111111", height=status_height)
+        self.status_zone.grid(row=4, column=0, sticky="ew")
+        self.status_zone.grid_propagate(False)
+        self.status_panel = SystemStatusPanel(self.status_zone, controller=self.controller)
+        self.status_panel.pack(fill="both", expand=True)
+        self.bind("<<ShowFrame>>", self._on_show_frame)
+
+    def _on_show_frame(self, event=None):
+        self._refresh_brand_header()
+        try:
+            self.status_panel.refresh_display()
+        except Exception:
+            pass
+        try:
+            self.refresh_summary()
+        except Exception:
+            pass
+        try:
+            self.refresh_log_list()
+        except Exception:
+            pass
+
+    def _refresh_brand_header(self):
+        cfg = getattr(self.controller, "config", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
+        self.machine_name = cfg.get("machine_name", self.machine_name)
+        self.machine_subtitle = cfg.get("machine_subtitle", self.machine_subtitle)
+        self.header_logo_path = cfg.get("header_logo_path", self.header_logo_path)
+        try:
+            self.brand_title_label.config(text=self.machine_name)
+            self.brand_subtitle_label.config(text=self.machine_subtitle)
+        except Exception:
+            pass
+        self.load_header_logo()
+
+    def load_header_logo(self):
+        """Load header logo from config path; fallback to machine initials."""
+        self.logo_image = None
+        logo_path = str(self.header_logo_path or "").strip()
+        resolved_logo = None
+
+        if logo_path:
+            resolved_logo = get_absolute_path(logo_path)
+            if not os.path.exists(resolved_logo):
+                resolved_logo = logo_path if os.path.exists(logo_path) else None
+
+        if resolved_logo and PIL_AVAILABLE:
+            try:
+                img = Image.open(resolved_logo)
+                max_h = int(self.header_px * 0.80)
+                max_w = 180
+                resample = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.LANCZOS
+                img.thumbnail((max_w, max_h), resample)
+                self.logo_image = pil_to_photoimage(img)
+                self.logo_image_label.config(image=self.logo_image, text="")
+                self.logo_image_label.image = self.logo_image
+                return
+            except Exception:
+                pass
+
+        fallback = (self.machine_name[:1] if self.machine_name else "R").upper()
+        self.logo_image_label.config(
+            image="",
+            text=fallback,
+            font=self.header_fonts["logo_placeholder"],
+            fg="white",
+            bg=self.brand_bg,
+        )
 
     def _configure_styles(self):
         try:

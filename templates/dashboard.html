@@ -372,7 +372,7 @@
 
         /* Kiosk notice banner (shows after admin acknowledgement) */
         .kiosk-notice-banner {
-            display: none;
+            display: flex;
             background: #fff8e1;
             border: 2px solid #f1c40f;
             border-radius: 10px;
@@ -392,26 +392,20 @@
             flex-wrap: wrap;
         }
 
-        /* Persistent clear button (always visible) */
-        .floating-clear-btn {
-            position: fixed;
-            right: 18px;
-            bottom: 18px;
-            z-index: 2800;
-            padding: 12px 18px;
-            font-size: 15px;
-            font-weight: 800;
-            background: #1d976c;
-            color: #fff;
+        .kiosk-notice-close {
+            background: none;
             border: none;
-            border-radius: 10px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+            color: #7a5a00;
+            font-size: 20px;
+            font-weight: 900;
             cursor: pointer;
+            padding: 4px 8px;
         }
 
-        .floating-clear-btn:hover {
-            background: #15805a;
+        .kiosk-notice-close:hover {
+            color: #c0392b;
         }
+
 
         /* Fullscreen modal for dispense timeout */
         .timeout-modal {
@@ -551,14 +545,9 @@
     <div class="container">
         <div id="kioskNoticeBanner" class="kiosk-notice-banner">
             <div><strong>Kiosk notice active:</strong> <span id="kioskNoticeMessage">Please wait. Admin is on the way to fix the machine.</span></div>
-            <div class="kiosk-notice-actions">
-                <button type="button" class="timeout-secondary-btn" onclick="clearKioskAdminNotice()">Clear notice on kiosk</button>
-            </div>
+            <button type="button" class="kiosk-notice-close" onclick="clearKioskAdminNotice()" title="Dismiss notice on kiosk">×</button>
         </div>
     </div>
-
-    <!-- Persistent clear button -->
-    <button type="button" class="floating-clear-btn" onclick="clearKioskAdminNotice()" title="Clear kiosk admin notice (always available)">Clear Kiosk Notice</button>
 
     <!-- Fullscreen pop-out for dispense timeout -->
     <div id="dispenseTimeoutModal" class="timeout-modal">
@@ -936,10 +925,16 @@
 
                 const banner = document.getElementById('kioskNoticeBanner');
                 const msgEl = document.getElementById('kioskNoticeMessage');
-                if (banner) banner.style.display = kioskNoticeActive ? 'flex' : 'none';
+                const clearBtn = banner ? banner.querySelector('.kiosk-notice-close') : null;
+                if (banner) banner.style.display = 'flex';
                 if (msgEl) msgEl.textContent = kioskNoticeActive
                     ? (kioskNoticeMessage || 'Please wait. Admin is on the way to fix the machine.')
-                    : '';
+                    : 'No kiosk notice active';
+                if (clearBtn) {
+                    clearBtn.disabled = !kioskNoticeActive;
+                    clearBtn.style.opacity = kioskNoticeActive ? '1' : '0.4';
+                    clearBtn.title = kioskNoticeActive ? 'Dismiss notice on kiosk' : 'No active notice';
+                }
             } catch (error) {
                 console.error('Error loading kiosk notice state:', error);
             }

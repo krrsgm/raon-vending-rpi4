@@ -454,6 +454,7 @@
         <div class="admin-notice-card">
             <div class="admin-notice-title" id="adminNoticeTitle">DISPENSE ERROR</div>
             <div class="admin-notice-message" id="adminNoticeMessage">Please wait. Admin is on the way to fix the machine.</div>
+            <button class="admin-notice-btn" id="adminNoticeCloseBtn">Okay</button>
         </div>
     </div>
     
@@ -640,6 +641,21 @@
                 console.error('Error polling kiosk notice state:', error);
             }
         }
+
+        async function dismissAdminNotice() {
+            try {
+                await fetch('/api/kiosk-admin-notice/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                pollKioskNoticeState();
+            } catch (error) {
+                console.error('Error dismissing admin notice:', error);
+            }
+        }
+
+        document.getElementById('adminNoticeCloseBtn')?.addEventListener('click', dismissAdminNotice);
 
         pollKioskNoticeState();
         setInterval(pollKioskNoticeState, 3000);

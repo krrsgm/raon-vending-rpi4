@@ -327,14 +327,16 @@
         }
 
         /* Block interaction behind admin notice */
-        body.interaction-blocked > *:not(.admin-notice-modal) {
+        body.interaction-blocked {
             pointer-events: none !important;
             user-select: none !important;
-            filter: blur(1px);
-        }
-
-        body.interaction-blocked {
             overflow: hidden;
+        }
+        body.interaction-blocked #adminNoticeModal {
+            pointer-events: auto !important;
+        }
+        body.interaction-blocked #adminNoticeModal * {
+            pointer-events: auto !important;
         }
 
         @media (max-width: 768px) {
@@ -591,8 +593,8 @@
         async function pollKioskNoticeState() {
             try {
                 const [timeoutRes, adminRes] = await Promise.all([
-                    fetch('/api/dispense-timeout-alert'),
-                    fetch('/api/kiosk-admin-notice')
+                    fetch('/api/dispense-timeout-alert?t=' + Date.now(), { cache: 'no-store' }),
+                    fetch('/api/kiosk-admin-notice?t=' + Date.now(), { cache: 'no-store' })
                 ]);
                 const timeoutData = await timeoutRes.json();
                 const adminData = await adminRes.json();

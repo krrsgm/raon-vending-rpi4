@@ -1290,6 +1290,7 @@ def api_realtime_status():
                 'low_stock_items': low_stock_entries,
                 'today_transactions': today_summary.get('total_transactions', 0),
                 'today_sales': today_summary.get('total_sales', 0.0),
+                'today_net_collected': today_summary.get('total_net_collected', today_summary.get('total_sales', 0.0)),
                 'items_sold_today': today_items,
                 'coin_change_stock': coin_stock,
                 'active_term': term_idx,

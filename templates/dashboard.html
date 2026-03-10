@@ -517,6 +517,7 @@
         <h1>RAON Dashboard</h1>
         <div class="header-right">
             <div class="refresh-time">Last update: <span id="lastUpdate">now</span></div>
+            <button type="button" class="admin-clear-btn" onclick="clearKioskAdminNotice()" title="Clear kiosk admin notice anytime">Clear Kiosk Notice</button>
             <button type="button" id="enableTimeoutAlarmBtn" class="alarm-enable-btn" onclick="enableTimeoutAlarmSound()">Enable Alarm Sound</button>
             <div id="timeoutAlarmEnabledText" class="alarm-enabled-text">Alarm sound enabled for this session.</div>
         </div>
@@ -1600,7 +1601,7 @@
                         ${lowStockItems.length > 0 ? `<div class="low-stock-alert"><div style="font-weight: bold; color: #c0392b;">Low Stock Alert:</div><div class="alert-items">${lowStockItems.map(escapeHtml).join(', ')}</div></div>` : ''}
                         <div class="machine-stats">
                             <div class="stat-box"><div class="stat-label-small">Total Items</div><div class="stat-value-small">${machine.total_items}</div></div>
-                            <div class="stat-box"><div class="stat-label-small">Today's Sales</div><div class="stat-value-small">\u20B1${Number(machine.today_sales || 0).toFixed(2)}</div></div>
+                            <div class="stat-box"><div class="stat-label-small">Today's Net</div><div class="stat-value-small">\u20B1${Number(machine.today_net_collected ?? machine.today_sales ?? 0).toFixed(2)}</div></div>
                         </div>
                         <div class="coin-stock-box">
                             <div class="items-sold-title">Change Coins (Hopper)</div>

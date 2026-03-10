@@ -1,4 +1,4 @@
-import tkinter as tk
+﻿import tkinter as tk
 import time
 import threading
 from kiosk_app import KioskFrame
@@ -82,6 +82,9 @@ class MainApp(tk.Tk):
         self._customer_idle_after_id = None
         self._customer_idle_timeout_ms = 60000  # Default 60 seconds
         self._customer_session_frames = {"KioskFrame", "ItemScreen", "CartScreen"}
+        self._dispense_notice_window = None
+        self._dispense_notice_title_label = None
+        self._dispense_notice_message_label = None
 
         # Start in fullscreen mode for kiosk display
         self.is_fullscreen = True
@@ -760,9 +763,9 @@ class MainApp(tk.Tk):
     def _on_dispense_timeout(self, slot_id, elapsed_time):
         """Handle dispense timeout - show alert dialog."""
         self._publish_dispense_timeout_alert(slot_id, elapsed_time)
-        self.show_dispense_alert(
-            title="⚠️ DISPENSE ERROR",
-            message=f"Item from Slot {slot_id}\nfailed to dispense!\n\nTimeout after {elapsed_time:.1f}s",
+        self.show_persistent_dispense_notice(
+            title="DISPENSE ERROR",
+            message=f"Item from Slot {slot_id} failed to dispense.\nIR sensor did not detect an item after {elapsed_time:.1f}s.",
             severity="error"
         )
     
@@ -772,7 +775,7 @@ class MainApp(tk.Tk):
         # IR data is intentionally logged only on dispense callbacks.
         self._log_ir_transaction_snapshot()
         if success:
-            print(f"[MainApp] ✓ Slot {slot_id} dispensed successfully")
+            print(f"[MainApp] âœ“ Slot {slot_id} dispensed successfully")
             try:
                 logger = get_logger()
                 logger.log_event(
@@ -782,7 +785,7 @@ class MainApp(tk.Tk):
             except Exception:
                 pass
         else:
-            print(f"[MainApp] ✗ Slot {slot_id} dispense FAILED")
+            print(f"[MainApp] âœ— Slot {slot_id} dispense FAILED")
             try:
                 logger = get_logger()
                 logger.log_event(
@@ -823,6 +826,88 @@ class MainApp(tk.Tk):
                 self.after(0, _show)
         except Exception as e:
             print(f"[MainApp] Failed to show dispense alert: {e}")
+
+    def show_persistent_dispense_notice(self, title, message, severity="warning"):
+        """Show or update a non-dismissible notice window (no OK button)."""
+        palette = {
+            "error": {"bg": "#f8d7da", "border": "#c0392b", "fg": "#7f1d1d"},
+            "warning": {"bg": "#fff3cd", "border": "#d4a017", "fg": "#6b4e00"},
+            "info": {"bg": "#dbeafe", "border": "#1d4ed8", "fg": "#1e3a8a"},
+        }
+        style = palette.get(str(severity or "warning").lower(), palette["warning"])
+
+        def _show():
+            try:
+                win = self._dispense_notice_window
+                if not win or not win.winfo_exists():
+                    win = tk.Toplevel(self)
+                    win.title("Dispense Notice")
+                    win.transient(self)
+                    win.attributes("-topmost", True)
+                    win.resizable(False, False)
+                    try:
+                        win.protocol("WM_DELETE_WINDOW", lambda: None)
+                    except Exception:
+                        pass
+
+                    frame = tk.Frame(
+                        win,
+                        bg=style["bg"],
+                        bd=4,
+                        relief="solid",
+                        highlightbackground=style["border"],
+                        highlightcolor=style["border"],
+                        highlightthickness=3
+                    )
+                    frame.pack(fill="both", expand=True)
+
+                    self._dispense_notice_title_label = tk.Label(
+                        frame,
+                        text=str(title),
+                        bg=style["bg"],
+                        fg=style["fg"],
+                        font=("Arial", 24, "bold"),
+                        pady=16
+                    )
+                    self._dispense_notice_title_label.pack(fill="x")
+
+                    self._dispense_notice_message_label = tk.Label(
+                        frame,
+                        text=str(message),
+                        bg=style["bg"],
+                        fg=style["fg"],
+                        font=("Arial", 18, "bold"),
+                        justify="center",
+                        wraplength=760,
+                        padx=24,
+                        pady=18
+                    )
+                    self._dispense_notice_message_label.pack(fill="both", expand=True)
+
+                    self.update_idletasks()
+                    width, height = 840, 360
+                    x = max(0, (self.winfo_screenwidth() - width) // 2)
+                    y = max(0, (self.winfo_screenheight() - height) // 2)
+                    win.geometry(f"{width}x{height}+{x}+{y}")
+                    self._dispense_notice_window = win
+
+                if self._dispense_notice_title_label and self._dispense_notice_title_label.winfo_exists():
+                    self._dispense_notice_title_label.configure(text=str(title), bg=style["bg"], fg=style["fg"])
+                if self._dispense_notice_message_label and self._dispense_notice_message_label.winfo_exists():
+                    self._dispense_notice_message_label.configure(text=str(message), bg=style["bg"], fg=style["fg"])
+                if self._dispense_notice_window and self._dispense_notice_window.winfo_exists():
+                    self._dispense_notice_window.lift()
+                    self._dispense_notice_window.focus_force()
+            except Exception as e:
+                print(f"[MainApp] Failed to show persistent notice: {e}")
+
+        try:
+            if threading.current_thread() is threading.main_thread():
+                _show()
+            else:
+                self.after(0, _show)
+        except Exception as e:
+            print(f"[MainApp] Persistent notice dispatch failed: {e}")
 
     def _dispense_timeout_state_path(self):
         """Return shared state path used by dashboard and kiosk notice flow."""
@@ -893,7 +978,7 @@ class MainApp(tk.Tk):
             notice = state.get("kiosk_notice", {}) if isinstance(state, dict) else {}
             if isinstance(notice, dict) and notice.get("active"):
                 message = str(notice.get("message") or "Please wait. Admin is on the way to fix the machine.")
-                self.show_dispense_alert(
+                self.show_persistent_dispense_notice(
                     title="ADMIN NOTICE",
                     message=message,
                     severity="info"
@@ -2325,3 +2410,4 @@ class MainApp(tk.Tk):
 if __name__ == "__main__":
     app = MainApp()
     app.mainloop()
+

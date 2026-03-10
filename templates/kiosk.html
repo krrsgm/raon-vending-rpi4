@@ -432,9 +432,8 @@
 
     <div class="admin-notice-modal" id="adminNoticeModal">
         <div class="admin-notice-card">
-            <div class="admin-notice-title">ADMIN NOTICE</div>
+            <div class="admin-notice-title" id="adminNoticeTitle">DISPENSE ERROR</div>
             <div class="admin-notice-message" id="adminNoticeMessage">Please wait. Admin is on the way to fix the machine.</div>
-            <button class="admin-notice-btn" type="button" onclick="dismissAdminNotice()">OK</button>
         </div>
     </div>
     
@@ -577,47 +576,50 @@
             paymentInProgress = false;
         }
 
-        async function pollAdminNotice() {
+        async function pollKioskNoticeState() {
             try {
-                const res = await fetch('/api/kiosk-admin-notice');
-                const data = await res.json();
-                if (!data.active) {
-                    if (adminNoticeVisible) {
-                        const modal = document.getElementById('adminNoticeModal');
-                        if (modal) modal.classList.remove('show');
-                        adminNoticeVisible = false;
-                    }
+                const [timeoutRes, adminRes] = await Promise.all([
+                    fetch('/api/dispense-timeout-alert'),
+                    fetch('/api/kiosk-admin-notice')
+                ]);
+                const timeoutData = await timeoutRes.json();
+                const adminData = await adminRes.json();
+
+                const modal = document.getElementById('adminNoticeModal');
+                const titleEl = document.getElementById('adminNoticeTitle');
+                const msgEl = document.getElementById('adminNoticeMessage');
+                if (!modal || !titleEl || !msgEl) return;
+
+                if (adminData.active) {
+                    titleEl.textContent = 'ADMIN NOTICE';
+                    msgEl.textContent = String(adminData.message || 'Please wait. Admin is on the way to fix the machine.');
+                    modal.classList.add('show');
+                    adminNoticeVisible = true;
                     return;
                 }
-                const msg = String(data.message || 'Please wait. Admin is on the way to fix the machine.');
-                const modal = document.getElementById('adminNoticeModal');
-                const msgEl = document.getElementById('adminNoticeMessage');
-                if (msgEl) msgEl.textContent = msg;
-                if (modal) modal.classList.add('show');
-                adminNoticeVisible = true;
+
+                if (timeoutData.active && timeoutData.alert) {
+                    const alert = timeoutData.alert || {};
+                    const slot = String(alert.slot_id || 'N/A');
+                    const elapsed = Number(alert.elapsed_time || 0).toFixed(1);
+                    titleEl.textContent = 'DISPENSE ERROR';
+                    msgEl.textContent = `Slot ${slot} timed out. IR sensor did not detect an item after ${elapsed}s.`;
+                    modal.classList.add('show');
+                    adminNoticeVisible = true;
+                    return;
+                }
+
+                if (adminNoticeVisible) {
+                    modal.classList.remove('show');
+                    adminNoticeVisible = false;
+                }
             } catch (error) {
-                console.error('Error polling admin notice:', error);
+                console.error('Error polling kiosk notice state:', error);
             }
         }
 
-        async function dismissAdminNotice() {
-            try {
-                await fetch('/api/kiosk-admin-notice/clear', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({})
-                });
-            } catch (error) {
-                console.error('Error clearing admin notice:', error);
-            } finally {
-                const modal = document.getElementById('adminNoticeModal');
-                if (modal) modal.classList.remove('show');
-                adminNoticeVisible = false;
-            }
-        }
-
-        pollAdminNotice();
-        setInterval(pollAdminNotice, 3000);
+        pollKioskNoticeState();
+        setInterval(pollKioskNoticeState, 3000);
     </script>
 </body>
 </html>

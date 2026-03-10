@@ -618,12 +618,8 @@
 
         async function pollKioskNoticeState() {
             try {
-                const [timeoutRes, adminRes] = await Promise.all([
-                    fetch('/api/dispense-timeout-alert?t=' + Date.now(), { cache: 'no-store' }),
-                    fetch('/api/kiosk-admin-notice?t=' + Date.now(), { cache: 'no-store' })
-                ]);
-                const timeoutData = await timeoutRes.json();
-                const adminData = await adminRes.json();
+                const res = await fetch('/api/kiosk-admin-notice?t=' + Date.now(), { cache: 'no-store' });
+                const adminData = await res.json();
 
                 const modal = document.getElementById('adminNoticeModal');
                 const titleEl = document.getElementById('adminNoticeTitle');
@@ -633,18 +629,6 @@
                 if (adminData.active) {
                     titleEl.textContent = 'ADMIN NOTICE';
                     msgEl.textContent = String(adminData.message || 'Please wait. Admin is on the way to fix the machine.');
-                    modal.classList.add('show');
-                    adminNoticeVisible = true;
-                    document.body.classList.add('interaction-blocked');
-                    return;
-                }
-
-                if (timeoutData.active && timeoutData.alert) {
-                    const alert = timeoutData.alert || {};
-                    const slot = String(alert.slot_id || 'N/A');
-                    const elapsed = Number(alert.elapsed_time || 0).toFixed(1);
-                    titleEl.textContent = 'DISPENSE ERROR';
-                    msgEl.textContent = `Slot ${slot} timed out. IR sensor did not detect an item after ${elapsed}s.`;
                     modal.classList.add('show');
                     adminNoticeVisible = true;
                     document.body.classList.add('interaction-blocked');

@@ -1139,11 +1139,22 @@ def api_stock_alerts():
 
 @app.route('/api/dispense-timeout-alert')
 def api_dispense_timeout_alert():
-    """API: Dispense timeout alerts disabled per request (always inactive)."""
-    resp = jsonify({'active': False, 'alert': None})
-    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-    resp.headers['Pragma'] = 'no-cache'
-    return resp, 200
+    """API: Get active dispense-timeout alert for dashboard display."""
+    try:
+        with dispense_timeout_state_lock:
+            state = _load_dispense_timeout_state()
+        alert = state.get('active_alert')
+        active = isinstance(alert, dict) and bool(alert.get('active', False))
+        resp = jsonify({
+            'active': active,
+            'alert': alert if active else None
+        })
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        return resp, 200
+    except Exception as e:
+        logger.error(f"Dispense timeout alert read error: {e}")
+        return jsonify({'active': False, 'alert': None}), 200
 
 
 @app.route('/api/dispense-timeout-alert/acknowledge', methods=['POST'])

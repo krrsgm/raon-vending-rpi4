@@ -386,25 +386,7 @@
             gap: 12px;
         }
 
-        .kiosk-notice-actions {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .kiosk-notice-close {
-            background: none;
-            border: none;
-            color: #7a5a00;
-            font-size: 20px;
-            font-weight: 900;
-            cursor: pointer;
-            padding: 4px 8px;
-        }
-
-        .kiosk-notice-close:hover {
-            color: #c0392b;
-        }
+        .kiosk-notice-actions { display: none; }
 
 
         /* Fullscreen modal for dispense timeout */
@@ -545,7 +527,6 @@
     <div class="container">
         <div id="kioskNoticeBanner" class="kiosk-notice-banner">
             <div><strong>Kiosk notice active:</strong> <span id="kioskNoticeMessage">Please wait. Admin is on the way to fix the machine.</span></div>
-            <button type="button" class="kiosk-notice-close" onclick="clearKioskAdminNotice()" title="Dismiss notice on kiosk">×</button>
         </div>
     </div>
 
@@ -925,16 +906,10 @@
 
                 const banner = document.getElementById('kioskNoticeBanner');
                 const msgEl = document.getElementById('kioskNoticeMessage');
-                const clearBtn = banner ? banner.querySelector('.kiosk-notice-close') : null;
                 if (banner) banner.style.display = 'flex';
                 if (msgEl) msgEl.textContent = kioskNoticeActive
                     ? (kioskNoticeMessage || 'Please wait. Admin is on the way to fix the machine.')
                     : 'No kiosk notice active';
-                if (clearBtn) {
-                    clearBtn.disabled = !kioskNoticeActive;
-                    clearBtn.style.opacity = kioskNoticeActive ? '1' : '0.4';
-                    clearBtn.title = kioskNoticeActive ? 'Dismiss notice on kiosk' : 'No active notice';
-                }
             } catch (error) {
                 console.error('Error loading kiosk notice state:', error);
             }
@@ -1330,43 +1305,82 @@
         }
 
         async function loadDispenseTimeoutAlert() {
-            // Timeout alerts disabled per request: always hide panel/modal and stop sound.
-            const section = document.getElementById('dispenseTimeoutSection');
-            const modal = document.getElementById('dispenseTimeoutModal');
-            if (section) section.style.display = 'none';
-            if (modal) modal.classList.remove('show');
-            stopTimeoutAlertSound();
+            try {
+                const res = await fetch('/api/dispense-timeout-alert');
+                const data = await res.json();
+                const section = document.getElementById('dispenseTimeoutSection');
+                const text = document.getElementById('dispenseTimeoutText');
+                const meta = document.getElementById('dispenseTimeoutMeta');
+                const modal = document.getElementById('dispenseTimeoutModal');
+                const modalText = document.getElementById('timeoutModalText');
+                const modalMeta = document.getElementById('timeoutModalMeta');
+                if (!section || !text || !meta || !modal || !modalText || !modalMeta) return;
+
+                if (!data.active || !data.alert) {
+                    section.style.display = 'none';
+                    text.textContent = '';
+                    meta.textContent = '';
+                    modal.classList.remove('show');
+                    modalText.textContent = '';
+                    modalMeta.textContent = '';
+                    stopTimeoutAlertSound();
+                    await loadKioskNoticeState();
+                    return;
+                }
+
+                const alert = data.alert || {};
+                const slot = String(alert.slot_id || 'N/A');
+                const elapsed = Number(alert.elapsed_time || 0).toFixed(1);
+                const createdAt = String(alert.created_at || '');
+                section.style.display = 'block';
+                text.textContent = `Slot ${slot} timed out. No item detected by IR sensor.`;
+                meta.textContent = `Timeout: ${elapsed}s${createdAt ? ` | Reported: ${createdAt}` : ''}`;
+
+                modalText.textContent = `Slot ${slot} timed out. No item detected by IR sensor.`;
+                modalMeta.textContent = `Elapsed: ${elapsed}s${createdAt ? ` • Reported: ${createdAt}` : ''}`;
+                modal.classList.add('show');
+
+                startTimeoutAlertSound();
+                await loadKioskNoticeState();
+            } catch (error) {
+                console.error('Error loading dispense timeout alert:', error);
+            }
         }
 
         async function acknowledgeDispenseTimeoutAlert() {
-            // Timeout flow disabled; just ensure UI is cleared.
-            stopTimeoutAlertSound();
-            const modal = document.getElementById('dispenseTimeoutModal');
-            const section = document.getElementById('dispenseTimeoutSection');
-            if (modal) modal.classList.remove('show');
-            if (section) section.style.display = 'none';
-            await loadKioskNoticeState();
-        }
-
-        async function clearKioskAdminNotice() {
             try {
-                await fetch('/api/kiosk-admin-notice/clear', {
+                const res = await fetch('/api/dispense-timeout-alert/acknowledge', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({})
                 });
+                const data = await res.json();
+                if (!data.success) {
+                    alert(data.message || 'No active timeout alert to acknowledge.');
+                } else {
+                    stopTimeoutAlertSound();
+                    const modal = document.getElementById('dispenseTimeoutModal');
+                    if (modal) modal.classList.remove('show');
+                }
+                await loadDispenseTimeoutAlert();
                 await loadKioskNoticeState();
-                const banner = document.getElementById('kioskNoticeBanner');
-                if (banner) banner.style.display = 'none';
-                const modal = document.getElementById('dispenseTimeoutModal');
-                if (modal) modal.classList.remove('show');
-                const section = document.getElementById('dispenseTimeoutSection');
-                if (section) section.style.display = 'none';
-                stopTimeoutAlertSound();
             } catch (error) {
-                console.error('Error clearing kiosk admin notice:', error);
+                console.error('Error acknowledging dispense timeout alert:', error);
             }
         }
+
+       async function clearKioskAdminNotice() {
+           try {
+               await fetch('/api/kiosk-admin-notice/clear', {
+                   method: 'POST',
+                   headers: { 'Content-Type': 'application/json' },
+                   body: JSON.stringify({})
+               });
+               await loadKioskNoticeState();
+           } catch (error) {
+               console.error('Error clearing kiosk admin notice:', error);
+           }
+       }
 
         async function loadStockAlerts() {
             try {

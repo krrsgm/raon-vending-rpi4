@@ -484,6 +484,7 @@
         let cart = {};
         let paymentInProgress = false;
         let adminNoticeVisible = false;
+        let adminNoticeTimerId = null;
         
         function addToCart(itemName, price) {
             if (!cart[itemName]) {
@@ -618,8 +619,12 @@
 
         async function pollKioskNoticeState() {
             try {
-                const res = await fetch('/api/kiosk-admin-notice?t=' + Date.now(), { cache: 'no-store' });
-                const adminData = await res.json();
+                const [timeoutRes, adminRes] = await Promise.all([
+                    fetch('/api/dispense-timeout-alert?t=' + Date.now(), { cache: 'no-store' }),
+                    fetch('/api/kiosk-admin-notice?t=' + Date.now(), { cache: 'no-store' })
+                ]);
+                const timeoutData = await timeoutRes.json();
+                const adminData = await adminRes.json();
 
                 const modal = document.getElementById('adminNoticeModal');
                 const titleEl = document.getElementById('adminNoticeTitle');
@@ -632,6 +637,20 @@
                     modal.classList.add('show');
                     adminNoticeVisible = true;
                     document.body.classList.add('interaction-blocked');
+                    startAdminNoticeTimer();
+                    return;
+                }
+
+                if (timeoutData.active && timeoutData.alert) {
+                    const alert = timeoutData.alert || {};
+                    const slot = String(alert.slot_id || 'N/A');
+                    const elapsed = Number(alert.elapsed_time || 0).toFixed(1);
+                    titleEl.textContent = 'DISPENSE ERROR';
+                    msgEl.textContent = `Slot ${slot} timed out. IR sensor did not detect an item after ${elapsed}s.`;
+                    modal.classList.add('show');
+                    adminNoticeVisible = true;
+                    document.body.classList.add('interaction-blocked');
+                    startAdminNoticeTimer();
                     return;
                 }
 
@@ -639,6 +658,7 @@
                     modal.classList.remove('show');
                     adminNoticeVisible = false;
                     document.body.classList.remove('interaction-blocked');
+                    stopAdminNoticeTimer();
                 }
             } catch (error) {
                 console.error('Error polling kiosk notice state:', error);
@@ -656,6 +676,7 @@
                 if (modal) modal.classList.remove('show');
                 adminNoticeVisible = false;
                 document.body.classList.remove('interaction-blocked');
+                stopAdminNoticeTimer();
                 pollKioskNoticeState();
             } catch (error) {
                 console.error('Error dismissing admin notice:', error);
@@ -664,6 +685,20 @@
 
         document.getElementById('adminNoticeCloseBtn')?.addEventListener('click', dismissAdminNotice);
         document.getElementById('adminNoticeCloseIcon')?.addEventListener('click', dismissAdminNotice);
+
+        function startAdminNoticeTimer() {
+            stopAdminNoticeTimer();
+            adminNoticeTimerId = setTimeout(() => {
+                dismissAdminNotice();
+            }, 30000);
+        }
+
+        function stopAdminNoticeTimer() {
+            if (adminNoticeTimerId) {
+                clearTimeout(adminNoticeTimerId);
+                adminNoticeTimerId = null;
+            }
+        }
 
         pollKioskNoticeState();
         setInterval(pollKioskNoticeState, 3000);

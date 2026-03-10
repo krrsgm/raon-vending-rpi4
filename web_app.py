@@ -1145,10 +1145,13 @@ def api_dispense_timeout_alert():
             state = _load_dispense_timeout_state()
         alert = state.get('active_alert')
         active = isinstance(alert, dict) and bool(alert.get('active', False))
-        return jsonify({
+        resp = jsonify({
             'active': active,
             'alert': alert if active else None
-        }), 200
+        })
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        return resp, 200
     except Exception as e:
         logger.error(f"Dispense timeout alert read error: {e}")
         return jsonify({'active': False, 'alert': None}), 200
@@ -1192,11 +1195,14 @@ def api_kiosk_admin_notice():
         if not isinstance(notice, dict):
             notice = {}
         active = bool(notice.get('active', False))
-        return jsonify({
+        resp = jsonify({
             'active': active,
             'message': str(notice.get('message', '') if active else ''),
             'updated_at': str(notice.get('updated_at', ''))
-        }), 200
+        })
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        return resp, 200
     except Exception as e:
         logger.error(f"Kiosk admin notice read error: {e}")
         return jsonify({'active': False, 'message': ''}), 200
@@ -1216,7 +1222,10 @@ def api_clear_kiosk_admin_notice():
             }
             state['last_updated'] = now_text
             _save_dispense_timeout_state(state)
-        return jsonify({'success': True}), 200
+        resp = jsonify({'success': True})
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        return resp, 200
     except Exception as e:
         logger.error(f"Clear kiosk admin notice error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500

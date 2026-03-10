@@ -419,11 +419,13 @@
             display: none;
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.75);
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.8);
             z-index: 2600;
             justify-content: center;
             align-items: center;
-            padding: 26px;
+            padding: clamp(18px, 3vw, 32px);
         }
 
         .timeout-modal.show {
@@ -431,9 +433,9 @@
         }
 
         .timeout-card {
-            width: 98vw;
+            width: 100vw;
             max-width: 1500px;
-            max-height: 92vh;
+            max-height: 95vh;
             overflow: auto;
             background: #ffffff;
             border: 6px solid #c0392b;

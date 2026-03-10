@@ -1215,12 +1215,8 @@ def api_clear_kiosk_admin_notice():
         now_text = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         with dispense_timeout_state_lock:
             state = _load_dispense_timeout_state()
-            alert = state.get('active_alert')
-            if isinstance(alert, dict):
-                alert['active'] = False
-                alert['acknowledged'] = True
-                alert['acknowledged_at'] = now_text
-                state['active_alert'] = alert
+            # Fully clear both kiosk notice and any lingering timeout alert.
+            state['active_alert'] = None
             state['kiosk_notice'] = {
                 'active': False,
                 'message': '',

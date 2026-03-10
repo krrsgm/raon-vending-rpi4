@@ -1214,14 +1214,8 @@ def api_clear_kiosk_admin_notice():
     try:
         now_text = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         with dispense_timeout_state_lock:
-            state = _load_dispense_timeout_state()
-            # Fully clear both kiosk notice and any lingering timeout alert.
-            state['active_alert'] = None
-            state['kiosk_notice'] = {
-                'active': False,
-                'message': '',
-                'updated_at': now_text
-            }
+            # Completely reset state to avoid any stale flags lingering.
+            state = _default_dispense_timeout_state()
             state['last_updated'] = now_text
             _save_dispense_timeout_state(state)
         resp = jsonify({'success': True})

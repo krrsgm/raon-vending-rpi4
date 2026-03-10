@@ -116,6 +116,56 @@ current_payment_session = {
     'received_amount': 0.0,
     'items': []
 }
+dispense_timeout_state_lock = Lock()
+
+
+def _dispense_timeout_state_path():
+    """Return shared state path for dispense-timeout alerts/ack flow."""
+    try:
+        if get_absolute_path:
+            return get_absolute_path('dispense_timeout_state.json')
+    except Exception:
+        pass
+    return 'dispense_timeout_state.json'
+
+
+def _default_dispense_timeout_state():
+    return {
+        'active_alert': None,
+        'kiosk_notice': {
+            'active': False,
+            'message': '',
+            'updated_at': ''
+        },
+        'last_updated': ''
+    }
+
+
+def _load_dispense_timeout_state():
+    path = _dispense_timeout_state_path()
+    try:
+        if not os.path.exists(path):
+            return _default_dispense_timeout_state()
+        with open(path, 'r', encoding='utf-8') as f:
+            raw = json.load(f)
+        if not isinstance(raw, dict):
+            return _default_dispense_timeout_state()
+        state = _default_dispense_timeout_state()
+        state.update(raw)
+        if not isinstance(state.get('kiosk_notice'), dict):
+            state['kiosk_notice'] = _default_dispense_timeout_state()['kiosk_notice']
+        return state
+    except Exception:
+        return _default_dispense_timeout_state()
+
+
+def _save_dispense_timeout_state(state):
+    path = _dispense_timeout_state_path()
+    os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, 'w', encoding='utf-8') as f:
+        json.dump(state, f, indent=2)
+    os.replace(tmp_path, path)
 
 
 def should_init_payment_handler(config):
@@ -1085,6 +1135,91 @@ def api_stock_alerts():
     except Exception as e:
         logger.error(f"Stock alerts error: {e}")
         return jsonify({'error': str(e), 'alerts': []}), 200
+
+
+@app.route('/api/dispense-timeout-alert')
+def api_dispense_timeout_alert():
+    """API: Get active dispense-timeout alert for dashboard display."""
+    try:
+        with dispense_timeout_state_lock:
+            state = _load_dispense_timeout_state()
+        alert = state.get('active_alert')
+        active = isinstance(alert, dict) and bool(alert.get('active', False))
+        return jsonify({
+            'active': active,
+            'alert': alert if active else None
+        }), 200
+    except Exception as e:
+        logger.error(f"Dispense timeout alert read error: {e}")
+        return jsonify({'active': False, 'alert': None}), 200
+
+
+@app.route('/api/dispense-timeout-alert/acknowledge', methods=['POST'])
+def api_ack_dispense_timeout_alert():
+    """API: Acknowledge active timeout alert and notify kiosk user."""
+    try:
+        now_text = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with dispense_timeout_state_lock:
+            state = _load_dispense_timeout_state()
+            alert = state.get('active_alert')
+            if not isinstance(alert, dict) or not bool(alert.get('active', False)):
+                return jsonify({'success': False, 'message': 'No active timeout alert'}), 200
+
+            alert['active'] = False
+            alert['acknowledged'] = True
+            alert['acknowledged_at'] = now_text
+            state['active_alert'] = alert
+            state['kiosk_notice'] = {
+                'active': True,
+                'message': 'Please wait. Admin is on the way to fix the machine.',
+                'updated_at': now_text
+            }
+            state['last_updated'] = now_text
+            _save_dispense_timeout_state(state)
+        return jsonify({'success': True, 'message': 'Timeout alert acknowledged'}), 200
+    except Exception as e:
+        logger.error(f"Dispense timeout acknowledge error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/kiosk-admin-notice')
+def api_kiosk_admin_notice():
+    """API: Kiosk-facing admin notice state."""
+    try:
+        with dispense_timeout_state_lock:
+            state = _load_dispense_timeout_state()
+        notice = state.get('kiosk_notice') if isinstance(state, dict) else {}
+        if not isinstance(notice, dict):
+            notice = {}
+        active = bool(notice.get('active', False))
+        return jsonify({
+            'active': active,
+            'message': str(notice.get('message', '') if active else ''),
+            'updated_at': str(notice.get('updated_at', ''))
+        }), 200
+    except Exception as e:
+        logger.error(f"Kiosk admin notice read error: {e}")
+        return jsonify({'active': False, 'message': ''}), 200
+
+
+@app.route('/api/kiosk-admin-notice/clear', methods=['POST'])
+def api_clear_kiosk_admin_notice():
+    """API: Clear kiosk notice after user sees it."""
+    try:
+        now_text = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with dispense_timeout_state_lock:
+            state = _load_dispense_timeout_state()
+            state['kiosk_notice'] = {
+                'active': False,
+                'message': '',
+                'updated_at': now_text
+            }
+            state['last_updated'] = now_text
+            _save_dispense_timeout_state(state)
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        logger.error(f"Clear kiosk admin notice error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/term-stock')

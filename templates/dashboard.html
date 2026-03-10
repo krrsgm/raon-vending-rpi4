@@ -309,6 +309,50 @@
         .acknowledge-btn:hover {
             background: #229954;
         }
+
+        .dispense-timeout-panel {
+            background: #fff0f0;
+            border: 3px solid #c0392b;
+            border-radius: 10px;
+            padding: 18px;
+            margin-bottom: 24px;
+        }
+
+        .dispense-timeout-title {
+            font-size: 28px;
+            font-weight: 900;
+            color: #a5281b;
+            margin-bottom: 8px;
+        }
+
+        .dispense-timeout-text {
+            font-size: 34px;
+            line-height: 1.2;
+            font-weight: 900;
+            color: #7a1c12;
+            margin-bottom: 12px;
+        }
+
+        .dispense-timeout-meta {
+            font-size: 15px;
+            color: #5d5d5d;
+            margin-bottom: 14px;
+        }
+
+        .dispense-timeout-ok-btn {
+            padding: 12px 28px;
+            font-size: 20px;
+            font-weight: 900;
+            background: #c0392b;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .dispense-timeout-ok-btn:hover {
+            background: #a93226;
+        }
     </style>
 </head>
 <body>
@@ -347,6 +391,13 @@
                 <div class="stat-label">Items Sold</div>
                 <div class="stat-value" id="itemsSold">0</div>
             </div>
+        </div>
+
+        <div id="dispenseTimeoutSection" class="dispense-timeout-panel" style="display: none;">
+            <div class="dispense-timeout-title">Dispense Timeout Alert</div>
+            <div class="dispense-timeout-text" id="dispenseTimeoutText"></div>
+            <div class="dispense-timeout-meta" id="dispenseTimeoutMeta"></div>
+            <button type="button" class="dispense-timeout-ok-btn" onclick="acknowledgeDispenseTimeoutAlert()">OK</button>
         </div>
         
         <!-- Low Stock Alerts Section -->
@@ -959,6 +1010,51 @@
             await loadSensorDataForDate(selectedDate);
         }
 
+        async function loadDispenseTimeoutAlert() {
+            try {
+                const res = await fetch('/api/dispense-timeout-alert');
+                const data = await res.json();
+                const section = document.getElementById('dispenseTimeoutSection');
+                const text = document.getElementById('dispenseTimeoutText');
+                const meta = document.getElementById('dispenseTimeoutMeta');
+                if (!section || !text || !meta) return;
+
+                if (!data.active || !data.alert) {
+                    section.style.display = 'none';
+                    text.textContent = '';
+                    meta.textContent = '';
+                    return;
+                }
+
+                const alert = data.alert || {};
+                const slot = String(alert.slot_id || 'N/A');
+                const elapsed = Number(alert.elapsed_time || 0).toFixed(1);
+                const createdAt = String(alert.created_at || '');
+                section.style.display = 'block';
+                text.textContent = `Slot ${slot} timed out. No item detected by IR sensor.`;
+                meta.textContent = `Timeout: ${elapsed}s${createdAt ? ` | Reported: ${createdAt}` : ''}`;
+            } catch (error) {
+                console.error('Error loading dispense timeout alert:', error);
+            }
+        }
+
+        async function acknowledgeDispenseTimeoutAlert() {
+            try {
+                const res = await fetch('/api/dispense-timeout-alert/acknowledge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                if (!data.success) {
+                    alert(data.message || 'No active timeout alert to acknowledge.');
+                }
+                await loadDispenseTimeoutAlert();
+            } catch (error) {
+                console.error('Error acknowledging dispense timeout alert:', error);
+            }
+        }
+
         async function loadStockAlerts() {
             try {
                 const res = await fetch('/api/stock-alerts');
@@ -1195,6 +1291,7 @@
                 if (autoFollowLogsDate && picker) picker.value = today;
                 await loadSalesLogsByDate(selectedDate, 'logsContainer', 'selectedDateLabel');
 
+                await loadDispenseTimeoutAlert();
                 await loadStockAlerts();
                 await loadTermStockGraph();
                 document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
@@ -1216,10 +1313,12 @@
 
         updateStatus();
         refreshSensorPanelByMode();
+        loadDispenseTimeoutAlert();
         loadStockAlerts();
 
         setInterval(updateStatus, 5000);
         setInterval(refreshSensorPanelByMode, 900000);
+        setInterval(loadDispenseTimeoutAlert, 3000);
         setInterval(loadStockAlerts, 10000);
     </script>
 </body>

@@ -303,7 +303,7 @@ class ItemDispenseMonitor:
                 self.monitor_thread.join(timeout=5)
             print("[ItemDispenseMonitor] Monitoring stopped")
     
-    def start_dispense(self, slot_id, timeout=None, item_name="Item"):
+    def start_dispense(self, slot_id, timeout=None, item_name="Item", delay_timeout_start=False):
         """
         Signal start of item dispensing for a slot.
         
@@ -311,6 +311,8 @@ class ItemDispenseMonitor:
             slot_id (int): Identifier for the vending slot
             timeout (float, optional): Timeout for this dispense in seconds
             item_name (str): Name of the item being dispensed
+            delay_timeout_start (bool): If True, timeout countdown is armed later
+                via arm_pending_timeouts(). Useful for multi-item transactions.
         """
         if timeout is None:
             timeout = self.default_timeout
@@ -320,12 +322,46 @@ class ItemDispenseMonitor:
                 'start_time': time.time(),
                 'timeout': timeout,
                 'item_name': item_name,
-                'status': 'DISPENSING'
+                'status': 'DISPENSING',
+                'timeout_armed': not bool(delay_timeout_start)
             }
         
         self._trigger_callback(self._on_dispense_status, 
                               slot_id, f"Dispensing {item_name}... (timeout: {timeout}s)")
         print(f"[ItemDispenseMonitor] Started dispense for slot {slot_id}: {item_name} ({timeout}s timeout)")
+
+    def arm_pending_timeouts(self, slot_ids=None):
+        """
+        Start timeout countdown for active dispense entries.
+
+        Args:
+            slot_ids (iterable[int], optional): specific slots to arm. If omitted,
+                arm all active slots that are not armed yet.
+        """
+        with self._lock:
+            if slot_ids is None:
+                target_slots = list(self.active_dispenses.keys())
+            else:
+                try:
+                    target_slots = [int(s) for s in slot_ids]
+                except Exception:
+                    target_slots = []
+            now = time.time()
+            for slot_id in target_slots:
+                info = self.active_dispenses.get(slot_id)
+                if not info:
+                    continue
+                if not info.get('timeout_armed', True):
+                    info['start_time'] = now
+                    info['timeout_armed'] = True
+                    info['status'] = 'WAITING_DETECTION'
+                    item_name = info.get('item_name', 'Item')
+                    timeout = info.get('timeout', self.default_timeout)
+                    self._trigger_callback(
+                        self._on_dispense_status,
+                        slot_id,
+                        f"Waiting for {item_name} detection... (timeout: {timeout}s)"
+                    )
     
     def _monitor_loop(self):
         """Main monitoring loop that checks for dispensed items and timeouts."""
@@ -368,6 +404,7 @@ class ItemDispenseMonitor:
                             continue
                         
                         dispense_info = self.active_dispenses[slot_id]
+                        timeout_armed = bool(dispense_info.get('timeout_armed', True))
                         elapsed_time = current_time - dispense_info['start_time']
                         item_name = dispense_info['item_name']
                         timeout = dispense_info['timeout']
@@ -402,7 +439,7 @@ class ItemDispenseMonitor:
                                               for pin, present in sensor_readings])
                     
                     # Check for timeout
-                    if elapsed_time > timeout:
+                    if timeout_armed and elapsed_time > timeout:
                         with self._lock:
                             if slot_id in self.active_dispenses:
                                 del self.active_dispenses[slot_id]

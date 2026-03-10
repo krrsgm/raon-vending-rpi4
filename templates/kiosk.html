@@ -271,6 +271,60 @@
             border-radius: 10px;
         }
 
+        .admin-notice-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            z-index: 2200;
+            justify-content: center;
+            align-items: center;
+            padding: 24px;
+        }
+
+        .admin-notice-modal.show {
+            display: flex;
+        }
+
+        .admin-notice-card {
+            width: min(900px, 95vw);
+            background: #fff;
+            border: 4px solid #c0392b;
+            border-radius: 14px;
+            padding: 32px;
+            text-align: center;
+        }
+
+        .admin-notice-title {
+            font-size: 42px;
+            font-weight: 900;
+            color: #a93226;
+            margin-bottom: 16px;
+        }
+
+        .admin-notice-message {
+            font-size: 36px;
+            line-height: 1.2;
+            font-weight: 800;
+            color: #2c3e50;
+            margin-bottom: 22px;
+        }
+
+        .admin-notice-btn {
+            background: #c0392b;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            font-size: 28px;
+            font-weight: 900;
+            padding: 14px 34px;
+            cursor: pointer;
+        }
+
+        .admin-notice-btn:hover {
+            background: #a93226;
+        }
+
         @media (max-width: 768px) {
             .payment-content { padding: 28px; width: 94vw; }
             .payment-content h2 { font-size: 32px; }
@@ -280,6 +334,9 @@
             .complete-message { font-size: 26px; }
             .error-message { font-size: 22px; }
             .payment-modal .checkout-btn { font-size: 20px; padding: 16px; }
+            .admin-notice-title { font-size: 30px; }
+            .admin-notice-message { font-size: 26px; }
+            .admin-notice-btn { font-size: 22px; }
         }
     </style>
 </head>
@@ -372,6 +429,14 @@
             <button class="checkout-btn" id="cancelBtn" onclick="closePayment()" style="background: #95a5a6; margin-top: 10px;">Cancel Payment</button>
         </div>
     </div>
+
+    <div class="admin-notice-modal" id="adminNoticeModal">
+        <div class="admin-notice-card">
+            <div class="admin-notice-title">ADMIN NOTICE</div>
+            <div class="admin-notice-message" id="adminNoticeMessage">Please wait. Admin is on the way to fix the machine.</div>
+            <button class="admin-notice-btn" type="button" onclick="dismissAdminNotice()">OK</button>
+        </div>
+    </div>
     
     <script>
         const machineId = "{{ machine.machine_id }}";
@@ -379,6 +444,7 @@
         const formatCurrency = (value) => `${currencySymbol}${Number(value || 0).toFixed(2)}`;
         let cart = {};
         let paymentInProgress = false;
+        let adminNoticeVisible = false;
         
         function addToCart(itemName, price) {
             if (!cart[itemName]) {
@@ -510,6 +576,48 @@
             updateCartDisplay();
             paymentInProgress = false;
         }
+
+        async function pollAdminNotice() {
+            try {
+                const res = await fetch('/api/kiosk-admin-notice');
+                const data = await res.json();
+                if (!data.active) {
+                    if (adminNoticeVisible) {
+                        const modal = document.getElementById('adminNoticeModal');
+                        if (modal) modal.classList.remove('show');
+                        adminNoticeVisible = false;
+                    }
+                    return;
+                }
+                const msg = String(data.message || 'Please wait. Admin is on the way to fix the machine.');
+                const modal = document.getElementById('adminNoticeModal');
+                const msgEl = document.getElementById('adminNoticeMessage');
+                if (msgEl) msgEl.textContent = msg;
+                if (modal) modal.classList.add('show');
+                adminNoticeVisible = true;
+            } catch (error) {
+                console.error('Error polling admin notice:', error);
+            }
+        }
+
+        async function dismissAdminNotice() {
+            try {
+                await fetch('/api/kiosk-admin-notice/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+            } catch (error) {
+                console.error('Error clearing admin notice:', error);
+            } finally {
+                const modal = document.getElementById('adminNoticeModal');
+                if (modal) modal.classList.remove('show');
+                adminNoticeVisible = false;
+            }
+        }
+
+        pollAdminNotice();
+        setInterval(pollAdminNotice, 3000);
     </script>
 </body>
 </html>

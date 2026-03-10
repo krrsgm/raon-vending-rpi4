@@ -223,6 +223,11 @@ class MainApp(tk.Tk):
         self.active_frame_name = None
         # Default boot path: open kiosk welcome UI directly.
         self.show_start_order()
+        # Poll dashboard-admin notices so kiosk users see admin assistance updates.
+        try:
+            self.after(1000, self._poll_dashboard_kiosk_notice)
+        except Exception:
+            pass
 
     def _init_tec_controller(self):
         """Initialize TEC Peltier module controller if enabled."""
@@ -742,9 +747,19 @@ class MainApp(tk.Tk):
         except Exception:
             pass
         return "Unknown Item"
+
+    def _arm_transaction_dispense_timeouts(self):
+        """Start timeout countdown for all currently pending dispense detections."""
+        try:
+            if self.dispense_monitor:
+                self.dispense_monitor.arm_pending_timeouts()
+                print("[MainApp] Armed dispense timeout countdown for pending transaction items.")
+        except Exception as e:
+            print(f"[MainApp] Failed to arm transaction dispense timeouts: {e}")
     
     def _on_dispense_timeout(self, slot_id, elapsed_time):
         """Handle dispense timeout - show alert dialog."""
+        self._publish_dispense_timeout_alert(slot_id, elapsed_time)
         self.show_dispense_alert(
             title="⚠️ DISPENSE ERROR",
             message=f"Item from Slot {slot_id}\nfailed to dispense!\n\nTimeout after {elapsed_time:.1f}s",
@@ -808,6 +823,93 @@ class MainApp(tk.Tk):
                 self.after(0, _show)
         except Exception as e:
             print(f"[MainApp] Failed to show dispense alert: {e}")
+
+    def _dispense_timeout_state_path(self):
+        """Return shared state path used by dashboard and kiosk notice flow."""
+        try:
+            return get_absolute_path("dispense_timeout_state.json")
+        except Exception:
+            return "dispense_timeout_state.json"
+
+    def _load_dispense_timeout_state(self):
+        path = self._dispense_timeout_state_path()
+        default_state = {
+            "active_alert": None,
+            "kiosk_notice": {"active": False, "message": "", "updated_at": ""},
+            "last_updated": ""
+        }
+        try:
+            if not os.path.exists(path):
+                return default_state
+            with open(path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            if not isinstance(raw, dict):
+                return default_state
+            state = dict(default_state)
+            state.update(raw)
+            if not isinstance(state.get("kiosk_notice"), dict):
+                state["kiosk_notice"] = dict(default_state["kiosk_notice"])
+            return state
+        except Exception:
+            return default_state
+
+    def _save_dispense_timeout_state(self, state):
+        path = self._dispense_timeout_state_path()
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            tmp = f"{path}.tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
+            os.replace(tmp, path)
+        except Exception as e:
+            print(f"[MainApp] Failed writing dispense timeout state: {e}")
+
+    def _publish_dispense_timeout_alert(self, slot_id, elapsed_time):
+        """Publish timeout state so web dashboard can display and acknowledge it."""
+        now_text = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        state = self._load_dispense_timeout_state()
+        state["active_alert"] = {
+            "active": True,
+            "slot_id": int(slot_id) if str(slot_id).isdigit() else slot_id,
+            "elapsed_time": float(elapsed_time),
+            "title": "DISPENSE TIMEOUT",
+            "message": f"IR sensor did not detect an item after {elapsed_time:.1f}s (Slot {slot_id}).",
+            "created_at": now_text,
+            "acknowledged": False,
+            "acknowledged_at": ""
+        }
+        state["kiosk_notice"] = {
+            "active": False,
+            "message": "",
+            "updated_at": now_text
+        }
+        state["last_updated"] = now_text
+        self._save_dispense_timeout_state(state)
+
+    def _poll_dashboard_kiosk_notice(self):
+        """Poll shared state for dashboard-acknowledged notices and show to kiosk user."""
+        try:
+            state = self._load_dispense_timeout_state()
+            notice = state.get("kiosk_notice", {}) if isinstance(state, dict) else {}
+            if isinstance(notice, dict) and notice.get("active"):
+                message = str(notice.get("message") or "Please wait. Admin is on the way to fix the machine.")
+                self.show_dispense_alert(
+                    title="ADMIN NOTICE",
+                    message=message,
+                    severity="info"
+                )
+                notice["active"] = False
+                notice["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                state["kiosk_notice"] = notice
+                state["last_updated"] = notice["updated_at"]
+                self._save_dispense_timeout_state(state)
+        except Exception as e:
+            print(f"[MainApp] Kiosk notice poll error: {e}")
+        finally:
+            try:
+                self.after(1000, self._poll_dashboard_kiosk_notice)
+            except Exception:
+                pass
 
     def _extract_items_from_slots(self, assigned_slots):
         """Extract items from assigned slots for display in admin/kiosk screens.
@@ -1747,9 +1849,10 @@ class MainApp(tk.Tk):
                         self.dispense_monitor.start_dispense(
                             slot_id=slot_number,
                             timeout=dispense_timeout,
-                            item_name=item_name
+                            item_name=item_name,
+                            delay_timeout_start=True
                         )
-                        print(f'[VEND] IR sensor monitoring started for slot {slot_number}, timeout={dispense_timeout}s')
+                        print(f'[VEND] IR sensor monitoring started for slot {slot_number} (timeout deferred until transaction end, {dispense_timeout}s).')
                     else:
                         print(f'[VEND] WARNING: Dispense monitor not available - no IR sensor verification')
                     
@@ -1829,6 +1932,7 @@ class MainApp(tk.Tk):
             print(f'[VEND] INCOMPLETE: "{item_name}" dispensed {successful_dispenses}/{target_quantity}.')
         else:
             print(f'[VEND] COMPLETE: "{item_name}" dispensed {successful_dispenses}/{target_quantity}.')
+        self._arm_transaction_dispense_timeouts()
 
     def vend_cart_items_organized(self, cart_items):
         """Dispense multiple items organized by slot in ascending order.
@@ -1995,9 +2099,10 @@ class MainApp(tk.Tk):
                             self.dispense_monitor.start_dispense(
                                 slot_id=slot_number,
                                 timeout=dispense_timeout,
-                                item_name=item_name
+                                item_name=item_name,
+                                delay_timeout_start=True
                             )
-                            print(f'[VEND-ORG] IR sensor monitoring started for slot {slot_number}, timeout={dispense_timeout}s')
+                            print(f'[VEND-ORG] IR sensor monitoring started for slot {slot_number} (timeout deferred until transaction end, {dispense_timeout}s).')
                         else:
                             print(f'[VEND-ORG] WARNING: Dispense monitor not available - no IR sensor verification')
 
@@ -2080,6 +2185,7 @@ class MainApp(tk.Tk):
             print(f'[VEND-ORG] INCOMPLETE: Dispensed {total_dispensed}/{total_required} requested item(s).')
         else:
             print(f'[VEND-ORG] COMPLETE: Dispensed {total_dispensed}/{total_required} requested item(s).')
+        self._arm_transaction_dispense_timeouts()
 
     def update_item(self, original_item_name, updated_item_data):
         """Update price/quantity in assigned slots, then refresh admin and kiosk views."""

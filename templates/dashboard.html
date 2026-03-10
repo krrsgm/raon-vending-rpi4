@@ -431,8 +431,10 @@
         }
 
         .timeout-card {
-            width: 96vw;
-            max-width: 1400px;
+            width: 98vw;
+            max-width: 1500px;
+            max-height: 92vh;
+            overflow: auto;
             background: #ffffff;
             border: 6px solid #c0392b;
             border-radius: 16px;
@@ -539,7 +541,6 @@
         <h1>RAON Dashboard</h1>
         <div class="header-right">
             <div class="refresh-time">Last update: <span id="lastUpdate">now</span></div>
-            <button type="button" class="admin-clear-btn" onclick="clearKioskAdminNotice()" title="Clear kiosk admin notice anytime">Clear Kiosk Notice</button>
             <button type="button" id="enableTimeoutAlarmBtn" class="alarm-enable-btn" onclick="enableTimeoutAlarmSound()">Enable Alarm Sound</button>
             <div id="timeoutAlarmEnabledText" class="alarm-enabled-text">Alarm sound enabled for this session.</div>
         </div>
@@ -927,7 +928,7 @@
         }
         async function loadKioskNoticeState() {
             try {
-                const res = await fetch('/api/kiosk-admin-notice');
+                const res = await fetch('/api/kiosk-admin-notice?t=' + Date.now(), { cache: 'no-store' });
                 const data = await res.json();
                 kioskNoticeActive = Boolean(data.active);
                 kioskNoticeMessage = String(data.message || '');
@@ -1405,6 +1406,13 @@
                     body: JSON.stringify({})
                 });
                 await loadKioskNoticeState();
+                const banner = document.getElementById('kioskNoticeBanner');
+                if (banner) banner.style.display = 'none';
+                const modal = document.getElementById('dispenseTimeoutModal');
+                if (modal) modal.classList.remove('show');
+                const section = document.getElementById('dispenseTimeoutSection');
+                if (section) section.style.display = 'none';
+                stopTimeoutAlertSound();
             } catch (error) {
                 console.error('Error clearing kiosk admin notice:', error);
             }

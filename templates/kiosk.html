@@ -300,6 +300,7 @@
             padding: clamp(28px, 4vw, 48px);
             text-align: center;
             box-shadow: 0 16px 48px rgba(0,0,0,0.35);
+            position: relative;
         }
 
         .admin-notice-title {
@@ -315,6 +316,23 @@
             font-weight: 800;
             color: #2c3e50;
             margin-bottom: 26px;
+        }
+
+        .admin-notice-close {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            background: transparent;
+            border: none;
+            font-size: clamp(26px, 3.6vw, 34px);
+            font-weight: 900;
+            color: #a93226;
+            cursor: pointer;
+            padding: 6px 10px;
+        }
+
+        .admin-notice-close:hover {
+            color: #c0392b;
         }
 
         .admin-notice-btn {
@@ -452,6 +470,7 @@
 
     <div class="admin-notice-modal" id="adminNoticeModal">
         <div class="admin-notice-card">
+            <button class="admin-notice-close" id="adminNoticeCloseIcon" aria-label="Close notice">×</button>
             <div class="admin-notice-title" id="adminNoticeTitle">DISPENSE ERROR</div>
             <div class="admin-notice-message" id="adminNoticeMessage">Please wait. Admin is on the way to fix the machine.</div>
             <button class="admin-notice-btn" id="adminNoticeCloseBtn">Okay</button>
@@ -649,6 +668,10 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({})
                 });
+                const modal = document.getElementById('adminNoticeModal');
+                if (modal) modal.classList.remove('show');
+                adminNoticeVisible = false;
+                document.body.classList.remove('interaction-blocked');
                 pollKioskNoticeState();
             } catch (error) {
                 console.error('Error dismissing admin notice:', error);
@@ -656,6 +679,7 @@
         }
 
         document.getElementById('adminNoticeCloseBtn')?.addEventListener('click', dismissAdminNotice);
+        document.getElementById('adminNoticeCloseIcon')?.addEventListener('click', dismissAdminNotice);
 
         pollKioskNoticeState();
         setInterval(pollKioskNoticeState, 3000);

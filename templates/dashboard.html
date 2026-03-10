@@ -400,6 +400,8 @@
         <h1>RAON Dashboard</h1>
         <div class="header-right">
             <div class="refresh-time">Last update: <span id="lastUpdate">now</span></div>
+            <button type="button" id="enableTimeoutAlarmBtn" class="alarm-enable-btn" onclick="enableTimeoutAlarmSound()">Enable Alarm Sound</button>
+            <div id="timeoutAlarmEnabledText" class="alarm-enabled-text">Alarm sound enabled for this session.</div>
         </div>
     </div>
     
@@ -432,9 +434,6 @@
                 <div class="stat-value" id="itemsSold">0</div>
             </div>
         </div>
-
-        <button type="button" id="enableTimeoutAlarmBtn" class="alarm-enable-btn" onclick="enableTimeoutAlarmSound()">Enable Alarm Sound</button>
-        <div id="timeoutAlarmEnabledText" class="alarm-enabled-text">Alarm sound enabled for this dashboard session.</div>
 
         <div id="dispenseTimeoutSection" class="dispense-timeout-panel" style="display: none;">
             <div class="dispense-timeout-title">Dispense Timeout Alert</div>
@@ -729,7 +728,7 @@
             const btn = document.getElementById('enableTimeoutAlarmBtn');
             const enabledText = document.getElementById('timeoutAlarmEnabledText');
             if (btn) btn.style.display = timeoutAlarmAudioEnabled ? 'none' : 'inline-block';
-            if (enabledText) enabledText.style.display = timeoutAlarmAudioEnabled ? 'block' : 'none';
+            if (enabledText) enabledText.style.display = timeoutAlarmAudioEnabled ? 'inline-block' : 'none';
         }
 
         async function enableTimeoutAlarmSound() {
@@ -748,6 +747,15 @@
             loadDispenseTimeoutAlert();
         }
 
+        function restoreTimeoutAlarmSetting() {
+            try {
+                const saved = localStorage.getItem('timeoutAlarmEnabled');
+                timeoutAlarmAudioEnabled = saved === '1';
+            } catch (_) {
+                timeoutAlarmAudioEnabled = false;
+            }
+            updateTimeoutAlarmUi();
+        }
         async function loadKioskNoticeState() {
             try {
                 const res = await fetch('/api/kiosk-admin-notice');
@@ -1474,6 +1482,7 @@
         refreshSensorPanelByMode();
         loadDispenseTimeoutAlert();
         loadStockAlerts();
+        restoreTimeoutAlarmSetting();
 
         setInterval(updateStatus, 5000);
         setInterval(refreshSensorPanelByMode, 900000);

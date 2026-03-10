@@ -354,6 +354,22 @@
             background: #a93226;
         }
 
+        .admin-clear-btn {
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: 800;
+            background: #1d976c;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+
+        .admin-clear-btn:hover {
+            background: #15805a;
+        }
+
         .alarm-enable-btn {
             padding: 10px 18px;
             font-size: 15px;
@@ -424,7 +440,10 @@
             <div class="dispense-timeout-title">Dispense Timeout Alert</div>
             <div class="dispense-timeout-text" id="dispenseTimeoutText"></div>
             <div class="dispense-timeout-meta" id="dispenseTimeoutMeta"></div>
-            <button type="button" class="dispense-timeout-ok-btn" onclick="acknowledgeDispenseTimeoutAlert()">OK</button>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                <button type="button" class="dispense-timeout-ok-btn" onclick="acknowledgeDispenseTimeoutAlert()">Acknowledge & Notify Kiosk</button>
+                <button type="button" class="admin-clear-btn" onclick="clearKioskAdminNotice()">Clear Admin Notice on Kiosk</button>
+            </div>
         </div>
         
         <!-- Low Stock Alerts Section -->
@@ -727,6 +746,15 @@
             updateTimeoutAlarmUi();
             // If timeout is already active when enabling, start immediately.
             loadDispenseTimeoutAlert();
+        }
+
+        async function loadKioskNoticeState() {
+            try {
+                const res = await fetch('/api/kiosk-admin-notice');
+                await res.json(); // currently not displayed on dashboard, only used to ensure freshest state
+            } catch (error) {
+                console.error('Error loading kiosk notice state:', error);
+            }
         }
 
         function getTodayIsoDate() {
@@ -1143,6 +1171,7 @@
                 text.textContent = `Slot ${slot} timed out. No item detected by IR sensor.`;
                 meta.textContent = `Timeout: ${elapsed}s${createdAt ? ` | Reported: ${createdAt}` : ''}`;
                 startTimeoutAlertSound();
+                await loadKioskNoticeState();
             } catch (error) {
                 console.error('Error loading dispense timeout alert:', error);
             }
@@ -1162,8 +1191,22 @@
                     stopTimeoutAlertSound();
                 }
                 await loadDispenseTimeoutAlert();
+                await loadKioskNoticeState();
             } catch (error) {
                 console.error('Error acknowledging dispense timeout alert:', error);
+            }
+        }
+
+        async function clearKioskAdminNotice() {
+            try {
+                await fetch('/api/kiosk-admin-notice/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                await loadKioskNoticeState();
+            } catch (error) {
+                console.error('Error clearing kiosk admin notice:', error);
             }
         }
 

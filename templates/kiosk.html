@@ -280,6 +280,7 @@
             justify-content: center;
             align-items: center;
             padding: 24px;
+            pointer-events: auto;
         }
 
         .admin-notice-modal.show {
@@ -323,6 +324,17 @@
 
         .admin-notice-btn:hover {
             background: #a93226;
+        }
+
+        /* Block interaction behind admin notice */
+        body.interaction-blocked > *:not(.admin-notice-modal) {
+            pointer-events: none !important;
+            user-select: none !important;
+            filter: blur(1px);
+        }
+
+        body.interaction-blocked {
+            overflow: hidden;
         }
 
         @media (max-width: 768px) {
@@ -595,6 +607,7 @@
                     msgEl.textContent = String(adminData.message || 'Please wait. Admin is on the way to fix the machine.');
                     modal.classList.add('show');
                     adminNoticeVisible = true;
+                    document.body.classList.add('interaction-blocked');
                     return;
                 }
 
@@ -606,12 +619,14 @@
                     msgEl.textContent = `Slot ${slot} timed out. IR sensor did not detect an item after ${elapsed}s.`;
                     modal.classList.add('show');
                     adminNoticeVisible = true;
+                    document.body.classList.add('interaction-blocked');
                     return;
                 }
 
                 if (adminNoticeVisible) {
                     modal.classList.remove('show');
                     adminNoticeVisible = false;
+                    document.body.classList.remove('interaction-blocked');
                 }
             } catch (error) {
                 console.error('Error polling kiosk notice state:', error);

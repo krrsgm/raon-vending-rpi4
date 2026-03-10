@@ -372,7 +372,7 @@
 
         /* Kiosk notice banner (shows after admin acknowledgement) */
         .kiosk-notice-banner {
-            display: none;
+            display: flex;
             background: #fff8e1;
             border: 2px solid #f1c40f;
             border-radius: 10px;
@@ -913,10 +913,16 @@
 
                 const banner = document.getElementById('kioskNoticeBanner');
                 const msgEl = document.getElementById('kioskNoticeMessage');
-                if (banner) banner.style.display = kioskNoticeActive ? 'flex' : 'none';
+                const clearBtn = banner ? banner.querySelector('button') : null;
+                if (banner) banner.style.display = 'flex';
                 if (msgEl) msgEl.textContent = kioskNoticeActive
                     ? (kioskNoticeMessage || 'Please wait. Admin is on the way to fix the machine.')
-                    : '';
+                    : 'No kiosk notice active';
+                if (clearBtn) {
+                    clearBtn.disabled = !kioskNoticeActive;
+                    clearBtn.style.opacity = kioskNoticeActive ? '1' : '0.4';
+                    clearBtn.textContent = kioskNoticeActive ? 'Clear notice on kiosk' : 'No active notice';
+                }
             } catch (error) {
                 console.error('Error loading kiosk notice state:', error);
             }

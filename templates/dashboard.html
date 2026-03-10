@@ -392,6 +392,20 @@
             flex-wrap: wrap;
         }
 
+        .kiosk-notice-close {
+            background: none;
+            border: none;
+            color: #7a5a00;
+            font-size: 20px;
+            font-weight: 900;
+            cursor: pointer;
+            padding: 4px 8px;
+        }
+
+        .kiosk-notice-close:hover {
+            color: #c0392b;
+        }
+
 
         /* Fullscreen modal for dispense timeout */
         .timeout-modal {
@@ -531,9 +545,7 @@
     <div class="container">
         <div id="kioskNoticeBanner" class="kiosk-notice-banner">
             <div><strong>Kiosk notice active:</strong> <span id="kioskNoticeMessage">Please wait. Admin is on the way to fix the machine.</span></div>
-            <div class="kiosk-notice-actions">
-                <button type="button" class="timeout-secondary-btn" onclick="clearKioskAdminNotice()">Clear notice on kiosk</button>
-            </div>
+            <button type="button" class="kiosk-notice-close" onclick="clearKioskAdminNotice()" title="Dismiss notice on kiosk">×</button>
         </div>
     </div>
 
@@ -913,7 +925,7 @@
 
                 const banner = document.getElementById('kioskNoticeBanner');
                 const msgEl = document.getElementById('kioskNoticeMessage');
-                const clearBtn = banner ? banner.querySelector('button') : null;
+                const clearBtn = banner ? banner.querySelector('.kiosk-notice-close') : null;
                 if (banner) banner.style.display = 'flex';
                 if (msgEl) msgEl.textContent = kioskNoticeActive
                     ? (kioskNoticeMessage || 'Please wait. Admin is on the way to fix the machine.')
@@ -921,7 +933,7 @@
                 if (clearBtn) {
                     clearBtn.disabled = !kioskNoticeActive;
                     clearBtn.style.opacity = kioskNoticeActive ? '1' : '0.4';
-                    clearBtn.textContent = kioskNoticeActive ? 'Clear notice on kiosk' : 'No active notice';
+                    clearBtn.title = kioskNoticeActive ? 'Dismiss notice on kiosk' : 'No active notice';
                 }
             } catch (error) {
                 console.error('Error loading kiosk notice state:', error);

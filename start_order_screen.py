@@ -52,7 +52,7 @@ class StartOrderScreen(tk.Frame):
             "1. Click or Tap anywhere to start order.\n\n"
             "2. Choose desired items, its quantity, then add to cart.\n\n"
             "3. Go to cart, and pay.\n\n"
-            "4. Insert closest amount of payment. (Note: wait for the display to show that it has counted the bill you inserted before inserting another. This is to avoid errors when computing.)\n\n"
+            "4. Insert payment; wait for the display to count each bill/coin before inserting another.\n\n"
             "5. Wait for the change.\n\n"
             "6. Wait for the item.\n\n"
             "7. Transaction done.\n\n"

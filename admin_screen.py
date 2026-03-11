@@ -8,6 +8,8 @@ from system_status_panel import SystemStatusPanel
 from fix_paths import get_absolute_path
 from display_profile import get_display_profile
 from arduino_serial_utils import detect_arduino_serial_port
+from coin_hopper import CoinHopper
+import time
 try:
     from dht22_handler import get_shared_serial_reader
 except Exception:
@@ -912,11 +914,19 @@ class CoinStockEditWindow(tk.Toplevel):
 
         # Ensure Arduino reader/bridge is running
         reader = self._get_or_start_coin_reader()
+        hopper = self._get_or_start_coin_hopper()
 
         if not reader or not getattr(reader, "connected", False):
             messagebox.showerror(
                 "Coin Counter",
                 "Coin acceptor reader is not connected. Connect the Arduino/ESP32 reader and try again.",
+                parent=self,
+            )
+            return
+        if not hopper:
+            messagebox.showerror(
+                "Coin Hopper",
+                "Coin hopper is not connected. Check the hopper USB/serial connection and try again.",
                 parent=self,
             )
             return
@@ -927,6 +937,24 @@ class CoinStockEditWindow(tk.Toplevel):
                 reader.resume()
         except Exception:
             pass
+        try:
+            hopper.ensure_relays_off()
+        except Exception:
+            pass
+
+        # Open hopper motor so coins dispense for counting
+        opened = False
+        try:
+            opened = hopper.open_hopper(denomination)
+        except Exception:
+            opened = False
+        if not opened:
+            messagebox.showerror(
+                "Coin Hopper",
+                f"Failed to start the ₱{denomination} hopper. Confirm the hopper board is powered and reachable.",
+                parent=self,
+            )
+            return
 
         try:
             start_total = float(reader.get_coin_total() or 0.0)
@@ -941,6 +969,9 @@ class CoinStockEditWindow(tk.Toplevel):
             "count": 0,
             "active": True,
             "reader": reader,
+            "hopper": hopper,
+            "hopper_open": True,
+            "last_coin_ts": time.time(),
         }
         self._ensure_coin_callback()
         self._set_counting_ui_state(denomination, active=True)
@@ -989,6 +1020,14 @@ class CoinStockEditWindow(tk.Toplevel):
             return
         denomination = session.get("denom")
         count = max(0, int(session.get("count", 0)))
+        hopper = session.get("hopper")
+        if hopper:
+            try:
+                if session.get("hopper_open"):
+                    hopper.close_hopper(denomination)
+                hopper.ensure_relays_off()
+            except Exception:
+                pass
         self._coin_count_session = None
         if apply and denomination in (1, 5):
             target_entry = self.one_count_entry if denomination == 1 else self.five_count_entry
@@ -1032,12 +1071,23 @@ class CoinStockEditWindow(tk.Toplevel):
                 self._coin_poll_job = None
                 return
             reader = session.get("reader")
+            denomination = session.get("denom")
             try:
                 total = float(reader.get_coin_total() or 0.0) if reader else None
             except Exception:
                 total = None
             if total is not None:
                 self._on_coin_count_event(total)
+            # Stop if hopper has been quiet for >1.5s (no coins coming out)
+            try:
+                last_ts = float(session.get("last_coin_ts") or 0.0)
+            except Exception:
+                last_ts = 0.0
+            if last_ts > 0 and (time.time() - last_ts) > 1.5:
+                self._update_coin_count_status(f"No coins detected for ₱{denomination}. Stopping hopper and applying count.")
+                self._finish_coin_count(apply=True)
+                self._coin_poll_job = None
+                return
             self._coin_poll_job = self.after(400, _poll)
 
         self._coin_poll_job = self.after(400, _poll)
@@ -1079,6 +1129,7 @@ class CoinStockEditWindow(tk.Toplevel):
             return
 
         session["count"] = max(0, session.get("count", 0) + coins_added)
+        session["last_coin_ts"] = time.time()
 
         # Update UI on the Tk thread.
         self.after(
@@ -1102,6 +1153,21 @@ class CoinStockEditWindow(tk.Toplevel):
             self._finish_coin_count(apply=True)
         self._stop_coin_poll()
         super().destroy()
+
+    def _get_or_start_coin_hopper(self):
+        """Get or lazily connect a CoinHopper controller."""
+        hopper = getattr(self.controller, "coin_hopper", None)
+        if hopper and getattr(hopper, "serial_conn", None) and getattr(hopper.serial_conn, "is_open", False):
+            return hopper
+        try:
+            port = detect_arduino_serial_port(preferred_port=None)
+            hopper = CoinHopper(serial_port=port, baudrate=115200)
+            if hopper.connect():
+                self.controller.coin_hopper = hopper
+                return hopper
+        except Exception:
+            return None
+        return None
 
 
 class AdminScreen(tk.Frame):

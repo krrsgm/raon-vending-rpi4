@@ -1669,6 +1669,11 @@ class AssignItemsScreen(tk.Frame):
             slot_ui['thumb'].config(text='No Image', image='')
 
     def refresh_all(self):
+        # Enforce image remap for mirrored slot camera layout before rendering
+        try:
+            self._apply_slot_image_remap()
+        except Exception:
+            pass
         # Fast refresh: update text/details quickly, defer image thumbnail generation
         for idx in range(self.MAX_SLOTS):
             self.refresh_slot(idx)
@@ -1752,6 +1757,44 @@ class AssignItemsScreen(tk.Frame):
             if path and os.path.exists(path):
                 return path
         return None
+
+    def _apply_slot_image_remap(self):
+        """Mirror images: slots 1-8 use images/33-40.png; slots 33-40 use images/1-8.png."""
+        top_map = [f"images/{i}.png" for i in range(33, 41)]  # slots 1-8
+        bottom_map = [f"images/{i}.png" for i in range(1, 9)]  # slots 33-40
+        for term_idx in range(self.TERM_COUNT):
+            # Slots 1-8 -> images/33-40.png
+            for offset, img_path in enumerate(top_map):
+                slot_idx = offset  # 0-based for slot 1
+                if slot_idx >= len(self.slots):
+                    continue
+                slot = self.slots[slot_idx]
+                if not isinstance(slot, dict):
+                    continue
+                terms = slot.get("terms", [None] * self.TERM_COUNT)
+                if term_idx >= len(terms):
+                    continue
+                item = terms[term_idx]
+                if isinstance(item, dict):
+                    item["image"] = img_path
+                    terms[term_idx] = item
+                    slot["terms"] = terms
+            # Slots 33-40 -> images/1-8.png
+            for offset, img_path in enumerate(bottom_map):
+                slot_idx = 32 + offset  # 0-based for slot 33
+                if slot_idx >= len(self.slots):
+                    continue
+                slot = self.slots[slot_idx]
+                if not isinstance(slot, dict):
+                    continue
+                terms = slot.get("terms", [None] * self.TERM_COUNT)
+                if term_idx >= len(terms):
+                    continue
+                item = terms[term_idx]
+                if isinstance(item, dict):
+                    item["image"] = img_path
+                    terms[term_idx] = item
+                    slot["terms"] = terms
 
     def _update_slot_selection_visual(self, idx):
         r, c = self._slot_to_position(idx)

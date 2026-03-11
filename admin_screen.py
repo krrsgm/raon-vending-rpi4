@@ -914,7 +914,7 @@ class CoinStockEditWindow(tk.Toplevel):
 
         # Ensure Arduino reader/bridge is running
         reader = self._get_or_start_coin_reader()
-        hopper = self._get_or_start_coin_hopper()
+        hopper, hopper_err = self._get_or_start_coin_hopper()
 
         if not reader or not getattr(reader, "connected", False):
             messagebox.showerror(
@@ -926,7 +926,8 @@ class CoinStockEditWindow(tk.Toplevel):
         if not hopper:
             messagebox.showerror(
                 "Coin Hopper",
-                "Coin hopper is not connected. Check the hopper USB/serial connection and try again.",
+                hopper_err
+                or "Coin hopper is not connected. Set the hopper COM port in config or check the USB/serial connection.",
                 parent=self,
             )
             return
@@ -1155,19 +1156,32 @@ class CoinStockEditWindow(tk.Toplevel):
         super().destroy()
 
     def _get_or_start_coin_hopper(self):
-        """Get or lazily connect a CoinHopper controller."""
+        """Get or lazily connect a CoinHopper controller.
+
+        Returns:
+            (hopper_instance or None, error_message or None)
+        """
         hopper = getattr(self.controller, "coin_hopper", None)
         if hopper and getattr(hopper, "serial_conn", None) and getattr(hopper.serial_conn, "is_open", False):
-            return hopper
+            return hopper, None
+
+        cfg = getattr(self.controller, "config", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
+        hw = cfg.get("hardware", {}) if isinstance(cfg, dict) else {}
+        hopper_cfg = hw.get("coin_hopper", {}) if isinstance(hw, dict) else {}
+        preferred_port = hopper_cfg.get("serial_port")
+        baud = int(hopper_cfg.get("baudrate", 115200))
+
         try:
-            port = detect_arduino_serial_port(preferred_port=None)
-            hopper = CoinHopper(serial_port=port, baudrate=115200)
+            port = detect_arduino_serial_port(preferred_port=preferred_port)
+            if not port:
+                return None, "No serial port found for coin hopper. Set hardware.coin_hopper.serial_port in config.json."
+            hopper = CoinHopper(serial_port=port, baudrate=baud)
             if hopper.connect():
                 self.controller.coin_hopper = hopper
-                return hopper
-        except Exception:
-            return None
-        return None
+                return hopper, None
+            return None, f"Failed to connect hopper on port {port}."
+        except Exception as e:
+            return None, f"Error connecting hopper: {e}"
 
 
 class AdminScreen(tk.Frame):

@@ -892,6 +892,7 @@ class CoinStockEditWindow(tk.Toplevel):
 
     # --- Auto-count helpers ---
     def _ensure_reader(self):
+        # Prefer existing shared reader; do not modify global config/state beyond that.
         reader = getattr(self.controller, "_arduino_reader", None)
         if reader and getattr(reader, "connected", False):
             return reader
@@ -903,17 +904,15 @@ class CoinStockEditWindow(tk.Toplevel):
                     or hw.get("bill_acceptor", {}).get("serial_port")
                     or detect_arduino_serial_port()
                 )
+                # Use a transient reader; do not attach to controller to avoid side-effects.
                 reader = get_shared_serial_reader(port, 115200)
-                self.controller._arduino_reader = reader
                 return reader
             except Exception:
                 return None
         return None
 
     def _ensure_hopper(self):
-        hopper = getattr(self.controller, "coin_hopper", None)
-        if hopper and getattr(getattr(hopper, "serial_conn", None), "is_open", False):
-            return hopper
+        # Create a temporary hopper instance so we don't affect other components.
         try:
             hw = getattr(self.controller, "config", {}).get("hardware", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
             cfg_port = (
@@ -922,21 +921,17 @@ class CoinStockEditWindow(tk.Toplevel):
                 or hw.get("coin_acceptor", {}).get("serial_port")
             )
             port = cfg_port
-            if port and platform.system() != "Linux" and port.startswith("/dev/"):
-                # Likely invalid on Windows; fall back to auto-detect.
+            if port and platform.system() != "Linux" and str(port).startswith("/dev/"):
                 port = None
             if not port:
                 port = detect_arduino_serial_port()
             hopper = CoinHopper(serial_port=port, baudrate=115200)
             if hopper.connect():
-                self.controller.coin_hopper = hopper
                 return hopper
-            # Retry once with auto-detect if config port failed
             auto_port = detect_arduino_serial_port()
             if auto_port and auto_port != port:
                 hopper = CoinHopper(serial_port=auto_port, baudrate=115200)
                 if hopper.connect():
-                    self.controller.coin_hopper = hopper
                     return hopper
         except Exception:
             return None
@@ -968,14 +963,13 @@ class CoinStockEditWindow(tk.Toplevel):
             pass
         opened = hopper.open_hopper(denom)
         if not opened:
-            # Try reconnect/auto-detect once more then retry open
-            hopper = self._ensure_hopper()
-            if hopper:
-                opened = hopper.open_hopper(denom)
-        if not opened:
             ports = self._serial_ports_text()
             extra = f"\nPorts seen: {ports}" if ports else ""
             messagebox.showerror("Coin Hopper", f"Failed to start P{denom} hopper.{extra}", parent=self)
+            try:
+                hopper.disconnect()
+            except Exception:
+                pass
             return
         try:
             start_total = float(reader.get_coin_total() or 0.0)
@@ -1096,6 +1090,12 @@ class CoinStockEditWindow(tk.Toplevel):
             self._count_status.set(f"Applied P{denom} count: {count}")
         else:
             self._count_status.set("Auto-count idle")
+        hopper = session.get("hopper")
+        if hopper:
+            try:
+                hopper.disconnect()
+            except Exception:
+                pass
         self._count_session = None
     def _serial_ports_text(self):
         try:

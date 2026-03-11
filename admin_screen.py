@@ -950,6 +950,7 @@ class CoinStockEditWindow(tk.Toplevel):
             pass
         try:
             hopper.ensure_relays_off()
+            hopper.send_command("RELAY_ON")
         except Exception:
             pass
         if not hopper.open_hopper(denom):
@@ -969,9 +970,8 @@ class CoinStockEditWindow(tk.Toplevel):
             "count": 0,
             "last_coin_ts": time.time(),
         }
-        self._count_status.set(f"Counting P{denom}... running hopper dispense routine.")
-        # Use same dispense logic as change payout: request a large count and rely on hopper feedback.
-        self._start_dispense_thread(denom, hopper, reader)
+        self._count_status.set(f"Counting P{denom}... hopper open, waiting for coins.")
+        self._start_poll()
 
     def _start_poll(self):
         self._stop_poll()
@@ -1000,8 +1000,8 @@ class CoinStockEditWindow(tk.Toplevel):
                         entry.insert(0, str(session["count"]))
                         self._count_status.set(f"Counting P{denom}: {session['count']} coin(s)")
             idle_for = time.time() - session.get("last_coin_ts", 0)
-            if idle_for >= 5.0:
-                self._count_status.set(f"No coins for 5s. Stopping P{denom} hopper and applying count.")
+            if idle_for >= 2.0:
+                self._count_status.set(f"No coins for 2s. Stopping P{denom} hopper and applying count.")
                 self._stop_hopper_count(apply=True)
                 return
             self._count_job = self.after(400, _poll)

@@ -1,11 +1,11 @@
 """
 Test script to count coins by running a hopper until coins stop (idle 2s).
-It reads the coin sensor total, drives the hopper relay, and optionally
+It reads the coin sensor total, drives the hopper relay, and by default
 updates coin_change_stock in config.json.
 
 Usage:
-    python tools/hopper_count_test.py --denom 1
-    python tools/hopper_count_test.py --denom 5 --update
+    python hopper_count_test.py --denom 1
+    python hopper_count_test.py --denom 5 --no-update
 """
 
 import argparse
@@ -41,7 +41,6 @@ def choose_ports(cfg):
         or hw.get("bill_acceptor", {}).get("serial_port")
         or hopper_port
     )
-    # On Windows, ignore /dev paths if present
     if platform.system() != "Linux":
         if hopper_port and hopper_port.startswith("/dev/"):
             hopper_port = None
@@ -74,7 +73,6 @@ def ensure_hopper(port, baud=115200):
 
 
 def count_coins(denom, reader, hopper):
-    # Turn relays on and open hopper
     try:
         hopper.ensure_relays_off()
         hopper.send_command("RELAY_ON")
@@ -107,7 +105,6 @@ def count_coins(denom, reader, hopper):
                 print(f"[hopper-count] +{coins} (total {total_count})")
         if (time.time() - last_coin_ts) >= IDLE_TIMEOUT_SEC:
             break
-    # Close hopper/relays
     try:
         hopper.close_hopper(denom)
         hopper.ensure_relays_off()

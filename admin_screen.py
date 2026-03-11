@@ -894,7 +894,12 @@ class CoinStockEditWindow(tk.Toplevel):
             return reader
         if get_shared_serial_reader:
             try:
-                port = detect_arduino_serial_port()
+                hw = getattr(self.controller, "config", {}).get("hardware", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
+                port = (
+                    hw.get("coin_acceptor", {}).get("serial_port")
+                    or hw.get("bill_acceptor", {}).get("serial_port")
+                    or detect_arduino_serial_port()
+                )
                 reader = get_shared_serial_reader(port, 115200)
                 self.controller._arduino_reader = reader
                 return reader
@@ -907,7 +912,13 @@ class CoinStockEditWindow(tk.Toplevel):
         if hopper and getattr(getattr(hopper, "serial_conn", None), "is_open", False):
             return hopper
         try:
-            port = detect_arduino_serial_port()
+            hw = getattr(self.controller, "config", {}).get("hardware", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
+            port = (
+                hw.get("coin_hopper", {}).get("serial_port")
+                or hw.get("bill_acceptor", {}).get("serial_port")
+                or hw.get("coin_acceptor", {}).get("serial_port")
+                or detect_arduino_serial_port()
+            )
             hopper = CoinHopper(serial_port=port, baudrate=115200)
             if hopper.connect():
                 self.controller.coin_hopper = hopper

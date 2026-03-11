@@ -7,6 +7,11 @@ import io
 from system_status_panel import SystemStatusPanel
 from fix_paths import get_absolute_path
 from display_profile import get_display_profile
+from arduino_serial_utils import detect_arduino_serial_port
+try:
+    from dht22_handler import get_shared_serial_reader
+except Exception:
+    get_shared_serial_reader = None
 
 def pil_to_photoimage(pil_image):
     """Convert PIL Image to Tkinter PhotoImage using PPM format (no ImageTk needed)"""
@@ -906,14 +911,7 @@ class CoinStockEditWindow(tk.Toplevel):
             return
 
         # Ensure Arduino reader/bridge is running
-        reader = getattr(self.controller, "_arduino_reader", None)
-        if not reader or not getattr(reader, "connected", False):
-            try:
-                if hasattr(self.controller, "_init_arduino_sensor_bridge"):
-                    self.controller._init_arduino_sensor_bridge()
-            except Exception:
-                pass
-            reader = getattr(self.controller, "_arduino_reader", None)
+        reader = self._get_or_start_coin_reader()
 
         if not reader or not getattr(reader, "connected", False):
             messagebox.showerror(
@@ -948,6 +946,40 @@ class CoinStockEditWindow(tk.Toplevel):
         self._set_counting_ui_state(denomination, active=True)
         self._update_coin_count_status(f"Counting ₱{denomination} coins... insert only ₱{denomination} coins now.")
         self._start_coin_poll()
+
+    def _get_or_start_coin_reader(self):
+        """Return a connected SharedSerialReader, starting one if needed."""
+        reader = getattr(self.controller, "_arduino_reader", None)
+        if reader and getattr(reader, "connected", False):
+            return reader
+
+        # Try to start controller bridge if available
+        try:
+            if hasattr(self.controller, "_init_arduino_sensor_bridge"):
+                self.controller._init_arduino_sensor_bridge()
+                reader = getattr(self.controller, "_arduino_reader", None)
+                if reader and getattr(reader, "connected", False):
+                    return reader
+        except Exception:
+            pass
+
+        # Fallback: start a shared reader directly from here (Windows dev mode)
+        if get_shared_serial_reader:
+            try:
+                cfg = getattr(self.controller, "config", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
+                hardware = cfg.get("hardware", {}) if isinstance(cfg, dict) else {}
+                dht_cfg = hardware.get("dht22_sensors", {})
+                bill_cfg = hardware.get("bill_acceptor", {})
+                preferred_port = dht_cfg.get("esp32_port") or bill_cfg.get("serial_port")
+                port = detect_arduino_serial_port(preferred_port=preferred_port)
+                baud = int(dht_cfg.get("esp32_baud") or bill_cfg.get("baudrate") or 115200)
+                reader = get_shared_serial_reader(port, baud)
+                if reader:
+                    self.controller._arduino_reader = reader
+                    return reader
+            except Exception:
+                pass
+        return reader
 
     def _finish_coin_count(self, apply=True):
         """Stop current auto-count session and optionally apply counted value."""

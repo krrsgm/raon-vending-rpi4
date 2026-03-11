@@ -397,6 +397,10 @@ class KioskFrame(tk.Frame):
 
 
         # Frame for text content - minimal padding
+        # Bottom controls: price (left) and qty + stock warning (right) stay pinned at the bottom.
+        bottom_frame = tk.Frame(card, bg=self.colors['card_bg'])
+        bottom_frame.pack(side='bottom', fill='x', padx=10, pady=(0, 10))
+
         text_frame = tk.Frame(card, bg=self.colors['card_bg'])
         # Let text area grow but cap its content heights so price/stock always visible.
         text_frame.pack(fill='both', expand=True, padx=2)
@@ -451,10 +455,6 @@ class KioskFrame(tk.Frame):
             height=3  # enforce 3-line cap to keep price/stock in view
         )
         desc_label.pack(fill='x', pady=(0, 8))
-
-        # Bottom controls: price (left) and qty + add button (right)
-        bottom_frame = tk.Frame(card, bg=self.colors['card_bg'])
-        bottom_frame.pack(fill='x', padx=10, pady=(0, 10))
 
         # Use normalized currency symbol from controller to avoid stale "$" in UI.
         currency = str(getattr(self.controller, 'currency_symbol', "\u20b1") or "\u20b1").strip()

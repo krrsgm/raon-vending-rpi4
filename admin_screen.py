@@ -663,6 +663,7 @@ class CoinStockEditWindow(tk.Toplevel):
         self.touch = _get_touch_metrics(controller)
         self.title("Edit Coin Stock")
         self._coin_count_session = None  # Tracks active auto-count session
+        self._coin_poll_job = None
         self.coin_count_status = tk.StringVar(
             value="Auto-count idle. Press a button and insert only the selected denomination."
         )
@@ -904,7 +905,16 @@ class CoinStockEditWindow(tk.Toplevel):
             self._finish_coin_count(apply=True)
             return
 
+        # Ensure Arduino reader/bridge is running
         reader = getattr(self.controller, "_arduino_reader", None)
+        if not reader or not getattr(reader, "connected", False):
+            try:
+                if hasattr(self.controller, "_init_arduino_sensor_bridge"):
+                    self.controller._init_arduino_sensor_bridge()
+            except Exception:
+                pass
+            reader = getattr(self.controller, "_arduino_reader", None)
+
         if not reader or not getattr(reader, "connected", False):
             messagebox.showerror(
                 "Coin Counter",
@@ -912,6 +922,13 @@ class CoinStockEditWindow(tk.Toplevel):
                 parent=self,
             )
             return
+
+        # Ensure reader is not suspended
+        try:
+            if getattr(reader, "suspended", False):
+                reader.resume()
+        except Exception:
+            pass
 
         try:
             start_total = float(reader.get_coin_total() or 0.0)
@@ -925,13 +942,16 @@ class CoinStockEditWindow(tk.Toplevel):
             "last_total": start_total,
             "count": 0,
             "active": True,
+            "reader": reader,
         }
         self._ensure_coin_callback()
         self._set_counting_ui_state(denomination, active=True)
         self._update_coin_count_status(f"Counting ₱{denomination} coins... insert only ₱{denomination} coins now.")
+        self._start_coin_poll()
 
     def _finish_coin_count(self, apply=True):
         """Stop current auto-count session and optionally apply counted value."""
+        self._stop_coin_poll()
         session = self._coin_count_session
         if not session:
             return
@@ -969,6 +989,34 @@ class CoinStockEditWindow(tk.Toplevel):
 
     def _update_coin_count_status(self, message):
         self.coin_count_status.set(message)
+
+    def _start_coin_poll(self):
+        """Poll coin total to catch updates even if callbacks are missed."""
+        self._stop_coin_poll()
+
+        def _poll():
+            session = self._coin_count_session
+            if not session or not session.get("active"):
+                self._coin_poll_job = None
+                return
+            reader = session.get("reader")
+            try:
+                total = float(reader.get_coin_total() or 0.0) if reader else None
+            except Exception:
+                total = None
+            if total is not None:
+                self._on_coin_count_event(total)
+            self._coin_poll_job = self.after(400, _poll)
+
+        self._coin_poll_job = self.after(400, _poll)
+
+    def _stop_coin_poll(self):
+        if self._coin_poll_job:
+            try:
+                self.after_cancel(self._coin_poll_job)
+            except Exception:
+                pass
+            self._coin_poll_job = None
 
     def _on_coin_count_event(self, total):
         """Callback from shared serial reader; updates running count for active session."""
@@ -1020,6 +1068,7 @@ class CoinStockEditWindow(tk.Toplevel):
         # Ensure UI buttons reset and session cleared on close.
         if self._coin_count_session:
             self._finish_coin_count(apply=True)
+        self._stop_coin_poll()
         super().destroy()
 
 

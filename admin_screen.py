@@ -11,6 +11,10 @@ from arduino_serial_utils import detect_arduino_serial_port
 from coin_hopper import CoinHopper
 import time
 try:
+    from serial.tools import list_ports
+except Exception:
+    list_ports = None
+try:
     from dht22_handler import get_shared_serial_reader
 except Exception:
     get_shared_serial_reader = None
@@ -1174,14 +1178,28 @@ class CoinStockEditWindow(tk.Toplevel):
         try:
             port = detect_arduino_serial_port(preferred_port=preferred_port)
             if not port:
-                return None, "No serial port found for coin hopper. Set hardware.coin_hopper.serial_port in config.json."
-            hopper = CoinHopper(serial_port=port, baudrate=baud)
-            if hopper.connect():
-                self.controller.coin_hopper = hopper
-                return hopper, None
-            return None, f"Failed to connect hopper on port {port}."
-        except Exception as e:
-            return None, f"Error connecting hopper: {e}"
+            ports_text = self._serial_ports_text()
+            extra = f" Available ports: {ports_text}" if ports_text else ""
+            return None, "No serial port found for coin hopper. Set hardware.coin_hopper.serial_port in config.json." + extra
+        hopper = CoinHopper(serial_port=port, baudrate=baud)
+        if hopper.connect():
+            self.controller.coin_hopper = hopper
+            return hopper, None
+        ports_text = self._serial_ports_text()
+        extra = f" Available ports: {ports_text}" if ports_text else ""
+        return None, f"Failed to connect hopper on port {port}.{extra}"
+    except Exception as e:
+        return None, f"Error connecting hopper: {e}"
+
+    def _serial_ports_text(self):
+        """Return a short string listing detected serial ports for debugging."""
+        try:
+            if not list_ports:
+                return ""
+            ports = [p.device for p in list_ports.comports()]
+            return ", ".join(ports)
+        except Exception:
+            return ""
 
 
 class AdminScreen(tk.Frame):

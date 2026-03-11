@@ -1775,7 +1775,7 @@ class AssignItemsScreen(tk.Frame):
                 if term_idx >= len(terms):
                     continue
                 item = terms[term_idx]
-                if isinstance(item, dict):
+                if isinstance(item, dict) and not item.get("image"):
                     item["image"] = img_path
                     terms[term_idx] = item
                     slot["terms"] = terms
@@ -1791,7 +1791,7 @@ class AssignItemsScreen(tk.Frame):
                 if term_idx >= len(terms):
                     continue
                 item = terms[term_idx]
-                if isinstance(item, dict):
+                if isinstance(item, dict) and not item.get("image"):
                     item["image"] = img_path
                     terms[term_idx] = item
                     slot["terms"] = terms

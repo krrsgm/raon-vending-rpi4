@@ -7,17 +7,6 @@ import io
 from system_status_panel import SystemStatusPanel
 from fix_paths import get_absolute_path
 from display_profile import get_display_profile
-from arduino_serial_utils import detect_arduino_serial_port
-from coin_hopper import CoinHopper
-import time
-try:
-    from serial.tools import list_ports
-except Exception:
-    list_ports = None
-try:
-    from dht22_handler import get_shared_serial_reader
-except Exception:
-    get_shared_serial_reader = None
 
 def pil_to_photoimage(pil_image):
     """Convert PIL Image to Tkinter PhotoImage using PPM format (no ImageTk needed)"""
@@ -673,11 +662,6 @@ class CoinStockEditWindow(tk.Toplevel):
         self.controller = controller
         self.touch = _get_touch_metrics(controller)
         self.title("Edit Coin Stock")
-        self._coin_count_session = None  # Tracks active auto-count session
-        self._coin_poll_job = None
-        self.coin_count_status = tk.StringVar(
-            value="Auto-count idle. Press a button and insert only the selected denomination."
-        )
         self.configure(bg="#f0f4f8")
         self.resizable(True, True)
         self.transient(parent)
@@ -782,7 +766,6 @@ class CoinStockEditWindow(tk.Toplevel):
         tk.Label(frame, text="Denomination", bg="#f0f4f8", font=label_bold_font).grid(row=1, column=0, sticky="w")
         tk.Label(frame, text="Current Count", bg="#f0f4f8", font=label_bold_font).grid(row=1, column=1, sticky="w")
         tk.Label(frame, text="Low Threshold", bg="#f0f4f8", font=label_bold_font).grid(row=1, column=2, sticky="w")
-        tk.Label(frame, text="Auto Count", bg="#f0f4f8", font=label_bold_font).grid(row=1, column=3, sticky="w")
 
         tk.Label(frame, text="₱1 coins", bg="#f0f4f8", font=label_font).grid(
             row=2,
@@ -796,18 +779,6 @@ class CoinStockEditWindow(tk.Toplevel):
         self.one_threshold_entry = self._build_stepper_entry(
             frame, 2, 2, label_font, stock.get("one_peso", {}).get("low_threshold", 20)
         )
-        self.one_count_button = tk.Button(
-            frame,
-            text="Count ₱1 coins",
-            bg="#2980b9",
-            fg="white",
-            relief="flat",
-            font=label_bold_font,
-            padx=self.touch["button_padx"],
-            pady=self.touch["button_pady"],
-            command=lambda: self._toggle_coin_count(1),
-        )
-        self.one_count_button.grid(row=2, column=3, sticky="w", padx=(8, 0), pady=(self.touch["row_pady"], 0))
 
         tk.Label(frame, text="₱5 coins", bg="#f0f4f8", font=label_font).grid(
             row=3,
@@ -821,35 +792,9 @@ class CoinStockEditWindow(tk.Toplevel):
         self.five_threshold_entry = self._build_stepper_entry(
             frame, 3, 2, label_font, stock.get("five_peso", {}).get("low_threshold", 20)
         )
-        self.five_count_button = tk.Button(
-            frame,
-            text="Count ₱5 coins",
-            bg="#8e44ad",
-            fg="white",
-            relief="flat",
-            font=label_bold_font,
-            padx=self.touch["button_padx"],
-            pady=self.touch["button_pady"],
-            command=lambda: self._toggle_coin_count(5),
-        )
-        self.five_count_button.grid(row=3, column=3, sticky="w", padx=(8, 0), pady=(self.touch["row_pady"], 0))
-
-        status_frame = tk.Frame(frame, bg="#f0f4f8")
-        status_frame.grid(row=4, column=0, columnspan=4, sticky="we", pady=(10, 4))
-        status_frame.grid_columnconfigure(0, weight=1)
-        tk.Label(
-            status_frame,
-            textvariable=self.coin_count_status,
-            bg="#f0f4f8",
-            fg="#34495e",
-            anchor="w",
-            font=("Helvetica", max(10, self.touch["field_font_size"] - 2)),
-            wraplength=820,
-            justify="left",
-        ).grid(row=0, column=0, sticky="w")
 
         btns = tk.Frame(frame, bg="#f0f4f8")
-        btns.grid(row=5, column=0, columnspan=4, sticky="e", pady=(14, 0))
+        btns.grid(row=4, column=0, columnspan=3, sticky="e", pady=(14, 0))
 
         tk.Button(
             btns,
@@ -876,9 +821,6 @@ class CoinStockEditWindow(tk.Toplevel):
         ).pack(side="right")
 
     def _save(self):
-        # If auto-count is running, apply the partial count before saving.
-        if self._coin_count_session and self._coin_count_session.get("active"):
-            self._finish_coin_count(apply=True)
         try:
             one_count = max(0, int(self.one_count_entry.get().strip() or 0))
             five_count = max(0, int(self.five_count_entry.get().strip() or 0))
@@ -898,308 +840,6 @@ class CoinStockEditWindow(tk.Toplevel):
             self.destroy()
         except Exception as e:
             messagebox.showerror("Save Error", f"Failed to save coin stock: {e}", parent=self)
-
-    def _ensure_coin_callback(self):
-        """Register a coin callback on the shared Arduino reader (no-op if unavailable)."""
-        try:
-            reader = getattr(self.controller, "_arduino_reader", None)
-            if reader and hasattr(reader, "add_coin_callback"):
-                reader.add_coin_callback(self._on_coin_count_event)
-        except Exception:
-            pass
-
-    def _toggle_coin_count(self, denomination):
-        """Start or stop auto-counting for a specific denomination."""
-        session = self._coin_count_session or {}
-        active = session.get("active") and session.get("denom") == denomination
-        if active:
-            self._finish_coin_count(apply=True)
-            return
-
-        # Ensure Arduino reader/bridge is running
-        reader = self._get_or_start_coin_reader()
-        hopper, hopper_err = self._get_or_start_coin_hopper()
-
-        if not reader or not getattr(reader, "connected", False):
-            messagebox.showerror(
-                "Coin Counter",
-                "Coin acceptor reader is not connected. Connect the Arduino/ESP32 reader and try again.",
-                parent=self,
-            )
-            return
-        if not hopper:
-            messagebox.showerror(
-                "Coin Hopper",
-                hopper_err
-                or "Coin hopper is not connected. Set the hopper COM port in config or check the USB/serial connection.",
-                parent=self,
-            )
-            return
-
-        # Ensure reader is not suspended
-        try:
-            if getattr(reader, "suspended", False):
-                reader.resume()
-        except Exception:
-            pass
-        try:
-            hopper.ensure_relays_off()
-        except Exception:
-            pass
-
-        # Open hopper motor so coins dispense for counting
-        opened = False
-        try:
-            opened = hopper.open_hopper(denomination)
-        except Exception:
-            opened = False
-        if not opened:
-            messagebox.showerror(
-                "Coin Hopper",
-                f"Failed to start the ₱{denomination} hopper. Confirm the hopper board is powered and reachable.",
-                parent=self,
-            )
-            return
-
-        try:
-            start_total = float(reader.get_coin_total() or 0.0)
-        except Exception:
-            start_total = 0.0
-
-        # Cancel any prior session before starting a new one.
-        self._coin_count_session = {
-            "denom": denomination,
-            "start_total": start_total,
-            "last_total": start_total,
-            "count": 0,
-            "active": True,
-            "reader": reader,
-            "hopper": hopper,
-            "hopper_open": True,
-            "last_coin_ts": time.time(),
-        }
-        self._ensure_coin_callback()
-        self._set_counting_ui_state(denomination, active=True)
-        self._update_coin_count_status(f"Counting ₱{denomination} coins... insert only ₱{denomination} coins now.")
-        self._start_coin_poll()
-
-    def _get_or_start_coin_reader(self):
-        """Return a connected SharedSerialReader, starting one if needed."""
-        reader = getattr(self.controller, "_arduino_reader", None)
-        if reader and getattr(reader, "connected", False):
-            return reader
-
-        # Try to start controller bridge if available
-        try:
-            if hasattr(self.controller, "_init_arduino_sensor_bridge"):
-                self.controller._init_arduino_sensor_bridge()
-                reader = getattr(self.controller, "_arduino_reader", None)
-                if reader and getattr(reader, "connected", False):
-                    return reader
-        except Exception:
-            pass
-
-        # Fallback: start a shared reader directly from here (Windows dev mode)
-        if get_shared_serial_reader:
-            try:
-                cfg = getattr(self.controller, "config", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
-                hardware = cfg.get("hardware", {}) if isinstance(cfg, dict) else {}
-                dht_cfg = hardware.get("dht22_sensors", {})
-                bill_cfg = hardware.get("bill_acceptor", {})
-                preferred_port = dht_cfg.get("esp32_port") or bill_cfg.get("serial_port")
-                port = detect_arduino_serial_port(preferred_port=preferred_port)
-                baud = int(dht_cfg.get("esp32_baud") or bill_cfg.get("baudrate") or 115200)
-                reader = get_shared_serial_reader(port, baud)
-                if reader:
-                    self.controller._arduino_reader = reader
-                    return reader
-            except Exception:
-                pass
-        return reader
-
-    def _finish_coin_count(self, apply=True):
-        """Stop current auto-count session and optionally apply counted value."""
-        self._stop_coin_poll()
-        session = self._coin_count_session
-        if not session:
-            return
-        denomination = session.get("denom")
-        count = max(0, int(session.get("count", 0)))
-        hopper = session.get("hopper")
-        if hopper:
-            try:
-                if session.get("hopper_open"):
-                    hopper.close_hopper(denomination)
-                hopper.ensure_relays_off()
-            except Exception:
-                pass
-        self._coin_count_session = None
-        if apply and denomination in (1, 5):
-            target_entry = self.one_count_entry if denomination == 1 else self.five_count_entry
-            target_entry.delete(0, tk.END)
-            target_entry.insert(0, str(count))
-            self._update_coin_count_status(f"Applied ₱{denomination} count: {count} coin(s) to change stock.")
-        else:
-            self._update_coin_count_status("Auto-count stopped.")
-        self._set_counting_ui_state(denomination, active=False)
-
-    def _set_counting_ui_state(self, denomination, active):
-        """Update button states and labels based on counting session."""
-        if denomination == 1:
-            self.one_count_button.config(
-                text="Stop & Apply ₱1 count" if active else "Count ₱1 coins",
-                bg="#c0392b" if active else "#2980b9",
-                state="normal",
-            )
-            self.five_count_button.config(state="disabled" if active else "normal")
-        elif denomination == 5:
-            self.five_count_button.config(
-                text="Stop & Apply ₱5 count" if active else "Count ₱5 coins",
-                bg="#c0392b" if active else "#8e44ad",
-                state="normal",
-            )
-            self.one_count_button.config(state="disabled" if active else "normal")
-        else:
-            self.one_count_button.config(text="Count ₱1 coins", bg="#2980b9", state="normal")
-            self.five_count_button.config(text="Count ₱5 coins", bg="#8e44ad", state="normal")
-
-    def _update_coin_count_status(self, message):
-        self.coin_count_status.set(message)
-
-    def _start_coin_poll(self):
-        """Poll coin total to catch updates even if callbacks are missed."""
-        self._stop_coin_poll()
-
-        def _poll():
-            session = self._coin_count_session
-            if not session or not session.get("active"):
-                self._coin_poll_job = None
-                return
-            reader = session.get("reader")
-            denomination = session.get("denom")
-            try:
-                total = float(reader.get_coin_total() or 0.0) if reader else None
-            except Exception:
-                total = None
-            if total is not None:
-                self._on_coin_count_event(total)
-            # Stop if hopper has been quiet for >1.5s (no coins coming out)
-            try:
-                last_ts = float(session.get("last_coin_ts") or 0.0)
-            except Exception:
-                last_ts = 0.0
-            if last_ts > 0 and (time.time() - last_ts) > 1.5:
-                self._update_coin_count_status(f"No coins detected for ₱{denomination}. Stopping hopper and applying count.")
-                self._finish_coin_count(apply=True)
-                self._coin_poll_job = None
-                return
-            self._coin_poll_job = self.after(400, _poll)
-
-        self._coin_poll_job = self.after(400, _poll)
-
-    def _stop_coin_poll(self):
-        if self._coin_poll_job:
-            try:
-                self.after_cancel(self._coin_poll_job)
-            except Exception:
-                pass
-            self._coin_poll_job = None
-
-    def _on_coin_count_event(self, total):
-        """Callback from shared serial reader; updates running count for active session."""
-        try:
-            total_value = float(total)
-        except Exception:
-            return
-
-        session = self._coin_count_session
-        if not session or not session.get("active"):
-            return
-
-        denomination = session.get("denom")
-        if denomination not in (1, 5):
-            return
-
-        last_total = session.get("last_total", total_value)
-        delta = total_value - last_total
-        session["last_total"] = total_value
-
-        # Ignore noise or negative jumps.
-        if delta <= 0:
-            return
-
-        # Accept only increments that look like the selected denomination.
-        coins_added = int(round(delta / float(denomination)))
-        if coins_added <= 0:
-            return
-
-        session["count"] = max(0, session.get("count", 0) + coins_added)
-        session["last_coin_ts"] = time.time()
-
-        # Update UI on the Tk thread.
-        self.after(
-            0,
-            lambda denom=denomination, count=session["count"]: self._apply_count_to_entry_live(
-                denom,
-                count,
-            ),
-        )
-
-    def _apply_count_to_entry_live(self, denomination, count):
-        """Live-update entry fields while counting without stopping the session."""
-        entry = self.one_count_entry if denomination == 1 else self.five_count_entry
-        entry.delete(0, tk.END)
-        entry.insert(0, str(count))
-        self._update_coin_count_status(f"Counting ₱{denomination}: {count} coin(s) captured. Press stop to apply.")
-
-    def destroy(self):
-        # Ensure UI buttons reset and session cleared on close.
-        if self._coin_count_session:
-            self._finish_coin_count(apply=True)
-        self._stop_coin_poll()
-        super().destroy()
-
-    def _get_or_start_coin_hopper(self):
-        """Get or lazily connect a CoinHopper controller.
-
-        Returns:
-            (hopper_instance or None, error_message or None)
-        """
-        hopper = getattr(self.controller, "coin_hopper", None)
-        if hopper and getattr(hopper, "serial_conn", None) and getattr(hopper.serial_conn, "is_open", False):
-            return hopper, None
-
-        cfg = getattr(self.controller, "config", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
-        hw = cfg.get("hardware", {}) if isinstance(cfg, dict) else {}
-        hopper_cfg = hw.get("coin_hopper", {}) if isinstance(hw, dict) else {}
-        preferred_port = hopper_cfg.get("serial_port")
-        baud = int(hopper_cfg.get("baudrate", 115200))
-
-        try:
-            port = detect_arduino_serial_port(preferred_port=preferred_port)
-            if not port:
-            ports_text = self._serial_ports_text()
-            extra = f" Available ports: {ports_text}" if ports_text else ""
-            return None, "No serial port found for coin hopper. Set hardware.coin_hopper.serial_port in config.json." + extra
-        hopper = CoinHopper(serial_port=port, baudrate=baud)
-        if hopper.connect():
-            self.controller.coin_hopper = hopper
-            return hopper, None
-        ports_text = self._serial_ports_text()
-        extra = f" Available ports: {ports_text}" if ports_text else ""
-        return None, f"Failed to connect hopper on port {port}.{extra}"
-    except Exception as e:
-        return None, f"Error connecting hopper: {e}"
-
-    def _serial_ports_text(self):
-        """Return a short string listing detected serial ports for debugging."""
-        try:
-            if not list_ports:
-                return ""
-            ports = [p.device for p in list_ports.comports()]
-            return ", ".join(ports)
-        except Exception:
-            return ""
 
 
 class AdminScreen(tk.Frame):

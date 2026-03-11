@@ -130,7 +130,11 @@ def update_config(cfg_path, cfg, denom, count):
 def main():
     parser = argparse.ArgumentParser(description="Count hopper coins via coin sensor.")
     parser.add_argument("--denom", type=int, choices=[1, 5], required=True, help="Denomination to count (1 or 5)")
-    parser.add_argument("--update", action="store_true", help="Write counted value into config coin_change_stock")
+    parser.add_argument(
+        "--no-update",
+        action="store_true",
+        help="Do not write the counted value into config (default is to update coin_change_stock)",
+    )
     args = parser.parse_args()
 
     cfg, cfg_path = load_config()
@@ -147,7 +151,7 @@ def main():
     try:
         count, _ = count_coins(args.denom, reader, hopper)
         print(f"[hopper-count] Counted {count} coin(s) of P{args.denom}")
-        if args.update:
+        if not args.no_update:
             update_config(cfg_path, cfg, args.denom, count)
     finally:
         try:

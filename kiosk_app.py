@@ -398,10 +398,11 @@ class KioskFrame(tk.Frame):
 
         # Frame for text content - minimal padding
         text_frame = tk.Frame(card, bg=self.colors['card_bg'])
-        text_frame.pack(fill='x', padx=2)
+        # Let text area grow but cap its content heights so price/stock always visible.
+        text_frame.pack(fill='both', expand=True, padx=2)
 
         # 1. Name of item
-        name_text = self._truncate_text(item_data.get('name', ''), 52)
+        name_text = self._truncate_text(item_data.get('name', ''), 48)
         name_label = tk.Label(
             text_frame,
             text=name_text,
@@ -410,7 +411,8 @@ class KioskFrame(tk.Frame):
             fg=self.colors['text_fg'],
             anchor='w',
             justify='left',
-            wraplength=max(120, self.card_width - 22)
+            wraplength=max(120, self.card_width - 22),
+            height=2  # cap to 2 lines to avoid pushing price out
         )
         name_label.pack(fill='x', pady=(6, 2))
 
@@ -430,12 +432,13 @@ class KioskFrame(tk.Frame):
             fg='#8B7355',
             anchor='w',
             justify='left',
-            wraplength=max(110, self.card_width - 22)
+            wraplength=max(110, self.card_width - 22),
+            height=2  # limit height so warnings stay visible
         )
         category_label.pack(fill='x', pady=(0, 2))
 
         # 2. Short description
-        description_text = self._truncate_text(item_data.get('description', ''), 72)
+        description_text = self._truncate_text(item_data.get('description', ''), 90)
         desc_label = tk.Label(
             text_frame,
             text=description_text,
@@ -444,7 +447,8 @@ class KioskFrame(tk.Frame):
             fg=self.colors['gray_fg'],
             wraplength=max(110, self.card_width - 22),
             justify='left',
-            anchor='nw'
+            anchor='nw',
+            height=3  # enforce 3-line cap to keep price/stock in view
         )
         desc_label.pack(fill='x', pady=(0, 8))
 

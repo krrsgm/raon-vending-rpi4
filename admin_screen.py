@@ -3,6 +3,7 @@ from tkinter import font as tkfont, messagebox, filedialog, ttk
 import json
 import os
 import time
+import threading
 from PIL import Image
 import io
 from system_status_panel import SystemStatusPanel
@@ -671,6 +672,7 @@ class CoinStockEditWindow(tk.Toplevel):
         self.title("Edit Coin Stock")
         self._count_session = None
         self._count_job = None
+        self._count_thread = None
         self._count_status = tk.StringVar(value="Auto-count idle")
         self.configure(bg="#f0f4f8")
         self.resizable(True, True)
@@ -967,8 +969,9 @@ class CoinStockEditWindow(tk.Toplevel):
             "count": 0,
             "last_coin_ts": time.time(),
         }
-        self._count_status.set(f"Counting P{denom}... hopper running. Stops after 5s idle.")
-        self._start_poll()
+        self._count_status.set(f"Counting P{denom}... running hopper dispense routine.")
+        # Use same dispense logic as change payout: request a large count and rely on hopper feedback.
+        self._start_dispense_thread(denom, hopper, reader)
 
     def _start_poll(self):
         self._stop_poll()
@@ -1005,6 +1008,43 @@ class CoinStockEditWindow(tk.Toplevel):
 
         self._count_job = self.after(400, _poll)
 
+    def _start_dispense_thread(self, denom, hopper, reader):
+        if self._count_thread and self._count_thread.is_alive():
+            return
+
+        def runner():
+            try:
+                ok, dispensed, msg = hopper.dispense_coins(
+                    denomination=denom,
+                    count=500,
+                    timeout_ms=60000,
+                    callback=self._set_status_from_thread,
+                )
+            except Exception as e:
+                ok, dispensed, msg = False, 0, f"Error: {e}"
+            self.after(0, lambda: self._finish_dispense_result(ok, dispensed, msg, denom))
+
+        self._count_thread = threading.Thread(target=runner, daemon=True)
+        self._count_thread.start()
+
+    def _set_status_from_thread(self, text):
+        try:
+            self.after(0, lambda: self._count_status.set(str(text)))
+        except Exception:
+            pass
+
+    def _finish_dispense_result(self, ok, dispensed, msg, denom):
+        session = self._count_session or {}
+        session["count"] = max(0, int(dispensed or 0))
+        session["active"] = False
+        self._count_session = session
+        if not ok and msg:
+            try:
+                messagebox.showerror("Coin Hopper", msg, parent=self)
+            except Exception:
+                pass
+        self._stop_hopper_count(apply=True)
+
     def _stop_poll(self):
         if self._count_job:
             try:
@@ -1020,6 +1060,7 @@ class CoinStockEditWindow(tk.Toplevel):
         self._stop_poll()
         hopper = session.get("hopper")
         denom = session.get("denom")
+        self._count_thread = None
         if hopper:
             try:
                 hopper.close_hopper(denom)

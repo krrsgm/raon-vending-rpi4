@@ -4,6 +4,7 @@ import json
 import os
 import time
 import threading
+import platform
 from PIL import Image
 import io
 from system_status_panel import SystemStatusPanel
@@ -915,16 +916,28 @@ class CoinStockEditWindow(tk.Toplevel):
             return hopper
         try:
             hw = getattr(self.controller, "config", {}).get("hardware", {}) if isinstance(getattr(self.controller, "config", {}), dict) else {}
-            port = (
+            cfg_port = (
                 hw.get("coin_hopper", {}).get("serial_port")
                 or hw.get("bill_acceptor", {}).get("serial_port")
                 or hw.get("coin_acceptor", {}).get("serial_port")
-                or detect_arduino_serial_port()
             )
+            port = cfg_port
+            if port and platform.system() != "Linux" and port.startswith("/dev/"):
+                # Likely invalid on Windows; fall back to auto-detect.
+                port = None
+            if not port:
+                port = detect_arduino_serial_port()
             hopper = CoinHopper(serial_port=port, baudrate=115200)
             if hopper.connect():
                 self.controller.coin_hopper = hopper
                 return hopper
+            # Retry once with auto-detect if config port failed
+            auto_port = detect_arduino_serial_port()
+            if auto_port and auto_port != port:
+                hopper = CoinHopper(serial_port=auto_port, baudrate=115200)
+                if hopper.connect():
+                    self.controller.coin_hopper = hopper
+                    return hopper
         except Exception:
             return None
         return None
@@ -953,8 +966,16 @@ class CoinStockEditWindow(tk.Toplevel):
             hopper.send_command("RELAY_ON")
         except Exception:
             pass
-        if not hopper.open_hopper(denom):
-            messagebox.showerror("Coin Hopper", f"Failed to start P{denom} hopper.", parent=self)
+        opened = hopper.open_hopper(denom)
+        if not opened:
+            # Try reconnect/auto-detect once more then retry open
+            hopper = self._ensure_hopper()
+            if hopper:
+                opened = hopper.open_hopper(denom)
+        if not opened:
+            ports = self._serial_ports_text()
+            extra = f"\nPorts seen: {ports}" if ports else ""
+            messagebox.showerror("Coin Hopper", f"Failed to start P{denom} hopper.{extra}", parent=self)
             return
         try:
             start_total = float(reader.get_coin_total() or 0.0)
@@ -1076,7 +1097,13 @@ class CoinStockEditWindow(tk.Toplevel):
         else:
             self._count_status.set("Auto-count idle")
         self._count_session = None
-
+    def _serial_ports_text(self):
+        try:
+            if not list_ports:
+                return ""
+            return ", ".join([p.device for p in list_ports.comports()])
+        except Exception:
+            return ""
 
 class AdminScreen(tk.Frame):
     def __init__(self, parent, controller):

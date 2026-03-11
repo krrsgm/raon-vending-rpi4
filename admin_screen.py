@@ -2,11 +2,18 @@ import tkinter as tk
 from tkinter import font as tkfont, messagebox, filedialog, ttk
 import json
 import os
+import time
 from PIL import Image
 import io
 from system_status_panel import SystemStatusPanel
 from fix_paths import get_absolute_path
 from display_profile import get_display_profile
+from coin_hopper import CoinHopper
+from arduino_serial_utils import detect_arduino_serial_port
+try:
+    from dht22_handler import get_shared_serial_reader
+except Exception:
+    get_shared_serial_reader = None
 
 def pil_to_photoimage(pil_image):
     """Convert PIL Image to Tkinter PhotoImage using PPM format (no ImageTk needed)"""
@@ -662,6 +669,9 @@ class CoinStockEditWindow(tk.Toplevel):
         self.controller = controller
         self.touch = _get_touch_metrics(controller)
         self.title("Edit Coin Stock")
+        self._count_session = None
+        self._count_job = None
+        self._count_status = tk.StringVar(value="Auto-count idle")
         self.configure(bg="#f0f4f8")
         self.resizable(True, True)
         self.transient(parent)
@@ -761,11 +771,12 @@ class CoinStockEditWindow(tk.Toplevel):
             fg="#2c3e50",
             font=title_font,
             anchor="w",
-        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
+        ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 10))
 
         tk.Label(frame, text="Denomination", bg="#f0f4f8", font=label_bold_font).grid(row=1, column=0, sticky="w")
         tk.Label(frame, text="Current Count", bg="#f0f4f8", font=label_bold_font).grid(row=1, column=1, sticky="w")
         tk.Label(frame, text="Low Threshold", bg="#f0f4f8", font=label_bold_font).grid(row=1, column=2, sticky="w")
+        tk.Label(frame, text="Auto Count", bg="#f0f4f8", font=label_bold_font).grid(row=1, column=3, sticky="w")
 
         tk.Label(frame, text="₱1 coins", bg="#f0f4f8", font=label_font).grid(
             row=2,
@@ -779,6 +790,17 @@ class CoinStockEditWindow(tk.Toplevel):
         self.one_threshold_entry = self._build_stepper_entry(
             frame, 2, 2, label_font, stock.get("one_peso", {}).get("low_threshold", 20)
         )
+        tk.Button(
+            frame,
+            text="Count P1",
+            bg="#2980b9",
+            fg="white",
+            relief="flat",
+            font=label_bold_font,
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
+            command=lambda: self._toggle_hopper_count(1),
+        ).grid(row=2, column=3, sticky="w", padx=(8, 0), pady=(self.touch["row_pady"], 0))
 
         tk.Label(frame, text="₱5 coins", bg="#f0f4f8", font=label_font).grid(
             row=3,
@@ -792,9 +814,32 @@ class CoinStockEditWindow(tk.Toplevel):
         self.five_threshold_entry = self._build_stepper_entry(
             frame, 3, 2, label_font, stock.get("five_peso", {}).get("low_threshold", 20)
         )
+        tk.Button(
+            frame,
+            text="Count P5",
+            bg="#8e44ad",
+            fg="white",
+            relief="flat",
+            font=label_bold_font,
+            padx=self.touch["button_padx"],
+            pady=self.touch["button_pady"],
+            command=lambda: self._toggle_hopper_count(5),
+        ).grid(row=3, column=3, sticky="w", padx=(8, 0), pady=(self.touch["row_pady"], 0))
+
+        status = tk.Label(
+            frame,
+            textvariable=self._count_status,
+            bg="#f0f4f8",
+            fg="#34495e",
+            font=("Helvetica", max(10, self.touch["field_font_size"] - 2)),
+            anchor="w",
+            justify="left",
+            wraplength=780,
+        )
+        status.grid(row=4, column=0, columnspan=4, sticky="we", pady=(10, 4))
 
         btns = tk.Frame(frame, bg="#f0f4f8")
-        btns.grid(row=4, column=0, columnspan=3, sticky="e", pady=(14, 0))
+        btns.grid(row=5, column=0, columnspan=4, sticky="e", pady=(14, 0))
 
         tk.Button(
             btns,
@@ -821,6 +866,7 @@ class CoinStockEditWindow(tk.Toplevel):
         ).pack(side="right")
 
     def _save(self):
+        self._stop_hopper_count(apply=False)
         try:
             one_count = max(0, int(self.one_count_entry.get().strip() or 0))
             five_count = max(0, int(self.five_count_entry.get().strip() or 0))
@@ -840,6 +886,144 @@ class CoinStockEditWindow(tk.Toplevel):
             self.destroy()
         except Exception as e:
             messagebox.showerror("Save Error", f"Failed to save coin stock: {e}", parent=self)
+
+    # --- Auto-count helpers ---
+    def _ensure_reader(self):
+        reader = getattr(self.controller, "_arduino_reader", None)
+        if reader and getattr(reader, "connected", False):
+            return reader
+        if get_shared_serial_reader:
+            try:
+                port = detect_arduino_serial_port()
+                reader = get_shared_serial_reader(port, 115200)
+                self.controller._arduino_reader = reader
+                return reader
+            except Exception:
+                return None
+        return None
+
+    def _ensure_hopper(self):
+        hopper = getattr(self.controller, "coin_hopper", None)
+        if hopper and getattr(getattr(hopper, "serial_conn", None), "is_open", False):
+            return hopper
+        try:
+            port = detect_arduino_serial_port()
+            hopper = CoinHopper(serial_port=port, baudrate=115200)
+            if hopper.connect():
+                self.controller.coin_hopper = hopper
+                return hopper
+        except Exception:
+            return None
+        return None
+
+    def _toggle_hopper_count(self, denom):
+        session = self._count_session or {}
+        if session.get("active") and session.get("denom") == denom:
+            self._stop_hopper_count(apply=True)
+            return
+
+        reader = self._ensure_reader()
+        hopper = self._ensure_hopper()
+        if not reader or not getattr(reader, "connected", False):
+            messagebox.showerror("Coin Counter", "Coin sensor is not connected.", parent=self)
+            return
+        if not hopper:
+            messagebox.showerror("Coin Hopper", "Coin hopper is not connected.", parent=self)
+            return
+        try:
+            if getattr(reader, "suspended", False):
+                reader.resume()
+        except Exception:
+            pass
+        try:
+            hopper.ensure_relays_off()
+        except Exception:
+            pass
+        if not hopper.open_hopper(denom):
+            messagebox.showerror("Coin Hopper", f"Failed to start P{denom} hopper.", parent=self)
+            return
+        try:
+            start_total = float(reader.get_coin_total() or 0.0)
+        except Exception:
+            start_total = 0.0
+        self._count_session = {
+            "active": True,
+            "denom": denom,
+            "reader": reader,
+            "hopper": hopper,
+            "start_total": start_total,
+            "last_total": start_total,
+            "count": 0,
+            "last_coin_ts": time.time(),
+        }
+        self._count_status.set(f"Counting P{denom}... hopper running. Stops after 5s idle.")
+        self._start_poll()
+
+    def _start_poll(self):
+        self._stop_poll()
+
+        def _poll():
+            session = self._count_session
+            if not session or not session.get("active"):
+                return
+            reader = session.get("reader")
+            denom = session.get("denom")
+            try:
+                total = float(reader.get_coin_total() or 0.0)
+            except Exception:
+                total = None
+            if total is not None:
+                last_total = session.get("last_total", total)
+                delta = total - last_total
+                session["last_total"] = total
+                if delta > 0 and denom:
+                    coins = int(round(delta / float(denom)))
+                    if coins > 0:
+                        session["count"] = max(0, session.get("count", 0) + coins)
+                        session["last_coin_ts"] = time.time()
+                        entry = self.one_count_entry if denom == 1 else self.five_count_entry
+                        entry.delete(0, tk.END)
+                        entry.insert(0, str(session["count"]))
+                        self._count_status.set(f"Counting P{denom}: {session['count']} coin(s)")
+            idle_for = time.time() - session.get("last_coin_ts", 0)
+            if idle_for >= 5.0:
+                self._count_status.set(f"No coins for 5s. Stopping P{denom} hopper and applying count.")
+                self._stop_hopper_count(apply=True)
+                return
+            self._count_job = self.after(400, _poll)
+
+        self._count_job = self.after(400, _poll)
+
+    def _stop_poll(self):
+        if self._count_job:
+            try:
+                self.after_cancel(self._count_job)
+            except Exception:
+                pass
+            self._count_job = None
+
+    def _stop_hopper_count(self, apply=True):
+        session = self._count_session
+        if not session:
+            return
+        self._stop_poll()
+        hopper = session.get("hopper")
+        denom = session.get("denom")
+        if hopper:
+            try:
+                hopper.close_hopper(denom)
+                hopper.ensure_relays_off()
+            except Exception:
+                pass
+        if apply and denom in (1, 5):
+            count = max(0, int(session.get("count", 0)))
+            entry = self.one_count_entry if denom == 1 else self.five_count_entry
+            entry.delete(0, tk.END)
+            entry.insert(0, str(count))
+            self._count_status.set(f"Applied P{denom} count: {count}")
+        else:
+            self._count_status.set("Auto-count idle")
+        self._count_session = None
 
 
 class AdminScreen(tk.Frame):

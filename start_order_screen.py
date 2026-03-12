@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import font as tkfont
-from system_status_panel import SystemStatusPanel
 
 
 class StartOrderScreen(tk.Frame):
@@ -28,14 +27,11 @@ class StartOrderScreen(tk.Frame):
         content = tk.Frame(self, bg=primary_blue)
         content.pack(expand=True, fill="both")
 
-        # Non-touch bottom area hosts a taller status panel.
-        status_height = max(200, touch_dead_zone_bottom if touch_dead_zone_bottom > 0 else 200)
-        bottom_dead_zone = tk.Frame(self, bg="#000000", height=status_height)
-        bottom_dead_zone.pack(side="bottom", fill="x")
-        bottom_dead_zone.pack_propagate(False)
-
-        status_panel = SystemStatusPanel(bottom_dead_zone, controller=controller, panel_height=status_height)
-        status_panel.pack(fill="both", expand=True)
+        # Non-touch bottom area visualized as black.
+        if touch_dead_zone_bottom > 0:
+            bottom_dead_zone = tk.Frame(self, bg="#000000", height=touch_dead_zone_bottom)
+            bottom_dead_zone.pack(side="bottom", fill="x")
+            bottom_dead_zone.pack_propagate(False)
 
         center_panel = tk.Frame(content, bg=primary_blue)
         center_panel.place(relx=0.5, rely=0.47, anchor="center")

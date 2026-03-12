@@ -376,9 +376,8 @@ class CartScreen(tk.Frame):
             dialog.update_idletasks()
             screen_w = dialog.winfo_screenwidth()
             screen_h = dialog.winfo_screenheight()
-            h = int(screen_h * 0.8)
-            y = max(0, int(screen_h * 0.1))
-            dialog.geometry(f"{screen_w}x{h}+0+{y}")
+            dialog.geometry(f"{screen_w}x{screen_h}+0+0")
+            dialog.attributes("-fullscreen", True)
             dialog.lift()
             dialog.attributes("-topmost", True)
         except Exception:
@@ -1033,11 +1032,12 @@ class CartScreen(tk.Frame):
             cart_snapshot,
             coin_amount,
             bill_amount,
-            or_number_value
+            None,
+            buyer_info
         ))
 
     def _present_payment_complete(self, required_amount, received, change_dispensed,
-                                  change_status, cart_snapshot, coin_amount, bill_amount, or_number=None):
+                                  change_status, cart_snapshot, coin_amount, bill_amount, or_number=None, buyer_info=None):
         try:
             vend_list = [ {"item": it["item"], "quantity": it["quantity"]} for it in cart_snapshot ]
         except Exception:
@@ -1071,8 +1071,6 @@ class CartScreen(tk.Frame):
             f"Total paid: {self.controller.currency_symbol}{received:.2f}\n"
             "\nYour items will now be dispensed."
         )
-        if or_number:
-            status_text += f"\n\nOR: {or_number}"
         if change_due > 0:
             status_text += (
                 f"\n\nChange due: {self.controller.currency_symbol}{change_due:.2f}\n"
@@ -1089,11 +1087,6 @@ class CartScreen(tk.Frame):
                         pass
 
         self._destroy_payment_window()
-
-        try:
-            self.controller.apply_cart_stock_deductions(cart_snapshot)
-        except Exception as e:
-            print(f"[CartScreen] Error applying stock deductions: {e}")
 
         def _extract_cart_entry_name_and_qty(entry):
             """Normalize cart entry shapes to (item_name, quantity)."""
@@ -1112,7 +1105,7 @@ class CartScreen(tk.Frame):
                 item_name = "Unknown"
             return item_name, qty
         
-        or_number_value = None
+        or_number_value = or_number
         # Log the transaction to daily sales log
         try:
             logger = get_logger()
@@ -1131,12 +1124,10 @@ class CartScreen(tk.Frame):
                 buyer_program=buyer_info.get("program") if isinstance(buyer_info, dict) else None,
                 buyer_year=buyer_info.get("year") if isinstance(buyer_info, dict) else None,
                 buyer_section=buyer_info.get("section") if isinstance(buyer_info, dict) else None,
-                or_number=or_number
+                or_number=or_number_value
             )
-            if not or_number and or_number_logged:
+            if not or_number_value and or_number_logged:
                 or_number_value = or_number_logged
-            else:
-                or_number_value = or_number or or_number_logged
         except Exception as e:
             print(f"[CartScreen] Error logging transaction: {e}")
         
@@ -1164,6 +1155,56 @@ class CartScreen(tk.Frame):
                         print(f"[CartScreen] Sale recorded for {item_name} (qty: {qty})")
             except Exception as e:
                 print(f"[CartScreen] Error recording sales in stock tracker: {e}")
+
+        if or_number_value:
+            status_text += f"\n\nOR: {or_number_value}"
+
+        def _after_vend():
+            try:
+                self.controller.apply_cart_stock_deductions(cart_snapshot)
+            except Exception as e:
+                print(f"[CartScreen] Error applying stock deductions: {e}")
+
+            # Prompt for post-transaction issue report (optional)
+            try:
+                issue = self._prompt_issue_report(or_number_value)
+                if issue:
+                    logger = get_logger()
+                    logger.log_event(
+                        "ISSUE",
+                        f"OR: {or_number_value or 'N/A'} | Issue: {issue}"
+                    )
+            except Exception as e:
+                print(f"[CartScreen] Error capturing issue report: {e}")
+
+            # Reset buyer info after successful transaction
+            self.buyer_info = None
+            
+            # Clear cart and return to kiosk screen
+            self.controller.clear_cart()
+            try:
+                self.controller.finish_order_timer(status="SUCCESS")
+            except Exception:
+                pass
+            self._show_payment_complete_notice(status_text, auto_return_ms=10000)
+            self._schedule_return_to_start_order(delay_ms=10000)
+
+        def _vend_items_and_finish():
+            try:
+                # Use organized vending so slots are processed in ascending order.
+                self.controller.vend_cart_items_organized(vend_list)
+            except Exception as e:
+                print(f"Error in vending thread: {e}")
+            finally:
+                try:
+                    self.after(0, _after_vend)
+                except Exception:
+                    _after_vend()
+
+        try:
+            threading.Thread(target=_vend_items_and_finish, daemon=True).start()
+        except Exception:
+            _after_vend()
         
         # Prompt for post-transaction issue report (optional)
         try:

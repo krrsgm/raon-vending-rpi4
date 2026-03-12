@@ -48,7 +48,7 @@ class BillAcceptor:
         self._last_bill_time_ms = 0
         self._last_bill_amount = None
         # Debounce duplicate identical lines; keep low so rapid consecutive bills still count
-        self._bill_debounce_ms = 200
+        self._bill_debounce_ms = 80
 
         # Dispatcher queue to invoke callbacks outside of the serial read thread.
         # We enqueue the running received total and a background thread will call

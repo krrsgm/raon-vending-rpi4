@@ -900,18 +900,14 @@ class CartScreen(tk.Frame):
             except Exception:
                 change_ok = True
                 one_available = five_available = 0
-            notice_text = "Exact amount recommended"
-            notice_color = "#f59e0b"
             if not change_ok:
-                notice_text = "Exact amount only — change unavailable"
-                notice_color = "#e11d48"
-            tk.Label(
-                amount_frame,
-                text=notice_text,
-                font=("Helvetica", 16, "bold"),
-                bg=self.colors["payment_bg"],
-                fg=notice_color
-            ).pack(pady=(6, 8))
+                tk.Label(
+                    amount_frame,
+                    text="Please insert exact amount — change unavailable",
+                    font=("Helvetica", 16, "bold"),
+                    bg=self.colors["payment_bg"],
+                    fg="#e11d48"
+                ).pack(pady=(6, 8))
             
             # Payment status
             status_frame = tk.Frame(self.payment_window, bg=self.colors["payment_bg"])

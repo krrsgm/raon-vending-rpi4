@@ -719,6 +719,7 @@ class CartScreen(tk.Frame):
         if not self.payment_in_progress:
             # Start payment session
             self.payment_in_progress = True
+            self.payment_finalized = False
             self.payment_required = total_amount
             self.payment_received = 0.0
             self.change_alert_shown = False
@@ -1172,7 +1173,7 @@ class CartScreen(tk.Frame):
 
     def complete_payment(self):
         """Complete the payment process and dispense items & change"""
-        if not self.payment_in_progress:
+        if not self.payment_in_progress or getattr(self, "payment_finalized", False):
             return
              
         self.payment_in_progress = False
@@ -1221,6 +1222,9 @@ class CartScreen(tk.Frame):
 
     def _present_payment_complete(self, required_amount, received, change_dispensed,
                                   change_status, cart_snapshot, coin_amount, bill_amount, or_number=None, buyer_info=None):
+        if getattr(self, "payment_finalized", False):
+            return
+        self.payment_finalized = True
         try:
             vend_list = [ {"item": it["item"], "quantity": it["quantity"]} for it in cart_snapshot ]
         except Exception:

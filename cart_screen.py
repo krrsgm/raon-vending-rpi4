@@ -387,7 +387,19 @@ class CartScreen(tk.Frame):
         menu_font = ("Helvetica", 15)
         btn_font = ("Helvetica", 15, "bold")
 
-        tk.Label(dialog, text="Select Program", bg="white", fg="#222", font=label_font).pack(pady=(24, 10))
+        # Header with logo and machine name
+        header = tk.Frame(dialog, bg="#1d4ed8")
+        header.pack(fill="x")
+        tk.Label(header, text="RAON VENDING", fg="white", bg="#1d4ed8",
+                 font=("Helvetica", 20, "bold")).pack(pady=8)
+        # System status panel if available
+        try:
+            status_panel = SystemStatusPanel(header, controller=self.controller, compact=True)
+            status_panel.pack(fill="x", padx=12, pady=(0, 8))
+        except Exception:
+            pass
+
+        tk.Label(dialog, text="Select Program", bg="white", fg="#222", font=label_font).pack(pady=(18, 10))
         program_var = tk.StringVar(value=self.program_options[0])
         program_menu = tk.OptionMenu(dialog, program_var, *self.program_options)
         program_menu.config(width=40, font=menu_font)
@@ -449,11 +461,8 @@ class CartScreen(tk.Frame):
             dialog.update_idletasks()
             screen_w = dialog.winfo_screenwidth()
             screen_h = dialog.winfo_screenheight()
-            w = screen_w
-            h = int(screen_h * 0.75)
-            x = 0
-            y = max(0, int(screen_h * 0.12))
-            dialog.geometry(f"{w}x{h}+{x}+{y}")
+            dialog.geometry(f"{screen_w}x{screen_h}+0+0")
+            dialog.attributes("-fullscreen", True)
             dialog.lift()
             dialog.attributes("-topmost", True)
         except Exception:

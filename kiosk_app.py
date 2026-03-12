@@ -584,14 +584,20 @@ class KioskFrame(tk.Frame):
         cart_btn.bind('<Leave>', lambda _e: cart_btn.configure(bg='white'))
 
         # Change-stock notice for buyers (exact amount warning)
+        notice_wrap = tk.Frame(controls_bar, bg=header_bg)
+        notice_wrap.pack(side="right", padx=12)
         self.change_notice_label = tk.Label(
-            controls_bar,
+            notice_wrap,
             text="",
-            bg=header_bg,
-            fg="#fef08a",
-            font=("Helvetica", 14, "bold")
+            bg="white",
+            fg="#e11d48",
+            font=("Helvetica", 14, "bold"),
+            relief="solid",
+            bd=1,
+            padx=10,
+            pady=4
         )
-        self.change_notice_label.pack(side="right", padx=12)
+        self.change_notice_label.pack()
         self._update_change_notice()
 
         # Main content area: left sidebar + main product area
@@ -790,9 +796,9 @@ class KioskFrame(tk.Frame):
             one = int(stock.get("one_peso", {}).get("count", 0))
             five = int(stock.get("five_peso", {}).get("count", 0))
             if one <= 0 or five <= 0:
-                label.config(text="Exact amount only — no change", fg="#e11d48")
+                label.config(text="Exact amount only — no change", fg="#e11d48", bg="white")
             else:
-                label.config(text="", fg="#fef08a")
+                label.config(text="", fg="#e11d48", bg="white")
         except Exception:
             label.config(text="")
 

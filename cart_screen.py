@@ -765,6 +765,12 @@ class CartScreen(tk.Frame):
             # Start payment session
             self.payment_in_progress = True
             self.payment_finalized = False
+            # Reset per-transaction vend guards
+            self._vend_started = False
+            try:
+                self.controller._vend_busy = False
+            except Exception:
+                pass
             self.payment_required = total_amount
             self.payment_received = 0.0
             self.change_alert_shown = False

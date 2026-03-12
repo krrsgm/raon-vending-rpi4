@@ -376,8 +376,11 @@ class CartScreen(tk.Frame):
             dialog.update_idletasks()
             screen_w = dialog.winfo_screenwidth()
             screen_h = dialog.winfo_screenheight()
-            dialog.geometry(f"{screen_w}x{screen_h}+0+0")
-            dialog.attributes("-fullscreen", True)
+            h = int(screen_h * 0.8)
+            y = max(0, int(screen_h * 0.1))
+            dialog.geometry(f"{screen_w}x{h}+0+{y}")
+            dialog.lift()
+            dialog.attributes("-topmost", True)
         except Exception:
             pass
 
@@ -437,16 +440,20 @@ class CartScreen(tk.Frame):
         dialog = tk.Toplevel(self)
         dialog.title("Transaction Feedback")
         dialog.configure(bg="white")
-        dialog.transient(self)
+        dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
         dialog.resizable(False, False)
         try:
             dialog.update_idletasks()
-            w = 520
-            h = 360
-            x = max(0, (dialog.winfo_screenwidth() - w) // 2)
-            y = max(0, (dialog.winfo_screenheight() - h) // 3)
+            screen_w = dialog.winfo_screenwidth()
+            screen_h = dialog.winfo_screenheight()
+            w = screen_w
+            h = int(screen_h * 0.75)
+            x = 0
+            y = max(0, int(screen_h * 0.12))
             dialog.geometry(f"{w}x{h}+{x}+{y}")
+            dialog.lift()
+            dialog.attributes("-topmost", True)
         except Exception:
             pass
 

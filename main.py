@@ -2150,8 +2150,9 @@ class MainApp(tk.Tk):
             max_attempts_per_slot = int(self.config.get('hardware', {}).get('vend_max_attempts_per_slot', 0))
         except Exception:
             max_attempts_per_slot = 0
-        if max_attempts_per_slot < 3:
-            max_attempts_per_slot = 3
+        # Interpret as max failed attempts per slot; 0 = unlimited retries.
+        if max_attempts_per_slot < 0:
+            max_attempts_per_slot = 0
         
         print(f'[VEND-ORG] Using ESP32 host: {host}, rotation_failsafe_ms: {pulse_timeout_ms}')
         
@@ -2164,20 +2165,16 @@ class MainApp(tk.Tk):
             items_for_slot = slot_to_items[slot_number]
             required_for_slot = len(items_for_slot)
             dispensed_for_slot = 0
-            attempts_for_slot = 0
+            failures_for_slot = 0
             print(f'[VEND-ORG] Processing slot {slot_number}: required {required_for_slot} item(s)')
 
             while dispensed_for_slot < required_for_slot:
-                attempts_for_slot += 1
-                if max_attempts_per_slot > 0 and attempts_for_slot > max_attempts_per_slot:
-                    print(f'[VEND-ORG] ERROR: Slot {slot_number} hit max attempts ({max_attempts_per_slot}) at {dispensed_for_slot}/{required_for_slot}.')
-                    break
                 item_entry = items_for_slot[dispensed_for_slot]
                 item_name = item_entry.get('name', 'Unknown')
                 dispense_completed = False
                 try:
                     with self._vend_lock:
-                        print(f'[VEND-ORG] Pulsing slot {slot_number} (2-pulse rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name}, dispense {dispensed_for_slot+1}/{required_for_slot}, attempt {attempts_for_slot})')
+                        print(f'[VEND-ORG] Pulsing slot {slot_number} (2-pulse rotation, failsafe={pulse_timeout_ms}ms) (item: {item_name}, dispense {dispensed_for_slot+1}/{required_for_slot}, failures {failures_for_slot})')
 
                         # Start monitoring dispense for this slot if available
                         if self.dispense_monitor:
@@ -2246,9 +2243,14 @@ class MainApp(tk.Tk):
 
                 if dispense_completed:
                     dispensed_for_slot += 1
+                    failures_for_slot = 0  # reset failure counter after success
                     total_dispensed += 1
                 else:
-                    print(f'[VEND-ORG] RETRY: Slot {slot_number} still at {dispensed_for_slot}/{required_for_slot}.')
+                    failures_for_slot += 1
+                    if max_attempts_per_slot > 0 and failures_for_slot >= max_attempts_per_slot:
+                        print(f'[VEND-ORG] ERROR: Slot {slot_number} hit max failed attempts ({max_attempts_per_slot}) at {dispensed_for_slot}/{required_for_slot}.')
+                        break
+                    print(f'[VEND-ORG] RETRY: Slot {slot_number} still at {dispensed_for_slot}/{required_for_slot}. Failed attempts: {failures_for_slot}')
                     if retry_delay_ms > 0:
                         time.sleep(retry_delay_ms / 1000.0)
                     continue

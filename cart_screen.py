@@ -444,11 +444,37 @@ class CartScreen(tk.Frame):
             except Exception:
                 pass
 
-            top = tk.Frame(selector, bg="#2222a8", height=120)
+            top = tk.Frame(selector, bg="#2222a8", height=140)
             top.pack(fill="x")
             top.pack_propagate(False)
-            tk.Label(top, text=title, fg="white", bg="#2222a8",
-                     font=("Helvetica", 28, "bold")).pack(side="left", padx=24, pady=12)
+
+            top_inner = tk.Frame(top, bg="#2222a8")
+            top_inner.pack(fill="both", expand=True, padx=24, pady=14)
+
+            sel_logo = None
+            try:
+                sel_logo_path = get_absolute_path("LOGO.png")
+                sel_logo = tk.PhotoImage(file=sel_logo_path)
+                selector._logo_ref = sel_logo
+                tk.Label(top_inner, image=sel_logo, bg="#2222a8").pack(side="left", padx=(0, 14))
+            except Exception:
+                sel_logo = None
+
+            tk.Label(
+                top_inner,
+                text="RAON VENDING",
+                fg="white",
+                bg="#2222a8",
+                font=("Helvetica", 30, "bold")
+            ).pack(side="left")
+
+            tk.Label(
+                top_inner,
+                text=title,
+                fg="white",
+                bg="#2222a8",
+                font=("Helvetica", 24, "bold")
+            ).pack(side="right")
 
             body = tk.Frame(selector, bg="white")
             body.pack(fill="both", expand=True, padx=20, pady=20)
@@ -494,6 +520,14 @@ class CartScreen(tk.Frame):
             )
             close_btn.pack(fill="x", pady=(12, 0))
             self._style_button(close_btn, hover_bg="#d5d5d5")
+
+            status_zone = tk.Frame(selector, bg="#111111", height=160)
+            status_zone.pack(side="bottom", fill="x")
+            status_zone.pack_propagate(False)
+            try:
+                SystemStatusPanel(status_zone, controller=self.controller).pack(fill="both", expand=True)
+            except Exception:
+                pass
 
             selector.wait_window(selector)
 

@@ -28,7 +28,7 @@ class BillAcceptor:
     
     def __init__(self, port='/dev/ttyUSB1', baudrate=9600, timeout=1.0,
                  esp32_mode=False, esp32_serial_port=None, esp32_host=None, esp32_port=5000,
-                 shared_reader=None):
+                 shared_reader=None, debug=False):
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
@@ -49,6 +49,7 @@ class BillAcceptor:
         self._last_bill_amount = None
         # Debounce duplicate identical lines; keep low so rapid consecutive bills still count
         self._bill_debounce_ms = 80
+        self.debug = bool(debug)
 
         # Dispatcher queue to invoke callbacks outside of the serial read thread.
         # We enqueue the running received total and a background thread will call

@@ -479,15 +479,35 @@ class CartScreen(tk.Frame):
             body = tk.Frame(selector, bg="white")
             body.pack(fill="both", expand=True, padx=20, pady=20)
 
-            canvas = tk.Canvas(body, bg="white", highlightthickness=0)
-            scrollbar = tk.Scrollbar(body, orient="vertical", command=canvas.yview)
+            # Compact centered list with touch drag scrolling
+            list_wrapper = tk.Frame(body, bg="white", width=720)
+            list_wrapper.pack(expand=True)
+            list_wrapper.pack_propagate(False)
+
+            canvas = tk.Canvas(list_wrapper, bg="white", highlightthickness=0)
+            scrollbar = tk.Scrollbar(list_wrapper, orient="vertical", command=canvas.yview)
             scroll_frame = tk.Frame(canvas, bg="white")
             scroll_frame.bind(
                 "<Configure>",
                 lambda _e: canvas.configure(scrollregion=canvas.bbox("all"))
             )
-            canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+            scroll_window = canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
             canvas.configure(yscrollcommand=scrollbar.set)
+
+            def _sync_width(event):
+                try:
+                    canvas.itemconfig(scroll_window, width=event.width)
+                except Exception:
+                    pass
+            canvas.bind("<Configure>", _sync_width)
+
+            def _on_press(e):
+                canvas.scan_mark(e.x, e.y)
+            def _on_drag(e):
+                canvas.scan_dragto(e.x, e.y, gain=1)
+            canvas.bind("<ButtonPress-1>", _on_press)
+            canvas.bind("<B1-Motion>", _on_drag)
+
             canvas.pack(side="left", fill="both", expand=True)
             scrollbar.pack(side="right", fill="y")
 

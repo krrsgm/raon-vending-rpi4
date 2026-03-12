@@ -790,9 +790,9 @@ class KioskFrame(tk.Frame):
             one = int(stock.get("one_peso", {}).get("count", 0))
             five = int(stock.get("five_peso", {}).get("count", 0))
             if one <= 0 or five <= 0:
-                label.config(text="Exact amount only — change limited")
+                label.config(text="Exact amount only — no change", fg="#e11d48")
             else:
-                label.config(text="")
+                label.config(text="", fg="#fef08a")
         except Exception:
             label.config(text="")
 

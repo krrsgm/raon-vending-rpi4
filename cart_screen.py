@@ -391,18 +391,21 @@ class CartScreen(tk.Frame):
         program_var = tk.StringVar(value=self.program_options[0])
         program_menu = tk.OptionMenu(dialog, program_var, *self.program_options)
         program_menu.config(width=40, font=menu_font)
+        program_menu["menu"].configure(font=menu_font)
         program_menu.pack(pady=(0, 14))
 
         tk.Label(dialog, text="Select Year Level", bg="white", fg="#222", font=label_font).pack(pady=(10, 8))
         year_var = tk.StringVar(value="1")
         year_menu = tk.OptionMenu(dialog, year_var, "1", "2", "3", "4")
         year_menu.config(width=16, font=menu_font)
+        year_menu["menu"].configure(font=menu_font)
         year_menu.pack(pady=(0, 12))
 
         tk.Label(dialog, text="Select Section", bg="white", fg="#222", font=label_font).pack(pady=(10, 8))
         section_var = tk.StringVar(value="A")
         section_menu = tk.OptionMenu(dialog, section_var, "A", "B")
         section_menu.config(width=14, font=menu_font)
+        section_menu["menu"].configure(font=menu_font)
         section_menu.pack(pady=(0, 16))
 
         result = {"confirmed": False}
@@ -479,24 +482,14 @@ class CartScreen(tk.Frame):
         issue_var = tk.StringVar(value=options[0])
         opt = tk.OptionMenu(dialog, issue_var, *options)
         opt.config(width=36, font=menu_font)
-        opt.pack(pady=(0, 8))
-
-        tk.Label(dialog, text="If Others, describe:", bg="white", fg="#444", font=("Helvetica", 12)).pack(pady=(10, 4))
-        other_entry = tk.Entry(dialog, width=42, font=("Helvetica", 12))
-        other_entry.pack(pady=(0, 10))
+        opt["menu"].configure(font=menu_font)
+        opt.pack(pady=(0, 12))
 
         result = {"issue": None, "answered": False}
 
         def on_yes():
             sel = issue_var.get().strip()
-            if sel == "Others":
-                desc = other_entry.get().strip()
-                if not desc:
-                    messagebox.showwarning("Input required", "Please describe the issue.")
-                    return
-                result["issue"] = desc
-            else:
-                result["issue"] = sel
+            result["issue"] = sel
             result["answered"] = True
             dialog.destroy()
 

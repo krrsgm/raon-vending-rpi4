@@ -1331,6 +1331,10 @@ class CartScreen(tk.Frame):
 
         def _after_vend():
             try:
+                self._close_dispense_wait_popup()
+            except Exception:
+                pass
+            try:
                 self.controller.apply_cart_stock_deductions(cart_snapshot)
             except Exception as e:
                 print(f"[CartScreen] Error applying stock deductions: {e}")
@@ -1433,6 +1437,7 @@ class CartScreen(tk.Frame):
                     print(f"[CartScreen] Error recording sales in stock tracker: {e}")
 
         try:
+            self._show_dispense_wait_popup()
             threading.Thread(target=_vend_items_and_finish, daemon=True).start()
         except Exception:
             _after_vend()
@@ -1464,6 +1469,65 @@ class CartScreen(tk.Frame):
             except Exception:
                 pass
             self._payment_complete_notice = None
+
+    def _show_dispense_wait_popup(self):
+        """Display a blocking popup while items are vending."""
+        try:
+            self._close_dispense_wait_popup()
+        except Exception:
+            pass
+        try:
+            popup = tk.Toplevel(self)
+            popup.title("Dispensing Items")
+            popup.configure(bg="white")
+            popup.transient(self.winfo_toplevel())
+            popup.grab_set()
+            popup.attributes("-fullscreen", True)
+            popup.lift()
+            popup.attributes("-topmost", True)
+
+            header = tk.Frame(popup, bg="#1d4ed8", height=120)
+            header.pack(fill="x")
+            header.pack_propagate(False)
+            tk.Label(
+                header,
+                text="Dispensing items",
+                fg="white",
+                bg="#1d4ed8",
+                font=("Helvetica", 28, "bold")
+            ).pack(expand=True)
+
+            content = tk.Frame(popup, bg="white")
+            content.pack(expand=True, fill="both", pady=40, padx=40)
+            tk.Label(
+                content,
+                text="Please wait while we dispense your items.\nThis can take a few seconds.",
+                bg="white",
+                fg="#1f2a44",
+                font=("Helvetica", 20, "bold"),
+                justify="center"
+            ).pack(pady=18)
+
+            try:
+                status_zone = tk.Frame(popup, bg="#0f172a", height=260)
+                status_zone.pack(side="bottom", fill="x")
+                status_zone.pack_propagate(False)
+                SystemStatusPanel(status_zone, controller=self.controller, panel_height=260).pack(fill="both", expand=True)
+            except Exception:
+                pass
+
+            self._dispense_wait_popup = popup
+        except Exception as e:
+            print(f"[CartScreen] Failed to show dispense wait popup: {e}")
+
+    def _close_dispense_wait_popup(self):
+        popup = getattr(self, "_dispense_wait_popup", None)
+        if popup:
+            try:
+                popup.destroy()
+            except Exception:
+                pass
+            self._dispense_wait_popup = None
 
     def _show_payment_complete_notice(self, status_text, auto_return_ms=10000):
         """Show a non-blocking completion popup while waiting for auto-return."""

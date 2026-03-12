@@ -53,10 +53,9 @@ class StartOrderScreen(tk.Frame):
             "2. Choose desired items, its quantity, then add to cart.\n\n"
             "3. Go to cart, and pay.\n\n"
             "4. Insert payment; wait for the display to count each bill/coin before inserting another.\n\n"
-            "5. Wait for the change.\n\n"
-            "6. Wait for the item.\n\n"
-            "7. Transaction done.\n\n"
-            "8. Dont forget to scan the given QR code."
+            "5. Check your change.\n\n"
+            "6. Retrieve the item.\n\n"
+            "7. Transaction done."
         )
 
         instructions = tk.Label(

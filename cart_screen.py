@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import font as tkfont
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 import threading
 import re
 from payment_handler import PaymentHandler
@@ -871,6 +871,26 @@ class CartScreen(tk.Frame):
                 fg=self.colors["payment_fg"]
             ).pack()
 
+            # Progress bar for inserted vs required
+            prog_frame = tk.Frame(self.payment_window, bg=self.colors["payment_bg"])
+            prog_frame.pack(fill="x", pady=(10, 4), padx=40)
+            self.payment_progress = ttk.Progressbar(
+                prog_frame,
+                orient="horizontal",
+                mode="determinate",
+                maximum=max(total_amount, 1.0),
+                length=600
+            )
+            self.payment_progress.pack(fill="x", pady=6)
+            self.payment_progress_label = tk.Label(
+                prog_frame,
+                text=f"0.00 / {self.controller.currency_symbol}{total_amount:.2f}",
+                font=("Helvetica", 14, "bold"),
+                bg=self.colors["payment_bg"],
+                fg="#0f172a"
+            )
+            self.payment_progress_label.pack()
+
             # Change availability notice
             try:
                 change_stock = self.controller.get_coin_change_stock()
@@ -1168,6 +1188,14 @@ class CartScreen(tk.Frame):
         def _apply_update():
             try:
                 self.payment_status.config(text=status_text)
+                if getattr(self, "payment_progress", None):
+                    try:
+                        self.payment_progress["value"] = max(0.0, float(amount))
+                        self.payment_progress_label.config(
+                            text=f"{self.controller.currency_symbol}{amount:.2f} / {self.controller.currency_symbol}{self.payment_required:.2f}"
+                        )
+                    except Exception:
+                        pass
                 if amount > 0 and getattr(self, "cancel_warning_label", None):
                     self.cancel_warning_label.config(
                         text=(

@@ -767,6 +767,7 @@ class CartScreen(tk.Frame):
             self.payment_finalized = False
             # Reset per-transaction vend guards
             self._vend_started = False
+            self._vend_token = None
             try:
                 self.controller._vend_busy = False
             except Exception:

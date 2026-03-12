@@ -430,6 +430,83 @@ class CartScreen(tk.Frame):
             "section": section_var.get().strip()
         }
 
+    def _prompt_issue_report(self, or_number=None):
+        """Prompt user to report an issue after transaction."""
+        try:
+            if not messagebox.askyesno(
+                "Transaction Feedback",
+                "Did you encounter any issue with this transaction?"
+            ):
+                return None
+        except Exception:
+            return None
+
+        dialog = tk.Toplevel(self)
+        dialog.title("Report an Issue")
+        dialog.configure(bg="white")
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+        try:
+            dialog.update_idletasks()
+            w = 420
+            h = 240
+            x = max(0, (dialog.winfo_screenwidth() - w) // 2)
+            y = max(0, (dialog.winfo_screenheight() - h) // 3)
+            dialog.geometry(f"{w}x{h}+{x}+{y}")
+        except Exception:
+            pass
+
+        options = [
+            "Item not dispensed",
+            "Wrong item dispensed",
+            "Wrong quantity dispensed",
+            "Wrong payment recorded",
+            "Payment not recognized",
+            "No change",
+            "Wrong change",
+            "Others"
+        ]
+
+        tk.Label(dialog, text="Select the issue", bg="white", fg="#222", font=("Helvetica", 12, "bold")).pack(pady=(16, 6))
+        issue_var = tk.StringVar(value=options[0])
+        opt = tk.OptionMenu(dialog, issue_var, *options)
+        opt.config(width=32, font=("Helvetica", 11))
+        opt.pack()
+
+        tk.Label(dialog, text="If Others, describe:", bg="white", fg="#444", font=("Helvetica", 11)).pack(pady=(10, 4))
+        other_entry = tk.Entry(dialog, width=40, font=("Helvetica", 11))
+        other_entry.pack(pady=(0, 8))
+
+        result = {"issue": None}
+
+        def on_ok():
+            sel = issue_var.get().strip()
+            if sel == "Others":
+                desc = other_entry.get().strip()
+                if not desc:
+                    messagebox.showwarning("Input required", "Please describe the issue.")
+                    return
+                result["issue"] = desc
+            else:
+                result["issue"] = sel
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        btn_frame = tk.Frame(dialog, bg="white")
+        btn_frame.pack(pady=12)
+        ok_btn = tk.Button(btn_frame, text="Submit", width=10, command=on_ok, bg="#1d976c", fg="white", relief="flat")
+        cancel_btn = tk.Button(btn_frame, text="Cancel", width=10, command=on_cancel, bg="#e0e0e0", fg="#333", relief="flat")
+        ok_btn.grid(row=0, column=0, padx=6)
+        cancel_btn.grid(row=0, column=1, padx=6)
+        self._style_button(ok_btn, hover_bg="#15805a")
+        self._style_button(cancel_btn, hover_bg="#d0d0d0")
+
+        dialog.wait_window(dialog)
+        return result["issue"]
+
     def handle_checkout(self):
         """Process the checkout with coin payment using Allan 123A-Pro."""
         if not self.controller.cart:
@@ -1074,6 +1151,18 @@ class CartScreen(tk.Frame):
                         print(f"[CartScreen] Sale recorded for {item_name} (qty: {qty})")
             except Exception as e:
                 print(f"[CartScreen] Error recording sales in stock tracker: {e}")
+        
+        # Prompt for post-transaction issue report (optional)
+        try:
+            issue = self._prompt_issue_report(or_number_value)
+            if issue:
+                logger = get_logger()
+                logger.log_event(
+                    "ISSUE",
+                    f"OR: {or_number_value or 'N/A'} | Issue: {issue}"
+                )
+        except Exception as e:
+            print(f"[CartScreen] Error capturing issue report: {e}")
         
         # Reset buyer info after successful transaction
         self.buyer_info = None

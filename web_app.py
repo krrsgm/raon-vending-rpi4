@@ -716,6 +716,23 @@ def _build_sales_rows_for_date(date_str, logs_dir):
     return rows
 
 
+def _load_change_stock():
+    """Load coin change stock counts from config.json."""
+    try:
+        config_path = os.path.join(os.getcwd(), "config.json")
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        stock = cfg.get("coin_change_stock", {})
+        return {
+            "one_peso": int(stock.get("one_peso", {}).get("count", 0)),
+            "five_peso": int(stock.get("five_peso", {}).get("count", 0)),
+            "low_one": int(stock.get("one_peso", {}).get("low_threshold", 0)),
+            "low_five": int(stock.get("five_peso", {}).get("low_threshold", 0)),
+        }
+    except Exception:
+        return {"one_peso": 0, "five_peso": 0, "low_one": 0, "low_five": 0}
+
+
 # ============================================================================
 # ROUTES - INVENTORY DASHBOARD (Multi-Machine)
 # ============================================================================
@@ -792,6 +809,7 @@ def api_sales_logs():
         total_inserted = sum(float(row.get('total', 0.0) or 0.0) for row in rows)
         total_change = sum(float(row.get('change', 0.0) or 0.0) for row in rows)
         total_net_collected = total_inserted - total_change
+        change_stock = _load_change_stock()
 
         merged_logs = []
         for row in rows:
@@ -818,7 +836,8 @@ def api_sales_logs():
             'summary': {
                 'total_inserted': total_inserted,
                 'total_change': total_change,
-                'total_net_collected': total_net_collected
+                'total_net_collected': total_net_collected,
+                'change_stock': change_stock
             }
         }), 200
     except Exception as e:

@@ -1389,6 +1389,7 @@ class CartScreen(tk.Frame):
             self.controller.clear_cart()
             # Show completion notice and auto-return after issue prompt handling
             self._show_payment_complete_notice(status_text, auto_return_ms=10000)
+            self._schedule_return_to_start_order(delay_ms=10000)
 
         def _vend_items_and_finish():
             try:

@@ -88,6 +88,9 @@ class KioskFrame(tk.Frame):
             cat: [re.compile(pattern, re.IGNORECASE) for pattern in patterns]
             for cat, patterns in self._category_rules.items()
         }
+
+        # Simple notice if change hoppers are empty
+        self._change_notice_state = None
         
         # --- Calculate header/footer pixel sizes based on screen and physical diagonal ---
         # Use display diagonal from config if provided (in inches), default 13.3"
@@ -580,6 +583,17 @@ class KioskFrame(tk.Frame):
         cart_btn.bind('<Enter>', lambda _e: cart_btn.configure(bg='#dfe8ff'))
         cart_btn.bind('<Leave>', lambda _e: cart_btn.configure(bg='white'))
 
+        # Change-stock notice for buyers (exact amount warning)
+        self.change_notice_label = tk.Label(
+            controls_bar,
+            text="",
+            bg=header_bg,
+            fg="#fef08a",
+            font=("Helvetica", 14, "bold")
+        )
+        self.change_notice_label.pack(side="right", padx=12)
+        self._update_change_notice()
+
         # Main content area: left sidebar + main product area
         content = tk.Frame(self, bg=self.colors['background'])
         content.pack(fill='both', expand=True)
@@ -765,6 +779,22 @@ class KioskFrame(tk.Frame):
                 padx=6,
                 pady=4,
             )
+
+    def _update_change_notice(self):
+        """Show 'exact amount' notice if either change hopper is empty."""
+        label = getattr(self, 'change_notice_label', None)
+        if not label:
+            return
+        try:
+            stock = self.controller.get_coin_change_stock()
+            one = int(stock.get("one_peso", {}).get("count", 0))
+            five = int(stock.get("five_peso", {}).get("count", 0))
+            if one <= 0 or five <= 0:
+                label.config(text="Exact amount only — change limited")
+            else:
+                label.config(text="")
+        except Exception:
+            label.config(text="")
 
     def update_kiosk_config(self):
         """Reload configuration from controller and update header/footer (can be called after saving config)."""

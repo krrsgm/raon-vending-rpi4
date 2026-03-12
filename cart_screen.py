@@ -1196,8 +1196,8 @@ class CartScreen(tk.Frame):
             
             # Clear cart and return to kiosk screen
             self.controller.clear_cart()
-            # Do not auto-timeout; leave notice until issue prompt/OK is handled.
-            self._show_payment_complete_notice(status_text, auto_return_ms=None)
+            # Show completion notice and auto-return after issue prompt handling
+            self._show_payment_complete_notice(status_text, auto_return_ms=10000)
 
         def _vend_items_and_finish():
             try:

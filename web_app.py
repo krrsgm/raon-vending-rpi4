@@ -459,6 +459,30 @@ def _parse_transaction_line(text):
     except Exception:
         pass
 
+    or_number = None
+    try:
+        m_or = re.search(r"\bOR:\s*([^|]+)", line, re.IGNORECASE)
+        if m_or:
+            or_number = m_or.group(1).strip()
+    except Exception:
+        pass
+
+    buyer_program = None
+    buyer_year = None
+    buyer_section = None
+    try:
+        m_prog = re.search(r"\bProgram:\s*([^|]+)", line, re.IGNORECASE)
+        if m_prog:
+            buyer_program = m_prog.group(1).strip()
+        m_year = re.search(r"\bYear:\s*([^|]+)", line, re.IGNORECASE)
+        if m_year:
+            buyer_year = m_year.group(1).strip()
+        m_section = re.search(r"\bSection:\s*([^|]+)", line, re.IGNORECASE)
+        if m_section:
+            buyer_section = m_section.group(1).strip()
+    except Exception:
+        pass
+
     return {
         'raw': line,
         'hhmmss': _extract_hhmmss(line),
@@ -468,6 +492,10 @@ def _parse_transaction_line(text):
         'bills': _parse_money_value(line, "Bills"),
         'total': _parse_money_value(line, "Total"),
         'change': _parse_money_value(line, "Change"),
+        'or': or_number,
+        'program': buyer_program,
+        'year': buyer_year,
+        'section': buyer_section,
     }
 
 
@@ -679,6 +707,10 @@ def _build_sales_rows_for_date(date_str, logs_dir):
             'change': change_dispensed,
             'net_collected': net_collected,
             'ir_status': ir_status_text,
+            'or': tx.get('or'),
+            'program': tx.get('program'),
+            'year': tx.get('year'),
+            'section': tx.get('section'),
         })
 
     return rows
@@ -767,6 +799,10 @@ def api_sales_logs():
                 f"[{row['time']}] "
                 f"Transaction Time: {row['transaction_time']} | "
                 f"Item: {row['item']} | "
+                (f"OR: {row['or']} | " if row.get('or') else "")
+                (f"Program: {row['program']} | " if row.get('program') else "")
+                (f"Year: {row['year']} | " if row.get('year') else "")
+                (f"Section: {row['section']} | " if row.get('section') else "")
                 f"Coins: {row['coins']:.2f} | "
                 f"Bills: {row['bills']:.2f} | "
                 f"Inserted: {row['total']:.2f} | "
@@ -1005,6 +1041,10 @@ def api_export_sales_csv():
             "Time",
             "Transaction_Time",
             "Item",
+            "OR_Number",
+            "Program",
+            "Year",
+            "Section",
             "Coins",
             "Bills",
             "Inserted",
@@ -1018,6 +1058,10 @@ def api_export_sales_csv():
                 row.get('time', ''),
                 row.get('transaction_time', ''),
                 row.get('item', ''),
+                row.get('or', ''),
+                row.get('program', ''),
+                row.get('year', ''),
+                row.get('section', ''),
                 f"{float(row.get('coins', 0.0) or 0.0):.2f}",
                 f"{float(row.get('bills', 0.0) or 0.0):.2f}",
                 f"{float(row.get('total', 0.0) or 0.0):.2f}",

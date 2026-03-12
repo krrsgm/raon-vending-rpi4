@@ -1970,8 +1970,8 @@ class MainApp(tk.Tk):
                         else:
                             print(f'[VEND] ERROR: ESP32 did not confirm pulse for slot {slot_number}. Response: {result}')
                         # Wait for firmware to finish the rotation (2 limit pulses).
-                        # Keep wait reasonable so failed slots retry quickly (caps long 15s failsafe).
-                        wait_timeout_sec = max(5.0, min(8.0, (pulse_timeout_ms / 1000.0) + 2.0))
+                        # Balance slow slots vs. long stalls.
+                        wait_timeout_sec = max(6.0, min(12.0, (pulse_timeout_ms / 1000.0) + 3.0))
                         completed = self._wait_for_slot_rotation_complete(
                             host=host,
                             slot_number=slot_number,
@@ -2150,8 +2150,8 @@ class MainApp(tk.Tk):
             max_attempts_per_slot = int(self.config.get('hardware', {}).get('vend_max_attempts_per_slot', 0))
         except Exception:
             max_attempts_per_slot = 0
-        if max_attempts_per_slot < 0:
-            max_attempts_per_slot = 0
+        if max_attempts_per_slot < 3:
+            max_attempts_per_slot = 3
         
         print(f'[VEND-ORG] Using ESP32 host: {host}, rotation_failsafe_ms: {pulse_timeout_ms}')
         
@@ -2222,8 +2222,8 @@ class MainApp(tk.Tk):
                             else:
                                 print(f'[VEND-ORG] ERROR: ESP32 did not confirm pulse for slot {slot_number}. Response: {result}')
                             # Wait for firmware to finish the rotation (2 limit pulses).
-                            # Cap wait to keep retries fast if firmware doesn't signal completion.
-                            wait_timeout_sec = max(5.0, min(8.0, (pulse_timeout_ms / 1000.0) + 2.0))
+                            # Balance slow slots vs. fast retries.
+                            wait_timeout_sec = max(6.0, min(12.0, (pulse_timeout_ms / 1000.0) + 3.0))
                             completed = self._wait_for_slot_rotation_complete(
                                 host=host,
                                 slot_number=slot_number,

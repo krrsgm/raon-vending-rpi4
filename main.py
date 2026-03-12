@@ -2160,6 +2160,7 @@ class MainApp(tk.Tk):
         # Only move forward when required count is confirmed for the current slot.
         total_required = sum(len(v) for v in slot_to_items.values())
         total_dispensed = 0
+        recovery_jobs = []
 
         for slot_number in sorted_slots:
             items_for_slot = slot_to_items[slot_number]
@@ -2268,13 +2269,27 @@ class MainApp(tk.Tk):
                 except Exception:
                     time.sleep(0.2)
 
-            print(f'[VEND-ORG] Slot {slot_number} summary: {dispensed_for_slot}/{required_for_slot} dispensed in {attempts_for_slot} attempt(s).')
+            print(f'[VEND-ORG] Slot {slot_number} summary: {dispensed_for_slot}/{required_for_slot} dispensed with {failures_for_slot} failure(s).')
+            if dispensed_for_slot < required_for_slot:
+                remaining = required_for_slot - dispensed_for_slot
+                try:
+                    recovery_name = items_for_slot[dispensed_for_slot].get('name', 'Unknown')
+                except Exception:
+                    recovery_name = 'Unknown'
+                recovery_jobs.append((recovery_name, remaining, slot_number))
 
         if total_dispensed < total_required:
             print(f'[VEND-ORG] INCOMPLETE: Dispensed {total_dispensed}/{total_required} requested item(s).')
         else:
             print(f'[VEND-ORG] COMPLETE: Dispensed {total_dispensed}/{total_required} requested item(s).')
         self._arm_transaction_dispense_timeouts()
+
+        for rec_name, rec_qty, rec_slot in recovery_jobs:
+            try:
+                print(f'[VEND-ORG] RECOVERY: attempting remaining {rec_qty} of {rec_name} on slot {rec_slot}')
+                self.vend_slots_for(rec_name, quantity=rec_qty, preferred_slot=rec_slot)
+            except Exception as e:
+                print(f'[VEND-ORG] Recovery vend failed for slot {rec_slot}: {e}')
 
     def update_item(self, original_item_name, updated_item_data):
         """Update price/quantity in assigned slots, then refresh admin and kiosk views."""

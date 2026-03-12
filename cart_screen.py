@@ -422,7 +422,7 @@ class CartScreen(tk.Frame):
             bg="white",
             fg="#2222a8",
             font=("Helvetica", 24, "bold")
-        ).pack(pady=(8, 20))
+        ).pack(pady=(8, 10))
 
         program_var = tk.StringVar(value=self.program_options[0])
         year_var = tk.StringVar(value="N/A")
@@ -552,13 +552,13 @@ class CartScreen(tk.Frame):
             selector.wait_window(selector)
 
         chooser = tk.Frame(content, bg="white")
-        chooser.pack(pady=(0, 20), fill="x")
+        chooser.pack(pady=(6, 20), fill="x")
 
         def build_cycle_row(label_text, var, options, width=20):
             row = tk.Frame(chooser, bg="white")
-            row.pack(pady=8)
-            tk.Label(row, text=label_text, bg="white", fg="#222", font=label_font).pack(side="left", padx=(0, 14))
-            btn_font_local = ("Helvetica", 18, "bold")
+            row.pack(pady=6)
+            tk.Label(row, text=label_text, bg="white", fg="#222", font=label_font).pack(side="left", padx=(0, 12))
+            btn_font_local = ("Helvetica", 16, "bold")
             def cycle(delta):
                 current = var.get()
                 try:
@@ -570,7 +570,7 @@ class CartScreen(tk.Frame):
             up = tk.Button(row, text="▲", font=btn_font_local, width=3, bg="#eaf0ff", fg="#1f2f85",
                            relief="flat", command=lambda: cycle(-1))
             up.pack(side="left")
-            tk.Label(row, textvariable=var, width=width, bg="#f3f4f6", fg="#111", font=menu_font,
+            tk.Label(row, textvariable=var, width=width, bg="#f3f4f6", fg="#111", font=("Helvetica", 18, "bold"),
                      relief="flat").pack(side="left", padx=8)
             down = tk.Button(row, text="▼", font=btn_font_local, width=3, bg="#eaf0ff", fg="#1f2f85",
                              relief="flat", command=lambda: cycle(1))
@@ -578,9 +578,9 @@ class CartScreen(tk.Frame):
             for b in (up, down):
                 self._style_button(b, hover_bg="#dfe8ff")
 
-        build_cycle_row("Programs / Affiliation", program_var, self.program_options, width=28)
-        build_cycle_row("Year Level", year_var, ["1", "2", "3", "4", "N/A"], width=8)
-        build_cycle_row("Section", section_var, ["A", "B", "Test", "N/A"], width=10)
+        build_cycle_row("Program / Affiliation", program_var, self.program_options, width=26)
+        build_cycle_row("Year", year_var, ["1", "2", "3", "4", "N/A"], width=6)
+        build_cycle_row("Section", section_var, ["A", "B", "Test", "N/A"], width=8)
 
         result = {"confirmed": False}
 

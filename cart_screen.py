@@ -384,17 +384,17 @@ class CartScreen(tk.Frame):
         except Exception:
             pass
 
-        label_font = ("Helvetica", 17, "bold")
-        menu_font = ("Helvetica", 17)
-        btn_font = ("Helvetica", 17, "bold")
+        label_font = ("Helvetica", 18, "bold")
+        menu_font = ("Helvetica", 18)
+        btn_font = ("Helvetica", 18, "bold")
 
         # Header with logo and machine name
-        header = tk.Frame(dialog, bg="#2222a8", height=120)
+        header = tk.Frame(dialog, bg="#2222a8", height=150)
         header.pack(fill="x")
         header.pack_propagate(False)
 
         header_inner = tk.Frame(header, bg="#2222a8")
-        header_inner.pack(fill="both", expand=True, padx=24, pady=14)
+        header_inner.pack(fill="both", expand=True, padx=28, pady=18)
 
         logo_image = None
         try:
@@ -410,7 +410,7 @@ class CartScreen(tk.Frame):
             text="RAON VENDING",
             fg="white",
             bg="#2222a8",
-            font=("Helvetica", 28, "bold")
+            font=("Helvetica", 32, "bold")
         ).pack(side="left")
 
         content = tk.Frame(dialog, bg="white")
@@ -421,29 +421,130 @@ class CartScreen(tk.Frame):
             text="Fill the form to generate order number",
             bg="white",
             fg="#2222a8",
-            font=("Helvetica", 22, "bold")
-        ).pack(pady=(6, 18))
+            font=("Helvetica", 24, "bold")
+        ).pack(pady=(8, 20))
 
-        tk.Label(content, text="Select Program / Affiliation", bg="white", fg="#222", font=label_font).pack(pady=(8, 12))
         program_var = tk.StringVar(value=self.program_options[0])
-        program_menu = tk.OptionMenu(content, program_var, *self.program_options)
-        program_menu.config(width=40, font=menu_font)
-        program_menu["menu"].configure(font=menu_font)
-        program_menu.pack(pady=(0, 18))
-
-        tk.Label(content, text="Select Year Level", bg="white", fg="#222", font=label_font).pack(pady=(8, 12))
         year_var = tk.StringVar(value="N/A")
-        year_menu = tk.OptionMenu(content, year_var, "1", "2", "3", "4", "N/A")
-        year_menu.config(width=16, font=menu_font)
-        year_menu["menu"].configure(font=menu_font)
-        year_menu.pack(pady=(0, 16))
-
-        tk.Label(content, text="Select Section", bg="white", fg="#222", font=label_font).pack(pady=(8, 12))
         section_var = tk.StringVar(value="N/A")
-        section_menu = tk.OptionMenu(content, section_var, "A", "B", "Test", "N/A")
-        section_menu.config(width=14, font=menu_font)
-        section_menu["menu"].configure(font=menu_font)
-        section_menu.pack(pady=(0, 20))
+
+        def open_option_selector(title, options, target_var):
+            selector = tk.Toplevel(dialog)
+            selector.title(title)
+            selector.configure(bg="white")
+            selector.transient(dialog)
+            selector.grab_set()
+            try:
+                selector.update_idletasks()
+                sw, sh = selector.winfo_screenwidth(), selector.winfo_screenheight()
+                selector.geometry(f"{sw}x{sh}+0+0")
+                selector.attributes("-fullscreen", True)
+                selector.lift()
+                selector.attributes("-topmost", True)
+            except Exception:
+                pass
+
+            top = tk.Frame(selector, bg="#2222a8", height=120)
+            top.pack(fill="x")
+            top.pack_propagate(False)
+            tk.Label(top, text=title, fg="white", bg="#2222a8",
+                     font=("Helvetica", 28, "bold")).pack(side="left", padx=24, pady=12)
+
+            body = tk.Frame(selector, bg="white")
+            body.pack(fill="both", expand=True, padx=20, pady=20)
+
+            canvas = tk.Canvas(body, bg="white", highlightthickness=0)
+            scrollbar = tk.Scrollbar(body, orient="vertical", command=canvas.yview)
+            scroll_frame = tk.Frame(canvas, bg="white")
+            scroll_frame.bind(
+                "<Configure>",
+                lambda _e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+            canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+
+            for opt in options:
+                btn = tk.Button(
+                    scroll_frame,
+                    text=opt,
+                    font=("Helvetica", 22, "bold"),
+                    bg="#f3f4f6",
+                    fg="#111",
+                    relief="flat",
+                    padx=18,
+                    pady=14,
+                    anchor="w",
+                    command=lambda val=opt: (target_var.set(val), selector.destroy())
+                )
+                btn.pack(fill="x", pady=6)
+                self._style_button(btn, hover_bg="#e5e7eb")
+
+            close_btn = tk.Button(
+                scroll_frame,
+                text="Cancel",
+                font=("Helvetica", 20, "bold"),
+                bg="#e0e0e0",
+                fg="#111",
+                relief="flat",
+                command=selector.destroy,
+                padx=12,
+                pady=10
+            )
+            close_btn.pack(fill="x", pady=(12, 0))
+            self._style_button(close_btn, hover_bg="#d5d5d5")
+
+            selector.wait_window(selector)
+
+        # Program / affiliation
+        tk.Label(content, text="Programs / Affiliation", bg="white", fg="#222", font=label_font).pack(pady=(4, 10))
+        program_btn = tk.Button(
+            content,
+            textvariable=program_var,
+            command=lambda: open_option_selector("Select Program / Affiliation", self.program_options, program_var),
+            font=menu_font,
+            bg="#f3f4f6",
+            fg="#111",
+            relief="flat",
+            width=40,
+            height=2,
+            wraplength=520,
+        )
+        program_btn.pack(pady=(0, 18))
+        self._style_button(program_btn, hover_bg="#e5e7eb")
+
+        # Year level
+        tk.Label(content, text="Year Level", bg="white", fg="#222", font=label_font).pack(pady=(4, 10))
+        year_btn = tk.Button(
+            content,
+            textvariable=year_var,
+            command=lambda: open_option_selector("Select Year Level", ["1", "2", "3", "4", "N/A"], year_var),
+            font=menu_font,
+            bg="#f3f4f6",
+            fg="#111",
+            relief="flat",
+            width=18,
+            height=2,
+        )
+        year_btn.pack(pady=(0, 16))
+        self._style_button(year_btn, hover_bg="#e5e7eb")
+
+        # Section
+        tk.Label(content, text="Section", bg="white", fg="#222", font=label_font).pack(pady=(4, 10))
+        section_btn = tk.Button(
+            content,
+            textvariable=section_var,
+            command=lambda: open_option_selector("Select Section", ["A", "B", "Test", "N/A"], section_var),
+            font=menu_font,
+            bg="#f3f4f6",
+            fg="#111",
+            relief="flat",
+            width=16,
+            height=2,
+        )
+        section_btn.pack(pady=(0, 20))
+        self._style_button(section_btn, hover_bg="#e5e7eb")
 
         result = {"confirmed": False}
 
@@ -465,7 +566,7 @@ class CartScreen(tk.Frame):
         self._style_button(cancel_btn, hover_bg="#d0d0d0")
 
         # Bottom system status bar (same footprint as kiosk)
-        status_zone = tk.Frame(dialog, bg="#111111", height=140)
+        status_zone = tk.Frame(dialog, bg="#111111", height=160)
         status_zone.pack(side="bottom", fill="x")
         status_zone.pack_propagate(False)
         try:

@@ -1534,6 +1534,13 @@ class CartScreen(tk.Frame):
                 popup.attributes("-fullscreen", True)
             except Exception:
                 pass
+            try:
+                # Force full-coverage if fullscreen flag is ignored
+                w = popup.winfo_screenwidth()
+                h = popup.winfo_screenheight()
+                popup.geometry(f"{w}x{h}+0+0")
+            except Exception:
+                pass
             popup.lift()
             popup.attributes("-topmost", True)
 

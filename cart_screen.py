@@ -137,9 +137,45 @@ class CartScreen(tk.Frame):
             fg="#ffffff",
         ).pack(pady=(self.touch_dead_zone_top_px, 8))
 
-        # --- Main content area for cart items ---
-        self.cart_items_frame = tk.Frame(self, bg=self.colors["background"])
-        self.cart_items_frame.pack(fill="both", expand=True, padx=50, pady=(10, 6))
+        # --- Main content area for cart items (scrollable) ---
+        scroll_wrap = tk.Frame(self, bg=self.colors["background"])
+        scroll_wrap.pack(fill="both", expand=True, padx=50, pady=(10, 6))
+        self.cart_scroll_canvas = tk.Canvas(
+            scroll_wrap,
+            bg=self.colors["background"],
+            highlightthickness=0
+        )
+        self.cart_scroll_canvas.pack(side="left", fill="both", expand=True)
+        scroll_bar = tk.Scrollbar(
+            scroll_wrap,
+            orient="vertical",
+            command=self.cart_scroll_canvas.yview
+        )
+        scroll_bar.pack(side="right", fill="y")
+        self.cart_scroll_canvas.configure(yscrollcommand=scroll_bar.set)
+        self.cart_items_frame = tk.Frame(self.cart_scroll_canvas, bg=self.colors["background"])
+        self.cart_scroll_canvas.create_window((0, 0), window=self.cart_items_frame, anchor="nw")
+
+        def _sync_scroll_region(event=None):
+            try:
+                self.cart_scroll_canvas.configure(scrollregion=self.cart_scroll_canvas.bbox("all"))
+            except Exception:
+                pass
+        self.cart_items_frame.bind("<Configure>", _sync_scroll_region)
+
+        # Mouse/touch scrolling
+        def _on_mousewheel(event):
+            try:
+                delta = event.delta
+                if delta == 0 and event.num in (4, 5):
+                    delta = 120 if event.num == 4 else -120
+                self.cart_scroll_canvas.yview_scroll(int(-1 * (delta / 120)), "units")
+            except Exception:
+                pass
+            return "break"
+
+        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.cart_scroll_canvas.bind_all(seq, _on_mousewheel)
 
         # --- Footer for totals ---
         footer = tk.Frame(self, bg=self.colors["background"])
@@ -237,6 +273,10 @@ class CartScreen(tk.Frame):
             ).pack(pady=50)
             self.total_label.config(text="")
             self.checkout_button.config(state="disabled")
+            try:
+                self.cart_scroll_canvas.yview_moveto(0)
+            except Exception:
+                pass
             return
 
         grand_total = 0
@@ -360,6 +400,11 @@ class CartScreen(tk.Frame):
             )
             delete_btn.pack(side="left", pady=(10, 0))
             self._style_button(delete_btn, hover_bg="#ffe7ea")
+
+        try:
+            self.cart_scroll_canvas.yview_moveto(0)
+        except Exception:
+            pass
 
         self.total_label.config(
             text=f"Total: {self.controller.currency_symbol}{grand_total:.2f}"

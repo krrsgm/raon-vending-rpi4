@@ -27,7 +27,7 @@ class SystemStatusPanel(tk.Frame):
     Shows hardware status, sensor readings, and system health indicators.
     """
     
-    def __init__(self, master=None, controller=None, panel_height=220, **kwargs):
+    def __init__(self, master=None, controller=None, panel_height=260, **kwargs):
         super().__init__(master, **kwargs)
         self.controller = controller
         self.configure(bg='#2c3e50', height=panel_height)

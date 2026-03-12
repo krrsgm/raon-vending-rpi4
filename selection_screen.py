@@ -82,7 +82,7 @@ class SelectionScreen(tk.Frame):
         style_button(admin_button, secondary_blue_hover)
 
         # Status panel at bottom
-        status_height = 220
+        status_height = 260
         status_zone = tk.Frame(self, bg="#111111", height=status_height)
         status_zone.pack(side="bottom", fill="x")
         status_zone.pack_propagate(False)

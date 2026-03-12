@@ -393,7 +393,7 @@ class CartScreen(tk.Frame):
         tk.Label(header, text="RAON VENDING", fg="white", bg="#1d4ed8",
                  font=("Helvetica", 20, "bold")).pack(pady=8)
         tk.Label(dialog, text="Fill the form to generate order number", bg="white", fg="#1d4ed8",
-                 font=("Helvetica", 14, "bold")).pack(pady=(6, 4))
+                 font=("Helvetica", 18, "bold")).pack(pady=(8, 6))
         # System status panel if available
         try:
             status_panel = SystemStatusPanel(header, controller=self.controller, compact=True)
@@ -470,13 +470,23 @@ class CartScreen(tk.Frame):
         except Exception:
             pass
 
-        label_font = ("Helvetica", 15, "bold")
-        menu_font = ("Helvetica", 15)
-        btn_font = ("Helvetica", 15, "bold")
+        label_font = ("Helvetica", 17, "bold")
+        menu_font = ("Helvetica", 17)
+        btn_font = ("Helvetica", 17, "bold")
+
+        header = tk.Frame(dialog, bg="#1d4ed8")
+        header.pack(fill="x")
+        tk.Label(header, text="RAON VENDING", fg="white", bg="#1d4ed8",
+                 font=("Helvetica", 22, "bold")).pack(pady=8)
+        try:
+            status_panel = SystemStatusPanel(header, controller=self.controller, compact=True)
+            status_panel.pack(fill="x", padx=12, pady=(0, 8))
+        except Exception:
+            pass
 
         tk.Label(dialog, text="Did you encounter any issue with this transaction?",
                  bg="white", fg="#222", font=label_font,
-                 wraplength=440, justify="center").pack(pady=(14, 12))
+                 wraplength=520, justify="center").pack(pady=(14, 16))
 
         options = [
             "Item not dispensed",
@@ -489,12 +499,12 @@ class CartScreen(tk.Frame):
             "Others"
         ]
 
-        tk.Label(dialog, text="Select the issue (or choose Others):", bg="white", fg="#222", font=label_font).pack(pady=(6, 8))
+        tk.Label(dialog, text="Select the issue (or choose Others):", bg="white", fg="#222", font=label_font).pack(pady=(10, 10))
         issue_var = tk.StringVar(value=options[0])
         opt = tk.OptionMenu(dialog, issue_var, *options)
         opt.config(width=36, font=menu_font)
         opt["menu"].configure(font=menu_font)
-        opt.pack(pady=(0, 12))
+        opt.pack(pady=(0, 16))
 
         result = {"issue": None, "answered": False}
 
@@ -510,11 +520,11 @@ class CartScreen(tk.Frame):
             dialog.destroy()
 
         btn_frame = tk.Frame(dialog, bg="white")
-        btn_frame.pack(pady=16)
-        yes_btn = tk.Button(btn_frame, text="Yes", width=14, height=2, command=on_yes, bg="#1d976c", fg="white", relief="flat", font=btn_font)
-        no_btn = tk.Button(btn_frame, text="No", width=14, height=2, command=on_no, bg="#e0e0e0", fg="#333", relief="flat", font=btn_font)
-        yes_btn.grid(row=0, column=0, padx=12)
-        no_btn.grid(row=0, column=1, padx=12)
+        btn_frame.pack(pady=22)
+        yes_btn = tk.Button(btn_frame, text="Yes", width=16, height=2, command=on_yes, bg="#1d976c", fg="white", relief="flat", font=btn_font)
+        no_btn = tk.Button(btn_frame, text="No", width=16, height=2, command=on_no, bg="#e0e0e0", fg="#333", relief="flat", font=btn_font)
+        yes_btn.grid(row=0, column=0, padx=16)
+        no_btn.grid(row=0, column=1, padx=16)
         self._style_button(yes_btn, hover_bg="#15805a")
         self._style_button(no_btn, hover_bg="#d0d0d0")
 
@@ -1263,10 +1273,6 @@ class CartScreen(tk.Frame):
         popup.title("Payment Complete")
         popup.configure(bg=self.colors["payment_bg"])
         try:
-            popup.transient(self.winfo_toplevel())
-        except Exception:
-            pass
-        try:
             popup.attributes("-topmost", True)
         except Exception:
             pass
@@ -1275,48 +1281,65 @@ class CartScreen(tk.Frame):
         except Exception:
             pass
 
-        width, height = 560, 430
         try:
             popup.update_idletasks()
-            x = (popup.winfo_screenwidth() // 2) - (width // 2)
-            y = (popup.winfo_screenheight() // 2) - (height // 2)
-            popup.geometry(f"{width}x{height}+{x}+{y}")
+            screen_w = popup.winfo_screenwidth()
+            screen_h = popup.winfo_screenheight()
+            popup.geometry(f"{screen_w}x{screen_h}+0+0")
+            popup.attributes("-fullscreen", True)
         except Exception:
-            popup.geometry(f"{width}x{height}")
+            pass
+
+        header = tk.Frame(popup, bg="#1d4ed8")
+        header.pack(fill="x")
+        tk.Label(header, text="RAON VENDING", fg="white", bg="#1d4ed8",
+                 font=("Helvetica", 24, "bold")).pack(pady=8)
+        try:
+            status_panel = SystemStatusPanel(header, controller=self.controller, compact=True)
+            status_panel.pack(fill="x", padx=12, pady=(0, 8))
+        except Exception:
+            pass
 
         tk.Label(
             popup,
             text="Payment Complete",
-            font=self.fonts["header"],
+            font=("Helvetica", 28, "bold"),
             bg=self.colors["payment_bg"],
             fg=self.colors["payment_fg"],
-        ).pack(pady=(20, 10))
+        ).pack(pady=(24, 12))
 
         tk.Label(
             popup,
             text=status_text,
-            font=tkfont.Font(family="Helvetica", size=12),
+            font=tkfont.Font(family="Helvetica", size=18, weight="bold"),
             bg=self.colors["payment_bg"],
             fg=self.colors["text_fg"],
             justify=tk.LEFT,
-            wraplength=520,
+            wraplength=max(900, int(screen_w * 0.85)) if 'screen_w' in locals() else 900,
             anchor="w",
-        ).pack(fill="both", expand=True, padx=20, pady=(0, 10))
+        ).pack(fill="both", expand=True, padx=32, pady=(0, 16))
 
         countdown_label = tk.Label(
             popup,
             text="",
-            font=self.fonts["item_details"],
+            font=tkfont.Font(family="Helvetica", size=16, weight="bold"),
             bg=self.colors["payment_bg"],
             fg=self.colors["payment_fg"],
         )
         countdown_label.pack(pady=(0, 8))
 
-        remaining_sec = max(1, int(auto_return_ms / 1000))
+        if auto_return_ms is not None and auto_return_ms > 0:
+            remaining_sec = max(1, int(auto_return_ms / 1000))
+        else:
+            remaining_sec = None
 
         def _tick():
             nonlocal remaining_sec
             if not self._payment_complete_notice or not self._payment_complete_notice.winfo_exists():
+                self._payment_notice_countdown_after_id = None
+                return
+            if remaining_sec is None:
+                countdown_label.config(text="Press the home button to start a new order.")
                 self._payment_notice_countdown_after_id = None
                 return
             countdown_label.config(text=f"Returning to Start Order in {remaining_sec} second(s)...")
@@ -1326,7 +1349,8 @@ class CartScreen(tk.Frame):
             remaining_sec -= 1
             self._payment_notice_countdown_after_id = self.after(1000, _tick)
 
-        _tick()
+        if remaining_sec is not None:
+            _tick()
 
     def _go_start_order_now(self):
         """Navigate immediately to Start Order and clear pending auto-return state."""

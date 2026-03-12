@@ -1244,6 +1244,15 @@ class CartScreen(tk.Frame):
         if getattr(self, "payment_finalized", False):
             return
         self.payment_finalized = True
+        # One-vend token to avoid duplicate dispensing on rare double-calls
+        if not hasattr(self, "_vend_token"):
+            self._vend_token = None
+        import time as _t
+        current_token = f"{_t.time():.6f}"
+        if self._vend_token is None:
+            self._vend_token = current_token
+        elif self._vend_token != current_token:
+            return
         try:
             vend_list = [ {"item": it["item"], "quantity": it["quantity"]} for it in cart_snapshot ]
         except Exception:

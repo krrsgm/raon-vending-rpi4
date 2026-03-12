@@ -392,6 +392,8 @@ class CartScreen(tk.Frame):
         header.pack(fill="x")
         tk.Label(header, text="RAON VENDING", fg="white", bg="#1d4ed8",
                  font=("Helvetica", 20, "bold")).pack(pady=8)
+        tk.Label(dialog, text="Fill the form to generate order number", bg="white", fg="#1d4ed8",
+                 font=("Helvetica", 14, "bold")).pack(pady=(6, 4))
         # System status panel if available
         try:
             status_panel = SystemStatusPanel(header, controller=self.controller, compact=True)
@@ -1184,12 +1186,8 @@ class CartScreen(tk.Frame):
             
             # Clear cart and return to kiosk screen
             self.controller.clear_cart()
-            try:
-                self.controller.finish_order_timer(status="SUCCESS")
-            except Exception:
-                pass
-            self._show_payment_complete_notice(status_text, auto_return_ms=10000)
-            self._schedule_return_to_start_order(delay_ms=10000)
+            # Do not auto-timeout; leave notice until issue prompt/OK is handled.
+            self._show_payment_complete_notice(status_text, auto_return_ms=None)
 
         def _vend_items_and_finish():
             try:

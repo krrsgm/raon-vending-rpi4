@@ -432,30 +432,25 @@ class CartScreen(tk.Frame):
 
     def _prompt_issue_report(self, or_number=None):
         """Prompt user to report an issue after transaction."""
-        try:
-            if not messagebox.askyesno(
-                "Transaction Feedback",
-                "Did you encounter any issue with this transaction?"
-            ):
-                return None
-        except Exception:
-            return None
-
         dialog = tk.Toplevel(self)
-        dialog.title("Report an Issue")
+        dialog.title("Transaction Feedback")
         dialog.configure(bg="white")
         dialog.transient(self)
         dialog.grab_set()
         dialog.resizable(False, False)
         try:
             dialog.update_idletasks()
-            w = 420
-            h = 240
+            w = 440
+            h = 300
             x = max(0, (dialog.winfo_screenwidth() - w) // 2)
             y = max(0, (dialog.winfo_screenheight() - h) // 3)
             dialog.geometry(f"{w}x{h}+{x}+{y}")
         except Exception:
             pass
+
+        tk.Label(dialog, text="Did you encounter any issue with this transaction?",
+                 bg="white", fg="#222", font=("Helvetica", 12, "bold"),
+                 wraplength=380, justify="center").pack(pady=(14, 10))
 
         options = [
             "Item not dispensed",
@@ -468,19 +463,19 @@ class CartScreen(tk.Frame):
             "Others"
         ]
 
-        tk.Label(dialog, text="Select the issue", bg="white", fg="#222", font=("Helvetica", 12, "bold")).pack(pady=(16, 6))
+        tk.Label(dialog, text="Select the issue (or choose Others):", bg="white", fg="#222", font=("Helvetica", 12, "bold")).pack(pady=(6, 6))
         issue_var = tk.StringVar(value=options[0])
         opt = tk.OptionMenu(dialog, issue_var, *options)
         opt.config(width=32, font=("Helvetica", 11))
-        opt.pack()
+        opt.pack(pady=(0, 4))
 
         tk.Label(dialog, text="If Others, describe:", bg="white", fg="#444", font=("Helvetica", 11)).pack(pady=(10, 4))
         other_entry = tk.Entry(dialog, width=40, font=("Helvetica", 11))
         other_entry.pack(pady=(0, 8))
 
-        result = {"issue": None}
+        result = {"issue": None, "answered": False}
 
-        def on_ok():
+        def on_yes():
             sel = issue_var.get().strip()
             if sel == "Others":
                 desc = other_entry.get().strip()
@@ -490,21 +485,26 @@ class CartScreen(tk.Frame):
                 result["issue"] = desc
             else:
                 result["issue"] = sel
+            result["answered"] = True
             dialog.destroy()
 
-        def on_cancel():
+        def on_no():
+            result["issue"] = None
+            result["answered"] = True
             dialog.destroy()
 
         btn_frame = tk.Frame(dialog, bg="white")
         btn_frame.pack(pady=12)
-        ok_btn = tk.Button(btn_frame, text="Submit", width=10, command=on_ok, bg="#1d976c", fg="white", relief="flat")
-        cancel_btn = tk.Button(btn_frame, text="Cancel", width=10, command=on_cancel, bg="#e0e0e0", fg="#333", relief="flat")
-        ok_btn.grid(row=0, column=0, padx=6)
-        cancel_btn.grid(row=0, column=1, padx=6)
-        self._style_button(ok_btn, hover_bg="#15805a")
-        self._style_button(cancel_btn, hover_bg="#d0d0d0")
+        yes_btn = tk.Button(btn_frame, text="Yes", width=10, command=on_yes, bg="#1d976c", fg="white", relief="flat")
+        no_btn = tk.Button(btn_frame, text="No", width=10, command=on_no, bg="#e0e0e0", fg="#333", relief="flat")
+        yes_btn.grid(row=0, column=0, padx=8)
+        no_btn.grid(row=0, column=1, padx=8)
+        self._style_button(yes_btn, hover_bg="#15805a")
+        self._style_button(no_btn, hover_bg="#d0d0d0")
 
         dialog.wait_window(dialog)
+        if not result["answered"]:
+            return None
         return result["issue"]
 
     def handle_checkout(self):

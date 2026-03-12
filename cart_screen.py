@@ -900,7 +900,10 @@ class CartScreen(tk.Frame):
             except Exception:
                 change_ok = True
                 one_available = five_available = 0
-            if not change_ok:
+            # Show warning if either hopper is empty (out of stock for that denomination)
+            one_empty = one_available <= 0
+            five_empty = five_available <= 0
+            if one_empty or five_empty:
                 tk.Label(
                     amount_frame,
                     text="Please insert exact amount — change unavailable",

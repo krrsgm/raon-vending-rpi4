@@ -1258,19 +1258,6 @@ class CartScreen(tk.Frame):
         except Exception:
             vend_list = []
 
-        def _vend_items():
-            try:
-                # Use organized vending so slots are processed in ascending order,
-                # finishing all pulses for the current slot before the next one.
-                self.controller.vend_cart_items_organized(vend_list)
-            except Exception as e:
-                print(f"Error in vending thread: {e}")
-
-        try:
-            threading.Thread(target=_vend_items, daemon=True).start()
-        except Exception:
-            pass
-
         change_due = max(0.0, float(received) - float(required_amount))
         # Track actual dispensed change in coin inventory for admin monitoring.
         try:

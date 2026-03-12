@@ -1970,7 +1970,8 @@ class MainApp(tk.Tk):
                         else:
                             print(f'[VEND] ERROR: ESP32 did not confirm pulse for slot {slot_number}. Response: {result}')
                         # Wait for firmware to finish the rotation (2 limit pulses).
-                        wait_timeout_sec = max(5.0, (pulse_timeout_ms / 1000.0) + 2.0)
+                        # Keep wait reasonable so failed slots retry quickly (caps long 15s failsafe).
+                        wait_timeout_sec = max(5.0, min(8.0, (pulse_timeout_ms / 1000.0) + 2.0))
                         completed = self._wait_for_slot_rotation_complete(
                             host=host,
                             slot_number=slot_number,
@@ -2221,7 +2222,8 @@ class MainApp(tk.Tk):
                             else:
                                 print(f'[VEND-ORG] ERROR: ESP32 did not confirm pulse for slot {slot_number}. Response: {result}')
                             # Wait for firmware to finish the rotation (2 limit pulses).
-                            wait_timeout_sec = max(5.0, (pulse_timeout_ms / 1000.0) + 2.0)
+                            # Cap wait to keep retries fast if firmware doesn't signal completion.
+                            wait_timeout_sec = max(5.0, min(8.0, (pulse_timeout_ms / 1000.0) + 2.0))
                             completed = self._wait_for_slot_rotation_complete(
                                 host=host,
                                 slot_number=slot_number,

@@ -414,7 +414,7 @@ class CartScreen(tk.Frame):
         ).pack(side="left")
 
         content = tk.Frame(dialog, bg="white")
-        content.pack(fill="both", expand=True, pady=(10, 0))
+        content.pack(fill="both", expand=True, pady=(30, 10))
 
         tk.Label(
             content,
@@ -552,7 +552,7 @@ class CartScreen(tk.Frame):
             selector.wait_window(selector)
 
         chooser = tk.Frame(content, bg="white")
-        chooser.pack(pady=(6, 20), fill="x")
+        chooser.pack(pady=(30, 30), fill="x")
 
         def build_cycle_row(label_text, var, options, width=20):
             row = tk.Frame(chooser, bg="white")
@@ -592,7 +592,7 @@ class CartScreen(tk.Frame):
             dialog.destroy()
 
         btn_frame = tk.Frame(content, bg="white")
-        btn_frame.pack(pady=24)
+        btn_frame.pack(pady=36)
         ok_btn = tk.Button(btn_frame, text="OK", width=16, height=2, command=on_ok, bg="#1d976c", fg="white", relief="flat", font=btn_font)
         cancel_btn = tk.Button(btn_frame, text="Cancel", width=16, height=2, command=on_cancel, bg="#e0e0e0", fg="#333", relief="flat", font=btn_font)
         ok_btn.grid(row=0, column=0, padx=14)

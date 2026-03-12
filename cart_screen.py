@@ -369,17 +369,15 @@ class CartScreen(tk.Frame):
         dialog = tk.Toplevel(self)
         dialog.title("Buyer Info")
         dialog.configure(bg="white")
-        dialog.transient(self)
+        dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
         dialog.resizable(False, False)
-
         try:
             dialog.update_idletasks()
-            w = max(520, int(dialog.winfo_screenwidth() * 0.38))
-            h = 320
-            x = max(0, (dialog.winfo_screenwidth() - w) // 2)
-            y = max(0, (dialog.winfo_screenheight() - h) // 3)
-            dialog.geometry(f"{w}x{h}+{x}+{y}")
+            screen_w = dialog.winfo_screenwidth()
+            screen_h = dialog.winfo_screenheight()
+            dialog.geometry(f"{screen_w}x{screen_h}+0+0")
+            dialog.attributes("-fullscreen", True)
         except Exception:
             pass
 
@@ -387,23 +385,23 @@ class CartScreen(tk.Frame):
         menu_font = ("Helvetica", 15)
         btn_font = ("Helvetica", 15, "bold")
 
-        tk.Label(dialog, text="Select Program", bg="white", fg="#222", font=label_font).pack(pady=(14, 6))
+        tk.Label(dialog, text="Select Program", bg="white", fg="#222", font=label_font).pack(pady=(24, 10))
         program_var = tk.StringVar(value=self.program_options[0])
         program_menu = tk.OptionMenu(dialog, program_var, *self.program_options)
-        program_menu.config(width=36, font=menu_font)
-        program_menu.pack(pady=(0, 8))
+        program_menu.config(width=40, font=menu_font)
+        program_menu.pack(pady=(0, 14))
 
-        tk.Label(dialog, text="Select Year Level", bg="white", fg="#222", font=label_font).pack(pady=(8, 6))
+        tk.Label(dialog, text="Select Year Level", bg="white", fg="#222", font=label_font).pack(pady=(10, 8))
         year_var = tk.StringVar(value="1")
         year_menu = tk.OptionMenu(dialog, year_var, "1", "2", "3", "4")
-        year_menu.config(width=12, font=menu_font)
-        year_menu.pack(pady=(0, 8))
+        year_menu.config(width=16, font=menu_font)
+        year_menu.pack(pady=(0, 12))
 
-        tk.Label(dialog, text="Select Section", bg="white", fg="#222", font=label_font).pack(pady=(8, 6))
+        tk.Label(dialog, text="Select Section", bg="white", fg="#222", font=label_font).pack(pady=(10, 8))
         section_var = tk.StringVar(value="A")
         section_menu = tk.OptionMenu(dialog, section_var, "A", "B")
-        section_menu.config(width=10, font=menu_font)
-        section_menu.pack(pady=(0, 10))
+        section_menu.config(width=14, font=menu_font)
+        section_menu.pack(pady=(0, 16))
 
         result = {"confirmed": False}
 
@@ -415,11 +413,11 @@ class CartScreen(tk.Frame):
             dialog.destroy()
 
         btn_frame = tk.Frame(dialog, bg="white")
-        btn_frame.pack(pady=20)
-        ok_btn = tk.Button(btn_frame, text="OK", width=14, height=2, command=on_ok, bg="#1d976c", fg="white", relief="flat", font=btn_font)
-        cancel_btn = tk.Button(btn_frame, text="Cancel", width=14, height=2, command=on_cancel, bg="#e0e0e0", fg="#333", relief="flat", font=btn_font)
-        ok_btn.grid(row=0, column=0, padx=10)
-        cancel_btn.grid(row=0, column=1, padx=10)
+        btn_frame.pack(pady=24)
+        ok_btn = tk.Button(btn_frame, text="OK", width=16, height=2, command=on_ok, bg="#1d976c", fg="white", relief="flat", font=btn_font)
+        cancel_btn = tk.Button(btn_frame, text="Cancel", width=16, height=2, command=on_cancel, bg="#e0e0e0", fg="#333", relief="flat", font=btn_font)
+        ok_btn.grid(row=0, column=0, padx=14)
+        cancel_btn.grid(row=0, column=1, padx=14)
 
         self._style_button(ok_btn, hover_bg="#15805a")
         self._style_button(cancel_btn, hover_bg="#d0d0d0")

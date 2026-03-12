@@ -1480,9 +1480,11 @@ class CartScreen(tk.Frame):
             popup = tk.Toplevel(self)
             popup.title("Dispensing Items")
             popup.configure(bg="white")
-            popup.transient(self.winfo_toplevel())
-            popup.grab_set()
-            popup.attributes("-fullscreen", True)
+            popup.overrideredirect(True)
+            try:
+                popup.attributes("-fullscreen", True)
+            except Exception:
+                pass
             popup.lift()
             popup.attributes("-topmost", True)
 

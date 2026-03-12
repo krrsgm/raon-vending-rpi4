@@ -24,7 +24,7 @@ class CartScreen(tk.Frame):
             "BSEE", "BSEcE", "BSIT", "BETET", "BETELXT", "BETICT", "BETMECT",
             "BETVTEd-ET", "BETVTEd-ELXT", "BETVTEd-ICT-CH", "BETVTEd-ICT-CP",
             "BSCE", "BETCHT", "BSES", "BETCT", "BSME", "BETAT", "BETDMT",
-            "BETEMT", "BETHVAC/RT", "BETMT", "BETNDT"
+            "BETEMT", "BETHVAC/RT", "BETMT", "BETNDT", "Faculty Member", "Not Applicable"
         ]
         # Initialize payment handler with coin hoppers from config
         # If TB74 is connected to the ESP32 and the ESP32 forwards bill events,
@@ -401,7 +401,7 @@ class CartScreen(tk.Frame):
         except Exception:
             pass
 
-        tk.Label(dialog, text="Select Program", bg="white", fg="#222", font=label_font).pack(pady=(18, 10))
+        tk.Label(dialog, text="Select Program / Affiliation", bg="white", fg="#222", font=label_font).pack(pady=(18, 10))
         program_var = tk.StringVar(value=self.program_options[0])
         program_menu = tk.OptionMenu(dialog, program_var, *self.program_options)
         program_menu.config(width=40, font=menu_font)
@@ -409,15 +409,15 @@ class CartScreen(tk.Frame):
         program_menu.pack(pady=(0, 14))
 
         tk.Label(dialog, text="Select Year Level", bg="white", fg="#222", font=label_font).pack(pady=(10, 8))
-        year_var = tk.StringVar(value="1")
-        year_menu = tk.OptionMenu(dialog, year_var, "1", "2", "3", "4")
+        year_var = tk.StringVar(value="N/A")
+        year_menu = tk.OptionMenu(dialog, year_var, "1", "2", "3", "4", "N/A")
         year_menu.config(width=16, font=menu_font)
         year_menu["menu"].configure(font=menu_font)
         year_menu.pack(pady=(0, 12))
 
         tk.Label(dialog, text="Select Section", bg="white", fg="#222", font=label_font).pack(pady=(10, 8))
-        section_var = tk.StringVar(value="A")
-        section_menu = tk.OptionMenu(dialog, section_var, "A", "B", "Test")
+        section_var = tk.StringVar(value="N/A")
+        section_menu = tk.OptionMenu(dialog, section_var, "A", "B", "Test", "N/A")
         section_menu.config(width=14, font=menu_font)
         section_menu["menu"].configure(font=menu_font)
         section_menu.pack(pady=(0, 16))

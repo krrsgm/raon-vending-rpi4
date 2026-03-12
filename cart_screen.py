@@ -1424,19 +1424,12 @@ class CartScreen(tk.Frame):
         def _vend_items_and_finish():
             try:
                 # Use organized vending so slots are processed in ascending order.
-                if getattr(self.controller, "_vend_busy", False):
-                    return
-                self.controller._vend_busy = True
                 if not getattr(self, "_vend_started", False):
                     self._vend_started = True
                     self.controller.vend_cart_items_organized(vend_list)
             except Exception as e:
                 print(f"Error in vending thread: {e}")
             finally:
-                try:
-                    self.controller._vend_busy = False
-                except Exception:
-                    pass
                 try:
                     self.after(0, _after_vend)
                 except Exception:

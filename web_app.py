@@ -795,21 +795,21 @@ def api_sales_logs():
 
         merged_logs = []
         for row in rows:
-            merged_logs.append(
-                f"[{row['time']}] "
-                f"Transaction Time: {row['transaction_time']} | "
-                f"Item: {row['item']} | "
-                (f"OR: {row['or']} | " if row.get('or') else "")
-                (f"Program: {row['program']} | " if row.get('program') else "")
-                (f"Year: {row['year']} | " if row.get('year') else "")
-                (f"Section: {row['section']} | " if row.get('section') else "")
-                f"Coins: {row['coins']:.2f} | "
-                f"Bills: {row['bills']:.2f} | "
-                f"Inserted: {row['total']:.2f} | "
-                f"Change: {row['change']:.2f} | "
-                f"Net: {row['net_collected']:.2f} | "
+            merged_logs.append("".join([
+                f"[{row['time']}] ",
+                f"Transaction Time: {row['transaction_time']} | ",
+                f"Item: {row['item']} | ",
+                f"OR: {row['or']} | " if row.get('or') else "",
+                f"Program: {row['program']} | " if row.get('program') else "",
+                f"Year: {row['year']} | " if row.get('year') else "",
+                f"Section: {row['section']} | " if row.get('section') else "",
+                f"Coins: {row['coins']:.2f} | ",
+                f"Bills: {row['bills']:.2f} | ",
+                f"Inserted: {row['total']:.2f} | ",
+                f"Change: {row['change']:.2f} | ",
+                f"Net: {row['net_collected']:.2f} | ",
                 f"IR Status: {row['ir_status']}"
-            )
+            ]))
 
         return jsonify({
             'logs': merged_logs,

@@ -38,8 +38,52 @@ class DailySalesLogger:
         """Get today's log filename (YYYY-MM-DD format)."""
         today = datetime.now().strftime("%Y-%m-%d")
         return os.path.join(self.logs_dir, f"sales_{today}.log")
+
+    def _get_or_state_path(self):
+        """Return path for OR counter state."""
+        return os.path.join(self.logs_dir, "or_counter.json")
+
+    def _load_or_state(self):
+        """Load OR counter state from disk."""
+        path = self._get_or_state_path()
+        if not os.path.exists(path):
+            return {"date": datetime.now().strftime("%Y-%m-%d"), "seq": 0}
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                raise ValueError("Invalid OR state format")
+            return data
+        except Exception:
+            return {"date": datetime.now().strftime("%Y-%m-%d"), "seq": 0}
+
+    def _save_or_state(self, state):
+        """Persist OR counter state to disk."""
+        path = self._get_or_state_path()
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
+        except Exception as e:
+            print(f"[Logger] ERROR saving OR state: {e}")
+
+    def _next_or_number(self):
+        """
+        Generate the next OR number for today.
+
+        Format: MMDDYY + 3-digit sequence, e.g., 031226001.
+        """
+        today_date = datetime.now().strftime("%Y-%m-%d")
+        today_prefix = datetime.now().strftime("%m%d%y")
+        state = self._load_or_state()
+        if state.get("date") != today_date:
+            state = {"date": today_date, "seq": 0}
+        state["seq"] = int(state.get("seq", 0)) + 1
+        or_number = f"{today_prefix}{state['seq']:03d}"
+        self._save_or_state(state)
+        return or_number
     
-    def log_transaction(self, items_list, coin_amount, bill_amount, change_dispensed):
+    def log_transaction(self, items_list, coin_amount, bill_amount, change_dispensed,
+                       buyer_program=None, buyer_year=None, buyer_section=None, or_number=None):
         """Log a completed vending transaction.
         
         Args:
@@ -47,10 +91,17 @@ class DailySalesLogger:
             coin_amount (float): Amount paid in coins (₱)
             bill_amount (float): Amount paid in bills (₱)
             change_dispensed (float): Change dispensed (₱)
+            buyer_program (str, optional): Program selected by buyer
+            buyer_year (str/int, optional): Year level
+            buyer_section (str, optional): Section (e.g., A/B)
+            or_number (str, optional): Official receipt number; auto-generated if None
         """
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             total_paid = coin_amount + bill_amount
+            if not or_number:
+                with self._lock:
+                    or_number = self._next_or_number()
             
             # Format items
             items_str = ", ".join([
@@ -65,8 +116,19 @@ class DailySalesLogger:
                 f"Coins: ₱{coin_amount:.2f} | "
                 f"Bills: ₱{bill_amount:.2f} | "
                 f"Total: ₱{total_paid:.2f} | "
-                f"Change: ₱{change_dispensed:.2f}"
+                f"Change: ₱{change_dispensed:.2f} | "
+                f"OR: {or_number}"
             )
+
+            extra_parts = []
+            if buyer_program:
+                extra_parts.append(f"Program: {buyer_program}")
+            if buyer_year:
+                extra_parts.append(f"Year: {buyer_year}")
+            if buyer_section:
+                extra_parts.append(f"Section: {buyer_section}")
+            if extra_parts:
+                log_entry += " | " + " | ".join(extra_parts)
             
             # Write to log file (thread-safe)
             with self._lock:
@@ -77,8 +139,10 @@ class DailySalesLogger:
                     print(f"[Logger] Transaction logged: {items_str}")
                 except Exception as e:
                     print(f"[Logger] ERROR writing transaction log: {e}")
+            return or_number
         except Exception as e:
             print(f"[Logger] ERROR logging transaction: {e}")
+            return None
     
     def log_temperature(self, sensor_1_temp=None, sensor_2_temp=None, relay_status=None, target_temp=None):
         """Log temperature sensor readings from TEC controller.

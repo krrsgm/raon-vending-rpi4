@@ -19,6 +19,13 @@ class CartScreen(tk.Frame):
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent, bg="#f0f4f8")
         self.controller = controller
+        self.buyer_info = None  # program/year/section metadata
+        self.program_options = [
+            "BSEE", "BSEcE", "BSIT", "BETET", "BETELXT", "BETICT", "BETMECT",
+            "BETVTEd-ET", "BETVTEd-ELXT", "BETVTEd-ICT-CH", "BETVTEd-ICT-CP",
+            "BSCE", "BETCHT", "BSES", "BETCT", "BSME", "BETAT", "BETDMT",
+            "BETEMT", "BETHVAC/RT", "BETMT", "BETNDT"
+        ]
         # Initialize payment handler with coin hoppers from config
         # If TB74 is connected to the ESP32 and the ESP32 forwards bill events,
         # enable esp32 proxy mode and supply the serial port or host from config.
@@ -357,10 +364,82 @@ class CartScreen(tk.Frame):
             text=f"Total: {self.controller.currency_symbol}{grand_total:.2f}"
         )
 
+    def _prompt_buyer_info(self):
+        """Prompt buyer to select program, year, and section before payment."""
+        dialog = tk.Toplevel(self)
+        dialog.title("Buyer Info")
+        dialog.configure(bg="white")
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+
+        try:
+            dialog.update_idletasks()
+            w = max(420, int(dialog.winfo_screenwidth() * 0.3))
+            h = 260
+            x = max(0, (dialog.winfo_screenwidth() - w) // 2)
+            y = max(0, (dialog.winfo_screenheight() - h) // 3)
+            dialog.geometry(f"{w}x{h}+{x}+{y}")
+        except Exception:
+            pass
+
+        tk.Label(dialog, text="Select Program", bg="white", fg="#222", font=("Helvetica", 12, "bold")).pack(pady=(14, 4))
+        program_var = tk.StringVar(value=self.program_options[0])
+        program_menu = tk.OptionMenu(dialog, program_var, *self.program_options)
+        program_menu.config(width=32, font=("Helvetica", 11))
+        program_menu.pack()
+
+        tk.Label(dialog, text="Select Year Level", bg="white", fg="#222", font=("Helvetica", 12, "bold")).pack(pady=(14, 4))
+        year_var = tk.StringVar(value="1")
+        year_menu = tk.OptionMenu(dialog, year_var, "1", "2", "3", "4")
+        year_menu.config(width=10, font=("Helvetica", 11))
+        year_menu.pack()
+
+        tk.Label(dialog, text="Select Section", bg="white", fg="#222", font=("Helvetica", 12, "bold")).pack(pady=(14, 4))
+        section_var = tk.StringVar(value="A")
+        section_menu = tk.OptionMenu(dialog, section_var, "A", "B")
+        section_menu.config(width=6, font=("Helvetica", 11))
+        section_menu.pack()
+
+        result = {"confirmed": False}
+
+        def on_ok():
+            result["confirmed"] = True
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        btn_frame = tk.Frame(dialog, bg="white")
+        btn_frame.pack(pady=16)
+        ok_btn = tk.Button(btn_frame, text="OK", width=10, command=on_ok, bg="#1d976c", fg="white", relief="flat")
+        cancel_btn = tk.Button(btn_frame, text="Cancel", width=10, command=on_cancel, bg="#e0e0e0", fg="#333", relief="flat")
+        ok_btn.grid(row=0, column=0, padx=6)
+        cancel_btn.grid(row=0, column=1, padx=6)
+
+        self._style_button(ok_btn, hover_bg="#15805a")
+        self._style_button(cancel_btn, hover_bg="#d0d0d0")
+
+        dialog.wait_window(dialog)
+
+        if not result["confirmed"]:
+            return None
+        return {
+            "program": program_var.get().strip(),
+            "year": year_var.get().strip(),
+            "section": section_var.get().strip()
+        }
+
     def handle_checkout(self):
         """Process the checkout with coin payment using Allan 123A-Pro."""
         if not self.controller.cart:
             return
+
+        # Collect buyer metadata (program/year/section) before payment.
+        info = self._prompt_buyer_info()
+        if not info:
+            return
+        self.buyer_info = info
 
         # Calculate total amount needed
         total_amount = sum(item["item"]["price"] * item["quantity"] for item in self.controller.cart)
@@ -838,10 +917,11 @@ class CartScreen(tk.Frame):
             list(self.controller.cart),
             self.coin_received,
             self.bill_received,
+            self.buyer_info
         )
         threading.Thread(target=self._complete_payment_thread, args=thread_args, daemon=True).start()
 
-    def _complete_payment_thread(self, required_amount, cart_snapshot, coin_amount, bill_amount):
+    def _complete_payment_thread(self, required_amount, cart_snapshot, coin_amount, bill_amount, buyer_info):
         try:
             received, change_dispensed, change_status = self.payment_handler.stop_payment_session(
                 required_amount=required_amount
@@ -862,11 +942,12 @@ class CartScreen(tk.Frame):
             change_status,
             cart_snapshot,
             coin_amount,
-            bill_amount
+            bill_amount,
+            or_number_value
         ))
 
     def _present_payment_complete(self, required_amount, received, change_dispensed,
-                                  change_status, cart_snapshot, coin_amount, bill_amount):
+                                  change_status, cart_snapshot, coin_amount, bill_amount, or_number=None):
         try:
             vend_list = [ {"item": it["item"], "quantity": it["quantity"]} for it in cart_snapshot ]
         except Exception:
@@ -900,6 +981,8 @@ class CartScreen(tk.Frame):
             f"Total paid: {self.controller.currency_symbol}{received:.2f}\n"
             "\nYour items will now be dispensed."
         )
+        if or_number:
+            status_text += f"\n\nOR: {or_number}"
         if change_due > 0:
             status_text += (
                 f"\n\nChange due: {self.controller.currency_symbol}{change_due:.2f}\n"
@@ -939,6 +1022,7 @@ class CartScreen(tk.Frame):
                 item_name = "Unknown"
             return item_name, qty
         
+        or_number_value = None
         # Log the transaction to daily sales log
         try:
             logger = get_logger()
@@ -949,12 +1033,20 @@ class CartScreen(tk.Frame):
                     'name': item_name,
                     'quantity': qty
                 })
-            logger.log_transaction(
+            or_number_logged = logger.log_transaction(
                 items_list=items_to_log,
                 coin_amount=coin_amount,
                 bill_amount=bill_amount,
-                change_dispensed=change_dispensed
+                change_dispensed=change_dispensed,
+                buyer_program=buyer_info.get("program") if isinstance(buyer_info, dict) else None,
+                buyer_year=buyer_info.get("year") if isinstance(buyer_info, dict) else None,
+                buyer_section=buyer_info.get("section") if isinstance(buyer_info, dict) else None,
+                or_number=or_number
             )
+            if not or_number and or_number_logged:
+                or_number_value = or_number_logged
+            else:
+                or_number_value = or_number or or_number_logged
         except Exception as e:
             print(f"[CartScreen] Error logging transaction: {e}")
         
@@ -982,6 +1074,9 @@ class CartScreen(tk.Frame):
                         print(f"[CartScreen] Sale recorded for {item_name} (qty: {qty})")
             except Exception as e:
                 print(f"[CartScreen] Error recording sales in stock tracker: {e}")
+        
+        # Reset buyer info after successful transaction
+        self.buyer_info = None
         
         # Clear cart and return to kiosk screen
         self.controller.clear_cart()

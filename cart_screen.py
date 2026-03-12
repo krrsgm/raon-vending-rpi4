@@ -1388,30 +1388,6 @@ class CartScreen(tk.Frame):
             threading.Thread(target=_vend_items_and_finish, daemon=True).start()
         except Exception:
             _after_vend()
-        
-        # Prompt for post-transaction issue report (optional)
-        try:
-            issue = self._prompt_issue_report(or_number_value)
-            if issue:
-                logger = get_logger()
-                logger.log_event(
-                    "ISSUE",
-                    f"OR: {or_number_value or 'N/A'} | Issue: {issue}"
-                )
-        except Exception as e:
-            print(f"[CartScreen] Error capturing issue report: {e}")
-        
-        # Reset buyer info after successful transaction
-        self.buyer_info = None
-        
-        # Clear cart and return to kiosk screen
-        self.controller.clear_cart()
-        try:
-            self.controller.finish_order_timer(status="SUCCESS")
-        except Exception:
-            pass
-        self._show_payment_complete_notice(status_text, auto_return_ms=10000)
-        self._schedule_return_to_start_order(delay_ms=10000)
 
     def _cancel_scheduled_return_to_start_order(self):
         """Cancel pending delayed navigation to Start Order, if any."""

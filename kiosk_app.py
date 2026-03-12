@@ -599,6 +599,10 @@ class KioskFrame(tk.Frame):
         )
         self.change_notice_label.pack()
         self._update_change_notice()
+        try:
+            self.after(4000, self._update_change_notice_periodic)
+        except Exception:
+            pass
 
         # Main content area: left sidebar + main product area
         content = tk.Frame(self, bg=self.colors['background'])
@@ -801,6 +805,16 @@ class KioskFrame(tk.Frame):
                 label.config(text="", fg="#e11d48", bg="white")
         except Exception:
             label.config(text="")
+
+    def _update_change_notice_periodic(self):
+        """Periodic poll to refresh change notice if stock changes."""
+        try:
+            self._update_change_notice()
+        finally:
+            try:
+                self.after(4000, self._update_change_notice_periodic)
+            except Exception:
+                pass
 
     def update_kiosk_config(self):
         """Reload configuration from controller and update header/footer (can be called after saving config)."""

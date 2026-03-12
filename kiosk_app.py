@@ -712,12 +712,12 @@ class KioskFrame(tk.Frame):
         self.after(1, self.populate_items)
 
         # System Status Panel occupies the lower non-touch zone (Y >= 1600).
-        status_zone_height = self.touch_dead_zone_bottom_px if self.touch_dead_zone_bottom_px > 0 else max(70, self.footer_px)
+        status_zone_height = max(200, self.touch_dead_zone_bottom_px if self.touch_dead_zone_bottom_px > 0 else max(70, self.footer_px))
         self.status_zone = tk.Frame(self, bg='#111111', height=status_zone_height)
         self.status_zone.pack(side='bottom', fill='x')
         self.status_zone.pack_propagate(False)
 
-        self.status_panel = SystemStatusPanel(self.status_zone, controller=self.controller)
+        self.status_panel = SystemStatusPanel(self.status_zone, controller=self.controller, panel_height=status_zone_height)
         self.status_panel.pack(fill='both', expand=True)
 
         # Note: Developer names are now shown in system status panel only (no redundant footer)

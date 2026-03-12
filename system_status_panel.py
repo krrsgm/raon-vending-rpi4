@@ -13,6 +13,8 @@ import tkinter as tk
 from tkinter import ttk
 import threading
 import time
+import os
+from PIL import Image, ImageTk
 
 
 class SystemStatusPanel(tk.Frame):
@@ -21,10 +23,10 @@ class SystemStatusPanel(tk.Frame):
     Shows hardware status, sensor readings, and system health indicators.
     """
     
-    def __init__(self, master=None, controller=None, **kwargs):
+    def __init__(self, master=None, controller=None, panel_height=220, **kwargs):
         super().__init__(master, **kwargs)
         self.controller = controller
-        self.configure(bg='#2c3e50', height=140)
+        self.configure(bg='#2c3e50', height=panel_height)
         self.pack_propagate(False)
         
         # Status data (will be updated by callbacks)
@@ -62,6 +64,40 @@ class SystemStatusPanel(tk.Frame):
         # Main container with padding
         main_container = tk.Frame(self, bg='#2c3e50')
         main_container.pack(fill='both', expand=True, padx=8, pady=6)
+
+        # Brand header (logo + name)
+        brand_frame = tk.Frame(main_container, bg='#2c3e50')
+        brand_frame.pack(fill='x', pady=(0, 6))
+        brand_name = "RAON"
+        brand_sub = ""
+        brand_logo = None
+        cfg = getattr(self.controller, 'config', {}) if self.controller else {}
+        if isinstance(cfg, dict):
+            brand_name = cfg.get('machine_name', brand_name)
+            brand_sub = cfg.get('machine_subtitle', brand_sub)
+            logo_path = cfg.get('header_logo_path', '')
+            if logo_path and os.path.exists(logo_path):
+                try:
+                    img = Image.open(logo_path)
+                    img = img.resize((48, 48), Image.Resampling.LANCZOS)
+                    brand_logo = ImageTk.PhotoImage(img)
+                except Exception:
+                    brand_logo = None
+        if brand_logo:
+            logo_lbl = tk.Label(brand_frame, image=brand_logo, bg='#2c3e50')
+            logo_lbl.image = brand_logo
+            logo_lbl.pack(side='left', padx=(0, 10))
+        brand_text = brand_name or "RAON"
+        if brand_sub:
+            brand_text += f" — {brand_sub}"
+        tk.Label(
+            brand_frame,
+            text=brand_text,
+            font=('Helvetica', 13, 'bold'),
+            bg='#2c3e50',
+            fg='#ecf0f1',
+            anchor='w'
+        ).pack(side='left')
         
         # Title bar with developer names
         title_frame = tk.Frame(main_container, bg='#2c3e50')

@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import font as tkfont
+from system_status_panel import SystemStatusPanel
 
 class SelectionScreen(tk.Frame):
     def __init__(self, parent, controller):
@@ -80,11 +81,19 @@ class SelectionScreen(tk.Frame):
         admin_button.pack(pady=20)
         style_button(admin_button, secondary_blue_hover)
 
+        # Status panel at bottom
+        status_height = 220
+        status_zone = tk.Frame(self, bg="#111111", height=status_height)
+        status_zone.pack(side="bottom", fill="x")
+        status_zone.pack_propagate(False)
+        self.status_panel = SystemStatusPanel(status_zone, controller=controller, panel_height=status_height)
+        self.status_panel.pack(fill="both", expand=True)
+
         exit_label = tk.Label(
-            self, 
+            status_zone, 
             text="Press 'Esc' to exit", 
             font=("Helvetica", 12), 
-            fg="#7f8c8d", # Gray text
-            bg='#f0f4f8'
+            fg="#bdc3c7", # Gray text
+            bg='#111111'
         )
-        exit_label.pack(side='bottom', pady=20)
+        exit_label.pack(side='bottom', pady=6)

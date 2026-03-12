@@ -1196,6 +1196,7 @@ class CartScreen(tk.Frame):
              
         self.payment_in_progress = False
         self.payment_completion_scheduled = False
+        self._vend_started = False
         if self._complete_after_id:
             try:
                 self.after_cancel(self._complete_after_id)
@@ -1394,7 +1395,9 @@ class CartScreen(tk.Frame):
         def _vend_items_and_finish():
             try:
                 # Use organized vending so slots are processed in ascending order.
-                self.controller.vend_cart_items_organized(vend_list)
+                if not getattr(self, "_vend_started", False):
+                    self._vend_started = True
+                    self.controller.vend_cart_items_organized(vend_list)
             except Exception as e:
                 print(f"Error in vending thread: {e}")
             finally:

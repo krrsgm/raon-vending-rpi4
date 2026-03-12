@@ -642,11 +642,29 @@ class CartScreen(tk.Frame):
         label_font = ("Helvetica", 17, "bold")
         btn_font = ("Helvetica", 17, "bold")
 
-        header = tk.Frame(dialog, bg="#2222a8")
+        # Header with logo + brand (match course selection styling)
+        header = tk.Frame(dialog, bg="#2222a8", height=150)
         header.pack(fill="x")
         header.pack_propagate(False)
-        tk.Label(header, text="RAON VENDING", fg="white", bg="#2222a8",
-                 font=("Helvetica", 24, "bold")).pack(pady=10)
+
+        header_inner = tk.Frame(header, bg="#2222a8")
+        header_inner.pack(fill="both", expand=True, padx=28, pady=18)
+
+        try:
+            logo_path = get_absolute_path("LOGO.png")
+            logo_img = tk.PhotoImage(file=logo_path)
+            dialog._logo_ref_issue = logo_img
+            tk.Label(header_inner, image=logo_img, bg="#2222a8").pack(side="left", padx=(0, 16))
+        except Exception:
+            pass
+
+        tk.Label(
+            header_inner,
+            text="RAON VENDING",
+            fg="white",
+            bg="#2222a8",
+            font=("Helvetica", 32, "bold")
+        ).pack(side="left")
 
         content = tk.Frame(dialog, bg="white")
         content.pack(fill="both", expand=True, pady=(20, 10))
@@ -714,6 +732,15 @@ class CartScreen(tk.Frame):
         no_btn.grid(row=0, column=1, padx=16)
         self._style_button(yes_btn, hover_bg="#15805a")
         self._style_button(no_btn, hover_bg="#d0d0d0")
+
+        # Bottom system status (match kiosk/course screens)
+        status_zone = tk.Frame(dialog, bg="#111111", height=320)
+        status_zone.pack(side="bottom", fill="x")
+        status_zone.pack_propagate(False)
+        try:
+            SystemStatusPanel(status_zone, controller=self.controller, panel_height=320).pack(fill="both", expand=True)
+        except Exception:
+            pass
 
         dialog.wait_window(dialog)
         if not result["answered"]:

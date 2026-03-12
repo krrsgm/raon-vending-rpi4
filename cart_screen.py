@@ -7,6 +7,7 @@ from payment_handler import PaymentHandler
 from system_status_panel import SystemStatusPanel
 from daily_sales_logger import get_logger
 from arduino_serial_utils import detect_arduino_serial_port
+from fix_paths import get_absolute_path
 try:
     from stock_tracker import get_tracker
     STOCK_TRACKER_AVAILABLE = True
@@ -383,44 +384,66 @@ class CartScreen(tk.Frame):
         except Exception:
             pass
 
-        label_font = ("Helvetica", 15, "bold")
-        menu_font = ("Helvetica", 15)
-        btn_font = ("Helvetica", 15, "bold")
+        label_font = ("Helvetica", 17, "bold")
+        menu_font = ("Helvetica", 17)
+        btn_font = ("Helvetica", 17, "bold")
 
         # Header with logo and machine name
-        header = tk.Frame(dialog, bg="#1d4ed8")
+        header = tk.Frame(dialog, bg="#2222a8", height=120)
         header.pack(fill="x")
-        tk.Label(header, text="RAON VENDING", fg="white", bg="#1d4ed8",
-                 font=("Helvetica", 20, "bold")).pack(pady=8)
-        tk.Label(dialog, text="Fill the form to generate order number", bg="white", fg="#1d4ed8",
-                 font=("Helvetica", 18, "bold")).pack(pady=(8, 6))
-        # System status panel if available
-        try:
-            status_panel = SystemStatusPanel(header, controller=self.controller, compact=True)
-            status_panel.pack(fill="x", padx=12, pady=(0, 8))
-        except Exception:
-            pass
+        header.pack_propagate(False)
 
-        tk.Label(dialog, text="Select Program / Affiliation", bg="white", fg="#222", font=label_font).pack(pady=(18, 10))
+        header_inner = tk.Frame(header, bg="#2222a8")
+        header_inner.pack(fill="both", expand=True, padx=24, pady=14)
+
+        logo_image = None
+        try:
+            logo_path = get_absolute_path("LOGO.png")
+            logo_image = tk.PhotoImage(file=logo_path)
+            dialog._logo_ref = logo_image  # prevent garbage collection
+            tk.Label(header_inner, image=logo_image, bg="#2222a8").pack(side="left", padx=(0, 16))
+        except Exception:
+            logo_image = None
+
+        tk.Label(
+            header_inner,
+            text="RAON VENDING",
+            fg="white",
+            bg="#2222a8",
+            font=("Helvetica", 28, "bold")
+        ).pack(side="left")
+
+        content = tk.Frame(dialog, bg="white")
+        content.pack(fill="both", expand=True, pady=(10, 0))
+
+        tk.Label(
+            content,
+            text="Fill the form to generate order number",
+            bg="white",
+            fg="#2222a8",
+            font=("Helvetica", 22, "bold")
+        ).pack(pady=(6, 18))
+
+        tk.Label(content, text="Select Program / Affiliation", bg="white", fg="#222", font=label_font).pack(pady=(8, 12))
         program_var = tk.StringVar(value=self.program_options[0])
-        program_menu = tk.OptionMenu(dialog, program_var, *self.program_options)
+        program_menu = tk.OptionMenu(content, program_var, *self.program_options)
         program_menu.config(width=40, font=menu_font)
         program_menu["menu"].configure(font=menu_font)
-        program_menu.pack(pady=(0, 14))
+        program_menu.pack(pady=(0, 18))
 
-        tk.Label(dialog, text="Select Year Level", bg="white", fg="#222", font=label_font).pack(pady=(10, 8))
+        tk.Label(content, text="Select Year Level", bg="white", fg="#222", font=label_font).pack(pady=(8, 12))
         year_var = tk.StringVar(value="N/A")
-        year_menu = tk.OptionMenu(dialog, year_var, "1", "2", "3", "4", "N/A")
+        year_menu = tk.OptionMenu(content, year_var, "1", "2", "3", "4", "N/A")
         year_menu.config(width=16, font=menu_font)
         year_menu["menu"].configure(font=menu_font)
-        year_menu.pack(pady=(0, 12))
+        year_menu.pack(pady=(0, 16))
 
-        tk.Label(dialog, text="Select Section", bg="white", fg="#222", font=label_font).pack(pady=(10, 8))
+        tk.Label(content, text="Select Section", bg="white", fg="#222", font=label_font).pack(pady=(8, 12))
         section_var = tk.StringVar(value="N/A")
-        section_menu = tk.OptionMenu(dialog, section_var, "A", "B", "Test", "N/A")
+        section_menu = tk.OptionMenu(content, section_var, "A", "B", "Test", "N/A")
         section_menu.config(width=14, font=menu_font)
         section_menu["menu"].configure(font=menu_font)
-        section_menu.pack(pady=(0, 16))
+        section_menu.pack(pady=(0, 20))
 
         result = {"confirmed": False}
 
@@ -431,7 +454,7 @@ class CartScreen(tk.Frame):
         def on_cancel():
             dialog.destroy()
 
-        btn_frame = tk.Frame(dialog, bg="white")
+        btn_frame = tk.Frame(content, bg="white")
         btn_frame.pack(pady=24)
         ok_btn = tk.Button(btn_frame, text="OK", width=16, height=2, command=on_ok, bg="#1d976c", fg="white", relief="flat", font=btn_font)
         cancel_btn = tk.Button(btn_frame, text="Cancel", width=16, height=2, command=on_cancel, bg="#e0e0e0", fg="#333", relief="flat", font=btn_font)
@@ -440,6 +463,15 @@ class CartScreen(tk.Frame):
 
         self._style_button(ok_btn, hover_bg="#15805a")
         self._style_button(cancel_btn, hover_bg="#d0d0d0")
+
+        # Bottom system status bar (same footprint as kiosk)
+        status_zone = tk.Frame(dialog, bg="#111111", height=140)
+        status_zone.pack(side="bottom", fill="x")
+        status_zone.pack_propagate(False)
+        try:
+            SystemStatusPanel(status_zone, controller=self.controller).pack(fill="both", expand=True)
+        except Exception:
+            pass
 
         dialog.wait_window(dialog)
 

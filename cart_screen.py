@@ -551,54 +551,36 @@ class CartScreen(tk.Frame):
 
             selector.wait_window(selector)
 
-        # Program / affiliation
-        tk.Label(content, text="Programs / Affiliation", bg="white", fg="#222", font=label_font).pack(pady=(4, 10))
-        program_btn = tk.Button(
-            content,
-            textvariable=program_var,
-            command=lambda: open_option_selector("Select Program / Affiliation", self.program_options, program_var),
-            font=menu_font,
-            bg="#f3f4f6",
-            fg="#111",
-            relief="flat",
-            width=40,
-            height=2,
-            wraplength=520,
-        )
-        program_btn.pack(pady=(0, 18))
-        self._style_button(program_btn, hover_bg="#e5e7eb")
+        chooser = tk.Frame(content, bg="white")
+        chooser.pack(pady=(0, 20), fill="x")
 
-        # Year level
-        tk.Label(content, text="Year Level", bg="white", fg="#222", font=label_font).pack(pady=(4, 10))
-        year_btn = tk.Button(
-            content,
-            textvariable=year_var,
-            command=lambda: open_option_selector("Select Year Level", ["1", "2", "3", "4", "N/A"], year_var),
-            font=menu_font,
-            bg="#f3f4f6",
-            fg="#111",
-            relief="flat",
-            width=18,
-            height=2,
-        )
-        year_btn.pack(pady=(0, 16))
-        self._style_button(year_btn, hover_bg="#e5e7eb")
+        def build_cycle_row(label_text, var, options, width=20):
+            row = tk.Frame(chooser, bg="white")
+            row.pack(pady=8)
+            tk.Label(row, text=label_text, bg="white", fg="#222", font=label_font).pack(side="left", padx=(0, 14))
+            btn_font_local = ("Helvetica", 18, "bold")
+            def cycle(delta):
+                current = var.get()
+                try:
+                    idx = options.index(current)
+                except ValueError:
+                    idx = 0
+                idx = (idx + delta) % len(options)
+                var.set(options[idx])
+            up = tk.Button(row, text="▲", font=btn_font_local, width=3, bg="#eaf0ff", fg="#1f2f85",
+                           relief="flat", command=lambda: cycle(-1))
+            up.pack(side="left")
+            tk.Label(row, textvariable=var, width=width, bg="#f3f4f6", fg="#111", font=menu_font,
+                     relief="flat").pack(side="left", padx=8)
+            down = tk.Button(row, text="▼", font=btn_font_local, width=3, bg="#eaf0ff", fg="#1f2f85",
+                             relief="flat", command=lambda: cycle(1))
+            down.pack(side="left")
+            for b in (up, down):
+                self._style_button(b, hover_bg="#dfe8ff")
 
-        # Section
-        tk.Label(content, text="Section", bg="white", fg="#222", font=label_font).pack(pady=(4, 10))
-        section_btn = tk.Button(
-            content,
-            textvariable=section_var,
-            command=lambda: open_option_selector("Select Section", ["A", "B", "Test", "N/A"], section_var),
-            font=menu_font,
-            bg="#f3f4f6",
-            fg="#111",
-            relief="flat",
-            width=16,
-            height=2,
-        )
-        section_btn.pack(pady=(0, 20))
-        self._style_button(section_btn, hover_bg="#e5e7eb")
+        build_cycle_row("Programs / Affiliation", program_var, self.program_options, width=28)
+        build_cycle_row("Year Level", year_var, ["1", "2", "3", "4", "N/A"], width=8)
+        build_cycle_row("Section", section_var, ["A", "B", "Test", "N/A"], width=10)
 
         result = {"confirmed": False}
 

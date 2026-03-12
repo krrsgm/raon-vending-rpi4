@@ -541,11 +541,11 @@ class CartScreen(tk.Frame):
             close_btn.pack(fill="x", pady=(12, 0))
             self._style_button(close_btn, hover_bg="#d5d5d5")
 
-            status_zone = tk.Frame(selector, bg="#111111", height=160)
+            status_zone = tk.Frame(selector, bg="#111111", height=320)
             status_zone.pack(side="bottom", fill="x")
             status_zone.pack_propagate(False)
             try:
-                SystemStatusPanel(status_zone, controller=self.controller).pack(fill="both", expand=True)
+                SystemStatusPanel(status_zone, controller=self.controller, panel_height=320).pack(fill="both", expand=True)
             except Exception:
                 pass
 
@@ -602,11 +602,11 @@ class CartScreen(tk.Frame):
         self._style_button(cancel_btn, hover_bg="#d0d0d0")
 
         # Bottom system status bar (same footprint as kiosk)
-        status_zone = tk.Frame(dialog, bg="#111111", height=160)
+        status_zone = tk.Frame(dialog, bg="#111111", height=320)
         status_zone.pack(side="bottom", fill="x")
         status_zone.pack_propagate(False)
         try:
-            SystemStatusPanel(status_zone, controller=self.controller).pack(fill="both", expand=True)
+            SystemStatusPanel(status_zone, controller=self.controller, panel_height=320).pack(fill="both", expand=True)
         except Exception:
             pass
 

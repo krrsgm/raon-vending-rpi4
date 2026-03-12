@@ -664,9 +664,9 @@
                     <button type="button" onclick="exportSalesCsvFromPicker()" style="padding: 6px 10px; border: 1px solid #27ae60; border-radius: 4px; background: #27ae60; color: white; cursor: pointer;">Export Sales CSV</button>
                     <span id="selectedDateLabel" style="font-size: 12px; color: #666;"></span>
                 </div>
-                <div id="changeAlertBanner" class="alert-banner">
+                <div id="universalAlertBanner" class="alert-banner">
                     <span class="alert-dot"></span>
-                    <span class="change-text">Change hoppers empty — please load coins</span>
+                    <span class="alert-text">Alert</span>
                 </div>
                 <div id="logsSummaryLabel" style="font-size: 12px; color: #333; margin-bottom: 8px;"></div>
                 <div class="logs-container" id="logsContainer">
@@ -1026,16 +1026,20 @@
                     const change = Number(data?.summary?.total_change || 0);
                     const net = Number(data?.summary?.total_net_collected || (inserted - change));
                     const cs = data?.summary?.change_stock || {};
-                    const changeAlert = (cs.one_peso || 0) <= 0 && (cs.five_peso || 0) <= 0;
+                    const changeAlert = !!data?.summary?.change_out;
+                    const dispenseAlert = !!data?.summary?.dispense_failed;
                     summaryLabel.textContent = `Inserted: \u20B1${inserted.toFixed(2)} | Change: \u20B1${change.toFixed(2)} | Net: \u20B1${net.toFixed(2)}` +
                         (changeAlert ? ' | CHANGE OUT: Exact amount only' : '');
-                    const changeBanner = document.getElementById('changeAlertBanner');
-                    if (changeBanner) {
-                        if (changeAlert) {
-                            changeBanner.style.display = 'flex';
-                            changeBanner.querySelector('.change-text').textContent = 'Change hoppers empty — please load coins';
+                    const alertBanner = document.getElementById('universalAlertBanner');
+                    if (alertBanner) {
+                        const msgs = [];
+                        if (changeAlert) msgs.push('Change hoppers empty — exact amount only');
+                        if (dispenseAlert) msgs.push('Some items failed to dispense — check hopper/slots');
+                        if (msgs.length) {
+                            alertBanner.style.display = 'flex';
+                            alertBanner.querySelector('.alert-text').textContent = msgs.join(' • ');
                         } else {
-                            changeBanner.style.display = 'none';
+                            alertBanner.style.display = 'none';
                         }
                     }
                 }
@@ -1045,6 +1049,8 @@
                 if (container) container.innerHTML = '<div class="log-line">Error loading sales logs</div>';
                 const summaryLabel = document.getElementById('logsSummaryLabel');
                 if (summaryLabel) summaryLabel.textContent = '';
+                const alertBanner = document.getElementById('universalAlertBanner');
+                if (alertBanner) alertBanner.style.display = 'none';
             }
         }
 

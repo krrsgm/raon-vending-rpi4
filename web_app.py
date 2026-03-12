@@ -810,6 +810,8 @@ def api_sales_logs():
         total_change = sum(float(row.get('change', 0.0) or 0.0) for row in rows)
         total_net_collected = total_inserted - total_change
         change_stock = _load_change_stock()
+        dispense_failed = any(str(r.get('ir_status', '')).upper() == "FAILED" for r in rows)
+        change_out = (change_stock.get("one_peso", 0) <= 0 and change_stock.get("five_peso", 0) <= 0)
 
         merged_logs = []
         for row in rows:
@@ -837,7 +839,9 @@ def api_sales_logs():
                 'total_inserted': total_inserted,
                 'total_change': total_change,
                 'total_net_collected': total_net_collected,
-                'change_stock': change_stock
+                'change_stock': change_stock,
+                'dispense_failed': dispense_failed,
+                'change_out': change_out
             }
         }), 200
     except Exception as e:

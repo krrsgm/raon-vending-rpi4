@@ -14,7 +14,11 @@ from tkinter import ttk
 import threading
 import time
 import os
-from PIL import Image, ImageTk
+try:
+    from PIL import Image, ImageTk
+except Exception:
+    Image = None
+    ImageTk = None
 
 
 class SystemStatusPanel(tk.Frame):
@@ -76,7 +80,7 @@ class SystemStatusPanel(tk.Frame):
             brand_name = cfg.get('machine_name', brand_name)
             brand_sub = cfg.get('machine_subtitle', brand_sub)
             logo_path = cfg.get('header_logo_path', '')
-            if logo_path and os.path.exists(logo_path):
+            if Image and ImageTk and logo_path and os.path.exists(logo_path):
                 try:
                     img = Image.open(logo_path)
                     img = img.resize((48, 48), Image.Resampling.LANCZOS)

@@ -417,7 +417,7 @@ class CartScreen(tk.Frame):
 
         tk.Label(dialog, text="Select Section", bg="white", fg="#222", font=label_font).pack(pady=(10, 8))
         section_var = tk.StringVar(value="A")
-        section_menu = tk.OptionMenu(dialog, section_var, "A", "B")
+        section_menu = tk.OptionMenu(dialog, section_var, "A", "B", "Test")
         section_menu.config(width=14, font=menu_font)
         section_menu["menu"].configure(font=menu_font)
         section_menu.pack(pady=(0, 16))

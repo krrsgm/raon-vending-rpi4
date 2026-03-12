@@ -1324,73 +1324,7 @@ class CartScreen(tk.Frame):
 
         self._destroy_payment_window()
 
-        def _extract_cart_entry_name_and_qty(entry):
-            """Normalize cart entry shapes to (item_name, quantity)."""
-            if not isinstance(entry, dict):
-                return "Unknown", 1
-            qty = entry.get('quantity', 1)
-            try:
-                qty = int(qty)
-            except Exception:
-                qty = 1
-            if qty <= 0:
-                qty = 1
-            item_obj = entry.get('item') if isinstance(entry.get('item'), dict) else None
-            item_name = (item_obj or entry).get('name') if isinstance((item_obj or entry), dict) else None
-            if not item_name:
-                item_name = "Unknown"
-            return item_name, qty
-        
         or_number_value = or_number
-        # Log the transaction to daily sales log
-        try:
-            logger = get_logger()
-            items_to_log = []
-            for item in cart_snapshot:
-                item_name, qty = _extract_cart_entry_name_and_qty(item)
-                items_to_log.append({
-                    'name': item_name,
-                    'quantity': qty
-                })
-            or_number_logged = logger.log_transaction(
-                items_list=items_to_log,
-                coin_amount=coin_amount,
-                bill_amount=bill_amount,
-                change_dispensed=change_dispensed,
-                buyer_program=buyer_info.get("program") if isinstance(buyer_info, dict) else None,
-                buyer_year=buyer_info.get("year") if isinstance(buyer_info, dict) else None,
-                buyer_section=buyer_info.get("section") if isinstance(buyer_info, dict) else None,
-                or_number=or_number_value
-            )
-            if not or_number_value and or_number_logged:
-                or_number_value = or_number_logged
-        except Exception as e:
-            print(f"[CartScreen] Error logging transaction: {e}")
-        
-        # Record sales in stock tracker for inventory management and alerts
-        if self.stock_tracker:
-            try:
-                for item in cart_snapshot:
-                    item_name, qty = _extract_cart_entry_name_and_qty(item)
-                    
-                    result = self.stock_tracker.record_sale(
-                        item_name=item_name,
-                        quantity=qty,
-                        coin_amount=coin_amount,
-                        bill_amount=bill_amount,
-                        change_dispensed=change_dispensed
-                    )
-                    
-                    if not result['success']:
-                        print(f"[CartScreen] Failed to record sale for {item_name}: {result['message']}")
-                    elif result['alert']:
-                        alert_msg = result['alert'].get('message', 'Stock low')
-                        print(f"[CartScreen] STOCK ALERT: {alert_msg}")
-                        messagebox.showwarning('Stock Alert', alert_msg)
-                    else:
-                        print(f"[CartScreen] Sale recorded for {item_name} (qty: {qty})")
-            except Exception as e:
-                print(f"[CartScreen] Error recording sales in stock tracker: {e}")
 
         if or_number_value:
             status_text += f"\n\nOR: {or_number_value}"
@@ -1436,10 +1370,76 @@ class CartScreen(tk.Frame):
                 except Exception:
                     _after_vend()
 
+        def _log_and_record():
+            """Log transaction and record stock in background to keep UI snappy."""
+            def _extract_cart_entry_name_and_qty(entry):
+                if not isinstance(entry, dict):
+                    return "Unknown", 1
+                qty = entry.get('quantity', 1)
+                try:
+                    qty = int(qty)
+                except Exception:
+                    qty = 1
+                if qty <= 0:
+                    qty = 1
+                item_obj = entry.get('item') if isinstance(entry.get('item'), dict) else None
+                item_name = (item_obj or entry).get('name') if isinstance((item_obj or entry), dict) else None
+                if not item_name:
+                    item_name = "Unknown"
+                return item_name, qty
+
+            nonlocal or_number_value
+            try:
+                logger = get_logger()
+                items_to_log = []
+                for item in cart_snapshot:
+                    item_name, qty = _extract_cart_entry_name_and_qty(item)
+                    items_to_log.append({'name': item_name, 'quantity': qty})
+                or_logged = logger.log_transaction(
+                    items_list=items_to_log,
+                    coin_amount=coin_amount,
+                    bill_amount=bill_amount,
+                    change_dispensed=change_dispensed,
+                    buyer_program=buyer_info.get("program") if isinstance(buyer_info, dict) else None,
+                    buyer_year=buyer_info.get("year") if isinstance(buyer_info, dict) else None,
+                    buyer_section=buyer_info.get("section") if isinstance(buyer_info, dict) else None,
+                    or_number=or_number_value
+                )
+                if not or_number_value and or_logged:
+                    or_number_value = or_logged
+            except Exception as e:
+                print(f"[CartScreen] Error logging transaction: {e}")
+
+            if self.stock_tracker:
+                try:
+                    for item in cart_snapshot:
+                        item_name, qty = _extract_cart_entry_name_and_qty(item)
+                        result = self.stock_tracker.record_sale(
+                            item_name=item_name,
+                            quantity=qty,
+                            coin_amount=coin_amount,
+                            bill_amount=bill_amount,
+                            change_dispensed=change_dispensed
+                        )
+                        if not result['success']:
+                            print(f"[CartScreen] Failed to record sale for {item_name}: {result['message']}")
+                        elif result['alert']:
+                            alert_msg = result['alert'].get('message', 'Stock low')
+                            print(f"[CartScreen] STOCK ALERT: {alert_msg}")
+                            messagebox.showwarning('Stock Alert', alert_msg)
+                        else:
+                            print(f"[CartScreen] Sale recorded for {item_name} (qty: {qty})")
+                except Exception as e:
+                    print(f"[CartScreen] Error recording sales in stock tracker: {e}")
+
         try:
             threading.Thread(target=_vend_items_and_finish, daemon=True).start()
         except Exception:
             _after_vend()
+        try:
+            threading.Thread(target=_log_and_record, daemon=True).start()
+        except Exception:
+            pass
 
     def _cancel_scheduled_return_to_start_order(self):
         """Cancel pending delayed navigation to Start Order, if any."""

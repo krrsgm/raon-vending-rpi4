@@ -4,7 +4,7 @@ from system_status_panel import SystemStatusPanel
 
 class SelectionScreen(tk.Frame):
     def __init__(self, parent, controller):
-        tk.Frame.__init__(self, parent, bg='#f0f4f8') # Light background
+        tk.Frame.__init__(self, parent, bg='#eef2ff') # Modern soft background
         self.controller = controller
         primary_blue = '#2222a8'
         primary_blue_hover = '#2f3fc6'
@@ -39,8 +39,8 @@ class SelectionScreen(tk.Frame):
             self, 
             text="Select Operating Mode", 
             font=title_font,
-            bg='#f0f4f8',
-            fg='#2c3e50', # Dark text
+            bg='#eef2ff',
+            fg='#0f1f3b', # Dark text
             wraplength=int(screen_width * 0.92),
             justify='center'
         )
@@ -83,7 +83,7 @@ class SelectionScreen(tk.Frame):
 
         # Status panel at bottom
         status_height = 320
-        status_zone = tk.Frame(self, bg="#111111", height=status_height)
+        status_zone = tk.Frame(self, bg="#0f172a", height=status_height)
         status_zone.pack(side="bottom", fill="x")
         status_zone.pack_propagate(False)
         self.status_panel = SystemStatusPanel(status_zone, controller=controller, panel_height=status_height)

@@ -46,28 +46,29 @@ class KioskFrame(tk.Frame):
         self._category_cache = {} # Cache for category detection (item_name -> categories)
 
         # --- Color and Font Scheme ---
+        # Modern, high-contrast palette for readability on the kiosk display
         self.colors = {
-            'background': '#f0f4f8',
+            'background': '#f6f7fb',
             'card_bg': '#ffffff',
-            'text_fg': "#1d3502",
-            'gray_fg': '#7f8c8d',
-            'price_fg': '#27ae60',
-            'border': '#dfe6e9',
-            'disabled_bg': '#f5f6fa',
-            'out_of_stock_fg': '#e74c3c'
+            'text_fg': "#102132",
+            'gray_fg': '#7b8794',
+            'price_fg': '#0f9d58',
+            'border': '#e5e9f2',
+            'disabled_bg': '#f1f3f7',
+            'out_of_stock_fg': '#e53935'
         }
         self.fonts = {
             'header': tkfont.Font(family="Helvetica", size=24, weight="bold"),
-            'name': tkfont.Font(family="Helvetica", size=16, weight="bold"),
+            'name': tkfont.Font(family="Helvetica", size=17, weight="bold"),
             'description': tkfont.Font(family="Helvetica", size=12),
-            'price': tkfont.Font(family="Helvetica", size=14, weight="bold"),
+            'price': tkfont.Font(family="Helvetica", size=15, weight="bold"),
             'quantity': tkfont.Font(family="Helvetica", size=12),
             'image_placeholder': tkfont.Font(family="Helvetica", size=14),
             'out_of_stock': tkfont.Font(family="Helvetica", size=14, weight="bold"),
-            'category': tkfont.Font(family="Helvetica", size=8),
-            'control_small': tkfont.Font(family="Helvetica", size=9),
-            'control_bold': tkfont.Font(family="Helvetica", size=9, weight="bold"),
-            'cart_btn': tkfont.Font(family="Helvetica", size=14, weight="bold"),
+            'category': tkfont.Font(family="Helvetica", size=9),
+            'control_small': tkfont.Font(family="Helvetica", size=10),
+            'control_bold': tkfont.Font(family="Helvetica", size=10, weight="bold"),
+            'cart_btn': tkfont.Font(family="Helvetica", size=15, weight="bold"),
         }
         
         # Category rules are compiled once to keep filtering fast and accurate.

@@ -375,31 +375,35 @@ class CartScreen(tk.Frame):
 
         try:
             dialog.update_idletasks()
-            w = max(420, int(dialog.winfo_screenwidth() * 0.3))
-            h = 260
+            w = max(520, int(dialog.winfo_screenwidth() * 0.38))
+            h = 320
             x = max(0, (dialog.winfo_screenwidth() - w) // 2)
             y = max(0, (dialog.winfo_screenheight() - h) // 3)
             dialog.geometry(f"{w}x{h}+{x}+{y}")
         except Exception:
             pass
 
-        tk.Label(dialog, text="Select Program", bg="white", fg="#222", font=("Helvetica", 12, "bold")).pack(pady=(14, 4))
+        label_font = ("Helvetica", 15, "bold")
+        menu_font = ("Helvetica", 15)
+        btn_font = ("Helvetica", 15, "bold")
+
+        tk.Label(dialog, text="Select Program", bg="white", fg="#222", font=label_font).pack(pady=(14, 6))
         program_var = tk.StringVar(value=self.program_options[0])
         program_menu = tk.OptionMenu(dialog, program_var, *self.program_options)
-        program_menu.config(width=32, font=("Helvetica", 11))
-        program_menu.pack()
+        program_menu.config(width=36, font=menu_font)
+        program_menu.pack(pady=(0, 8))
 
-        tk.Label(dialog, text="Select Year Level", bg="white", fg="#222", font=("Helvetica", 12, "bold")).pack(pady=(14, 4))
+        tk.Label(dialog, text="Select Year Level", bg="white", fg="#222", font=label_font).pack(pady=(8, 6))
         year_var = tk.StringVar(value="1")
         year_menu = tk.OptionMenu(dialog, year_var, "1", "2", "3", "4")
-        year_menu.config(width=10, font=("Helvetica", 11))
-        year_menu.pack()
+        year_menu.config(width=12, font=menu_font)
+        year_menu.pack(pady=(0, 8))
 
-        tk.Label(dialog, text="Select Section", bg="white", fg="#222", font=("Helvetica", 12, "bold")).pack(pady=(14, 4))
+        tk.Label(dialog, text="Select Section", bg="white", fg="#222", font=label_font).pack(pady=(8, 6))
         section_var = tk.StringVar(value="A")
         section_menu = tk.OptionMenu(dialog, section_var, "A", "B")
-        section_menu.config(width=6, font=("Helvetica", 11))
-        section_menu.pack()
+        section_menu.config(width=10, font=menu_font)
+        section_menu.pack(pady=(0, 10))
 
         result = {"confirmed": False}
 
@@ -411,11 +415,11 @@ class CartScreen(tk.Frame):
             dialog.destroy()
 
         btn_frame = tk.Frame(dialog, bg="white")
-        btn_frame.pack(pady=16)
-        ok_btn = tk.Button(btn_frame, text="OK", width=10, command=on_ok, bg="#1d976c", fg="white", relief="flat")
-        cancel_btn = tk.Button(btn_frame, text="Cancel", width=10, command=on_cancel, bg="#e0e0e0", fg="#333", relief="flat")
-        ok_btn.grid(row=0, column=0, padx=6)
-        cancel_btn.grid(row=0, column=1, padx=6)
+        btn_frame.pack(pady=20)
+        ok_btn = tk.Button(btn_frame, text="OK", width=14, height=2, command=on_ok, bg="#1d976c", fg="white", relief="flat", font=btn_font)
+        cancel_btn = tk.Button(btn_frame, text="Cancel", width=14, height=2, command=on_cancel, bg="#e0e0e0", fg="#333", relief="flat", font=btn_font)
+        ok_btn.grid(row=0, column=0, padx=10)
+        cancel_btn.grid(row=0, column=1, padx=10)
 
         self._style_button(ok_btn, hover_bg="#15805a")
         self._style_button(cancel_btn, hover_bg="#d0d0d0")
@@ -440,17 +444,21 @@ class CartScreen(tk.Frame):
         dialog.resizable(False, False)
         try:
             dialog.update_idletasks()
-            w = 440
-            h = 300
+            w = 520
+            h = 360
             x = max(0, (dialog.winfo_screenwidth() - w) // 2)
             y = max(0, (dialog.winfo_screenheight() - h) // 3)
             dialog.geometry(f"{w}x{h}+{x}+{y}")
         except Exception:
             pass
 
+        label_font = ("Helvetica", 15, "bold")
+        menu_font = ("Helvetica", 15)
+        btn_font = ("Helvetica", 15, "bold")
+
         tk.Label(dialog, text="Did you encounter any issue with this transaction?",
-                 bg="white", fg="#222", font=("Helvetica", 12, "bold"),
-                 wraplength=380, justify="center").pack(pady=(14, 10))
+                 bg="white", fg="#222", font=label_font,
+                 wraplength=440, justify="center").pack(pady=(14, 12))
 
         options = [
             "Item not dispensed",
@@ -463,15 +471,15 @@ class CartScreen(tk.Frame):
             "Others"
         ]
 
-        tk.Label(dialog, text="Select the issue (or choose Others):", bg="white", fg="#222", font=("Helvetica", 12, "bold")).pack(pady=(6, 6))
+        tk.Label(dialog, text="Select the issue (or choose Others):", bg="white", fg="#222", font=label_font).pack(pady=(6, 8))
         issue_var = tk.StringVar(value=options[0])
         opt = tk.OptionMenu(dialog, issue_var, *options)
-        opt.config(width=32, font=("Helvetica", 11))
-        opt.pack(pady=(0, 4))
+        opt.config(width=36, font=menu_font)
+        opt.pack(pady=(0, 8))
 
-        tk.Label(dialog, text="If Others, describe:", bg="white", fg="#444", font=("Helvetica", 11)).pack(pady=(10, 4))
-        other_entry = tk.Entry(dialog, width=40, font=("Helvetica", 11))
-        other_entry.pack(pady=(0, 8))
+        tk.Label(dialog, text="If Others, describe:", bg="white", fg="#444", font=("Helvetica", 12)).pack(pady=(10, 4))
+        other_entry = tk.Entry(dialog, width=42, font=("Helvetica", 12))
+        other_entry.pack(pady=(0, 10))
 
         result = {"issue": None, "answered": False}
 
@@ -494,11 +502,11 @@ class CartScreen(tk.Frame):
             dialog.destroy()
 
         btn_frame = tk.Frame(dialog, bg="white")
-        btn_frame.pack(pady=12)
-        yes_btn = tk.Button(btn_frame, text="Yes", width=10, command=on_yes, bg="#1d976c", fg="white", relief="flat")
-        no_btn = tk.Button(btn_frame, text="No", width=10, command=on_no, bg="#e0e0e0", fg="#333", relief="flat")
-        yes_btn.grid(row=0, column=0, padx=8)
-        no_btn.grid(row=0, column=1, padx=8)
+        btn_frame.pack(pady=16)
+        yes_btn = tk.Button(btn_frame, text="Yes", width=14, height=2, command=on_yes, bg="#1d976c", fg="white", relief="flat", font=btn_font)
+        no_btn = tk.Button(btn_frame, text="No", width=14, height=2, command=on_no, bg="#e0e0e0", fg="#333", relief="flat", font=btn_font)
+        yes_btn.grid(row=0, column=0, padx=12)
+        no_btn.grid(row=0, column=1, padx=12)
         self._style_button(yes_btn, hover_bg="#15805a")
         self._style_button(no_btn, hover_bg="#d0d0d0")
 

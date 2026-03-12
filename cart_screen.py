@@ -640,22 +640,20 @@ class CartScreen(tk.Frame):
             pass
 
         label_font = ("Helvetica", 17, "bold")
-        menu_font = ("Helvetica", 17)
         btn_font = ("Helvetica", 17, "bold")
 
-        header = tk.Frame(dialog, bg="#1d4ed8")
+        header = tk.Frame(dialog, bg="#2222a8")
         header.pack(fill="x")
-        tk.Label(header, text="RAON VENDING", fg="white", bg="#1d4ed8",
-                 font=("Helvetica", 22, "bold")).pack(pady=8)
-        try:
-            status_panel = SystemStatusPanel(header, controller=self.controller, compact=True)
-            status_panel.pack(fill="x", padx=12, pady=(0, 8))
-        except Exception:
-            pass
+        header.pack_propagate(False)
+        tk.Label(header, text="RAON VENDING", fg="white", bg="#2222a8",
+                 font=("Helvetica", 24, "bold")).pack(pady=10)
 
-        tk.Label(dialog, text="Did you encounter any issue with this transaction?",
+        content = tk.Frame(dialog, bg="white")
+        content.pack(fill="both", expand=True, pady=(20, 10))
+
+        tk.Label(content, text="Did you encounter any issue with this transaction?",
                  bg="white", fg="#222", font=label_font,
-                 wraplength=520, justify="center").pack(pady=(14, 16))
+                 wraplength=620, justify="center").pack(pady=(6, 14))
 
         options = [
             "Item not dispensed",
@@ -668,12 +666,32 @@ class CartScreen(tk.Frame):
             "Others"
         ]
 
-        tk.Label(dialog, text="Select the issue (or choose Others):", bg="white", fg="#222", font=label_font).pack(pady=(10, 10))
+        # Compact selector with cycling arrows (matching course selector style)
+        row = tk.Frame(content, bg="white")
+        row.pack(pady=(10, 24))
+        tk.Label(row, text="Issue:", bg="white", fg="#222", font=label_font).pack(side="left", padx=(0, 12))
         issue_var = tk.StringVar(value=options[0])
-        opt = tk.OptionMenu(dialog, issue_var, *options)
-        opt.config(width=36, font=menu_font)
-        opt["menu"].configure(font=menu_font)
-        opt.pack(pady=(0, 16))
+        sel_display = tk.Label(row, textvariable=issue_var, bg="#f3f4f6", fg="#111",
+                               font=("Helvetica", 18, "bold"), width=32, anchor="w", relief="flat")
+        sel_display.pack(side="left", padx=10)
+
+        btn_font_local = ("Helvetica", 16, "bold")
+        def cycle(delta):
+            current = issue_var.get()
+            try:
+                idx = options.index(current)
+            except ValueError:
+                idx = 0
+            idx = (idx + delta) % len(options)
+            issue_var.set(options[idx])
+        up = tk.Button(row, text="▲", font=btn_font_local, width=3, bg="#eaf0ff", fg="#1f2f85",
+                       relief="flat", command=lambda: cycle(-1))
+        down = tk.Button(row, text="▼", font=btn_font_local, width=3, bg="#eaf0ff", fg="#1f2f85",
+                         relief="flat", command=lambda: cycle(1))
+        up.pack(side="left")
+        down.pack(side="left", padx=(8, 0))
+        for b in (up, down):
+            self._style_button(b, hover_bg="#dfe8ff")
 
         result = {"issue": None, "answered": False}
 
@@ -688,10 +706,10 @@ class CartScreen(tk.Frame):
             result["answered"] = True
             dialog.destroy()
 
-        btn_frame = tk.Frame(dialog, bg="white")
+        btn_frame = tk.Frame(content, bg="white")
         btn_frame.pack(pady=22)
-        yes_btn = tk.Button(btn_frame, text="Yes", width=16, height=2, command=on_yes, bg="#1d976c", fg="white", relief="flat", font=btn_font)
-        no_btn = tk.Button(btn_frame, text="No", width=16, height=2, command=on_no, bg="#e0e0e0", fg="#333", relief="flat", font=btn_font)
+        yes_btn = tk.Button(btn_frame, text="Submit", width=16, height=2, command=on_yes, bg="#1d976c", fg="white", relief="flat", font=btn_font)
+        no_btn = tk.Button(btn_frame, text="Skip", width=16, height=2, command=on_no, bg="#e0e0e0", fg="#333", relief="flat", font=btn_font)
         yes_btn.grid(row=0, column=0, padx=16)
         no_btn.grid(row=0, column=1, padx=16)
         self._style_button(yes_btn, hover_bg="#15805a")

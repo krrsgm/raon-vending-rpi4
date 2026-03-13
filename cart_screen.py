@@ -1425,9 +1425,20 @@ class CartScreen(tk.Frame):
 
         def _after_vend():
             try:
-                self._close_dispense_wait_popup()
+                if getattr(self, "_dispense_check_labels", None):
+                    for lbl in self._dispense_check_labels:
+                        try:
+                            lbl.config(fg="#16a34a", text="✓ " + lbl.cget("text").lstrip("• ").strip())
+                        except Exception:
+                            pass
+                    try:
+                        self.after(400, self._close_dispense_wait_popup)
+                    except Exception:
+                        self._close_dispense_wait_popup()
+                else:
+                    self._close_dispense_wait_popup()
             except Exception:
-                pass
+                self._close_dispense_wait_popup()
             try:
                 self.controller.apply_cart_stock_deductions(cart_snapshot)
             except Exception as e:
@@ -1527,11 +1538,11 @@ class CartScreen(tk.Frame):
                             messagebox.showwarning('Stock Alert', alert_msg)
                         else:
                             print(f"[CartScreen] Sale recorded for {item_name} (qty: {qty})")
-                except Exception as e:
-                    print(f"[CartScreen] Error recording sales in stock tracker: {e}")
+        except Exception as e:
+            print(f"[CartScreen] Error recording sales in stock tracker: {e}")
 
         try:
-            self._show_dispense_wait_popup()
+            self._show_dispense_wait_popup(cart_snapshot)
             threading.Thread(target=_vend_items_and_finish, daemon=True).start()
         except Exception:
             _after_vend()
@@ -1564,7 +1575,7 @@ class CartScreen(tk.Frame):
                 pass
             self._payment_complete_notice = None
 
-    def _show_dispense_wait_popup(self):
+    def _show_dispense_wait_popup(self, cart_snapshot=None):
         """Display a blocking popup while items are vending."""
         try:
             self._close_dispense_wait_popup()
@@ -1611,6 +1622,30 @@ class CartScreen(tk.Frame):
                 justify="center"
             ).pack(pady=18)
 
+            checklist_frame = tk.Frame(content, bg="white")
+            checklist_frame.pack(pady=10)
+            self._dispense_check_labels = []
+            if isinstance(cart_snapshot, list) and cart_snapshot:
+                for entry in cart_snapshot:
+                    try:
+                        item_obj = entry.get("item", {})
+                        name = item_obj.get("name", "Item")
+                        qty = int(entry.get("quantity", 1))
+                    except Exception:
+                        name = "Item"
+                        qty = 1
+                    lbl = tk.Label(
+                        checklist_frame,
+                        text=f"• {name} x{qty}",
+                        font=("Helvetica", 16),
+                        bg="white",
+                        fg="#0f172a",
+                        anchor="w",
+                        justify="left"
+                    )
+                    lbl.pack(anchor="w")
+                    self._dispense_check_labels.append(lbl)
+
             try:
                 status_zone = tk.Frame(popup, bg="#0f172a", height=260)
                 status_zone.pack(side="bottom", fill="x")
@@ -1631,6 +1666,7 @@ class CartScreen(tk.Frame):
             except Exception:
                 pass
             self._dispense_wait_popup = None
+        self._dispense_check_labels = []
 
     def _show_payment_complete_notice(self, status_text, auto_return_ms=10000):
         """Show a non-blocking completion popup while waiting for auto-return."""

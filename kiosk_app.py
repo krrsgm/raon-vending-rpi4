@@ -514,6 +514,13 @@ class KioskFrame(tk.Frame):
             # Place out-of-stock label on the right where controls were, to avoid overlapping price
             out_lbl = tk.Label(bottom_frame, text="Out of Stock", font=self.fonts['out_of_stock'], bg=disabled_bg, fg=self.colors['out_of_stock_fg'])
             out_lbl.pack(side='right')
+            drag_only_widgets = [card, image_frame, image_label, text_frame, name_label, desc_label, price_lbl, out_lbl]
+            for w in drag_only_widgets:
+                try:
+                    w.bind("<ButtonPress-1>", self.on_canvas_press)
+                    w.bind("<B1-Motion>", self.on_canvas_drag)
+                except Exception:
+                    pass
 
         # Ensure wheel scroll works even while cursor is directly on card widgets.
         self._bind_wheel_recursive(card)

@@ -1,4 +1,4 @@
-import tkinter as tk
+﻿import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 import threading
@@ -1432,7 +1432,7 @@ class CartScreen(tk.Frame):
                         except Exception:
                             pass
                     try:
-                        self.after(400, self._close_dispense_wait_popup)
+                        self.after(1200, self._close_dispense_wait_popup)
                     except Exception:
                         self._close_dispense_wait_popup()
                 else:
@@ -1519,27 +1519,27 @@ class CartScreen(tk.Frame):
             except Exception as e:
                 print(f"[CartScreen] Error logging transaction: {e}")
 
-            if self.stock_tracker:
-                try:
-                    for item in cart_snapshot:
-                        item_name, qty = _extract_cart_entry_name_and_qty(item)
-                        result = self.stock_tracker.record_sale(
-                            item_name=item_name,
-                            quantity=qty,
-                            coin_amount=coin_amount,
-                            bill_amount=bill_amount,
-                            change_dispensed=change_dispensed
-                        )
-                        if not result['success']:
-                            print(f"[CartScreen] Failed to record sale for {item_name}: {result['message']}")
-                        elif result['alert']:
-                            alert_msg = result['alert'].get('message', 'Stock low')
-                            print(f"[CartScreen] STOCK ALERT: {alert_msg}")
-                            messagebox.showwarning('Stock Alert', alert_msg)
-                        else:
-                            print(f"[CartScreen] Sale recorded for {item_name} (qty: {qty})")
-        except Exception as e:
-            print(f"[CartScreen] Error recording sales in stock tracker: {e}")
+        if self.stock_tracker:
+            try:
+                for item in cart_snapshot:
+                    item_name, qty = _extract_cart_entry_name_and_qty(item)
+                    result = self.stock_tracker.record_sale(
+                        item_name=item_name,
+                        quantity=qty,
+                        coin_amount=coin_amount,
+                        bill_amount=bill_amount,
+                        change_dispensed=change_dispensed
+                    )
+                    if not result['success']:
+                        print(f"[CartScreen] Failed to record sale for {item_name}: {result['message']}")
+                    elif result['alert']:
+                        alert_msg = result['alert'].get('message', 'Stock low')
+                        print(f"[CartScreen] STOCK ALERT: {alert_msg}")
+                        messagebox.showwarning('Stock Alert', alert_msg)
+                    else:
+                        print(f"[CartScreen] Sale recorded for {item_name} (qty: {qty})")
+            except Exception as e:
+                print(f"[CartScreen] Error recording sales in stock tracker: {e}")
 
         try:
             self._show_dispense_wait_popup(cart_snapshot)

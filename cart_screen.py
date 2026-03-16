@@ -1649,6 +1649,7 @@ class CartScreen(tk.Frame):
             checklist_frame = tk.Frame(content, bg="white")
             checklist_frame.pack(pady=10)
             self._dispense_check_labels = []
+            self._dispense_check_index = 0
             if isinstance(cart_snapshot, list) and cart_snapshot:
                 for entry in cart_snapshot:
                     try:
@@ -1679,6 +1680,10 @@ class CartScreen(tk.Frame):
                 pass
 
             self._dispense_wait_popup = popup
+            try:
+                self.controller.dispense_progress_callback = self._on_dispense_progress
+            except Exception:
+                pass
         except Exception as e:
             print(f"[CartScreen] Failed to show dispense wait popup: {e}")
 
@@ -1689,8 +1694,27 @@ class CartScreen(tk.Frame):
                 popup.destroy()
             except Exception:
                 pass
-            self._dispense_wait_popup = None
+        self._dispense_wait_popup = None
         self._dispense_check_labels = []
+        self._dispense_check_index = 0
+        try:
+            if hasattr(self.controller, "dispense_progress_callback"):
+                self.controller.dispense_progress_callback = None
+        except Exception:
+            pass
+
+    def _on_dispense_progress(self, item_name=None, slot=None):
+        """Mark next checklist entry as dispensed (green check)."""
+        try:
+            if not getattr(self, "_dispense_check_labels", None):
+                return
+            if self._dispense_check_index >= len(self._dispense_check_labels):
+                return
+            lbl = self._dispense_check_labels[self._dispense_check_index]
+            lbl.config(fg="#16a34a", text="✓ " + lbl.cget("text").lstrip("• ").strip())
+            self._dispense_check_index += 1
+        except Exception:
+            pass
 
     def _show_payment_complete_notice(self, status_text, auto_return_ms=10000):
         """Show a non-blocking completion popup while waiting for auto-return."""

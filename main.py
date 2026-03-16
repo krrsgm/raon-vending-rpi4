@@ -2161,6 +2161,7 @@ class MainApp(tk.Tk):
         total_required = sum(len(v) for v in slot_to_items.values())
         total_dispensed = 0
         recovery_jobs = []
+        progress_cb = getattr(self, "dispense_progress_callback", None)
 
         for slot_number in sorted_slots:
             items_for_slot = slot_to_items[slot_number]
@@ -2246,6 +2247,11 @@ class MainApp(tk.Tk):
                     dispensed_for_slot += 1
                     failures_for_slot = 0  # reset failure counter after success
                     total_dispensed += 1
+                    if progress_cb:
+                        try:
+                            progress_cb(item_name, slot_number)
+                        except Exception:
+                            pass
                 else:
                     failures_for_slot += 1
                     if max_attempts_per_slot > 0 and failures_for_slot >= max_attempts_per_slot:

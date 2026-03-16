@@ -220,23 +220,28 @@ class CoinHopper:
                 callback(f"Change plan: {num_five} x ₱5, {num_one} x ₱1")
             
             dispensed_total = 0
-            
+            # First try ₱5 coins with a shorter timeout to avoid stalling; fall back to ₱1 for the rest.
+            five_timeout = min(timeout_ms, 5000)
+            dispensed_five_val = 0
             if num_five > 0:
                 if callback:
                     callback(f"Dispensing ₱5 coins: {num_five}")
-                ok, dispensed, msg = self.dispense_coins(5, num_five, timeout_ms=timeout_ms, callback=callback)
-                if not ok:
-                    return (False, dispensed_total + dispensed * 5, f"Failed to dispense ₱5 coins: {msg}")
-                dispensed_total += dispensed * 5
-            
-            if num_one > 0:
+                ok, dispensed, msg = self.dispense_coins(5, num_five, timeout_ms=five_timeout, callback=callback)
+                dispensed_five_val = dispensed * 5
+                dispensed_total += dispensed_five_val
+                if not ok and callback:
+                    callback(f"₱5 fallback: {msg}")
+            # Compute remaining change and cover with ₱1 coins
+            remaining = max(0, int(amount - dispensed_total))
+            if remaining > 0:
+                # add any pre-planned ones plus remainder from fives shortfall
+                ones_to_dispense = max(num_one, remaining)  # ensure we cover remaining value
                 if callback:
-                    callback(f"Dispensing ₱1 coins: {num_one}")
-                ok, dispensed, msg = self.dispense_coins(1, num_one, timeout_ms=timeout_ms, callback=callback)
+                    callback(f"Dispensing ₱1 coins: {ones_to_dispense}")
+                ok, dispensed_ones, msg = self.dispense_coins(1, ones_to_dispense, timeout_ms=timeout_ms, callback=callback)
+                dispensed_total += dispensed_ones
                 if not ok:
-                    return (False, dispensed_total + dispensed, f"Failed to dispense ₱1 coins: {msg}")
-                dispensed_total += dispensed
-            
+                    return (False, dispensed_total, f"Failed to dispense ₱1 coins: {msg}")
             return (True, dispensed_total, "Change dispensed successfully")
                 
         except Exception as e:

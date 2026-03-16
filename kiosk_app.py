@@ -419,7 +419,7 @@ class KioskFrame(tk.Frame):
             fg=self.colors['text_fg'],
             anchor='w',
             justify='left',
-            wraplength=max(120, self.card_width - 22),
+            wraplength=max(160, self.card_width - 22),
             height=2  # cap to 2 lines to avoid pushing price out
         )
         name_label.pack(fill='x', pady=(6, 2))

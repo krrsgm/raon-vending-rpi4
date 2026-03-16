@@ -758,15 +758,39 @@ class CartScreen(tk.Frame):
 
         result = {"issue": None, "answered": False}
 
+        def auto_skip():
+            result["issue"] = None
+            result["answered"] = True
+            try:
+                dialog.destroy()
+            except Exception:
+                pass
+
+        timer_id = None
+        try:
+            timer_id = dialog.after(30000, auto_skip)
+        except Exception:
+            timer_id = None
+
         def on_yes():
             sel = issue_var.get().strip()
             result["issue"] = sel
             result["answered"] = True
+            if timer_id:
+                try:
+                    dialog.after_cancel(timer_id)
+                except Exception:
+                    pass
             dialog.destroy()
 
         def on_no():
             result["issue"] = None
             result["answered"] = True
+            if timer_id:
+                try:
+                    dialog.after_cancel(timer_id)
+                except Exception:
+                    pass
             dialog.destroy()
 
         btn_frame = tk.Frame(content, bg="white")
